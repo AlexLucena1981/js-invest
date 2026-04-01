@@ -19,10 +19,13 @@ let currentSymbol = 'btcusdt';
 let currentStrategyId = 'rei_das_binarias'; 
 
 let activeSignals = []; 
-let signalHistory = []; // <--- NOVA MEMÓRIA DE CURTO PRAZO
+let signalHistory = []; // MEMÓRIA DE CURTO PRAZO
 let scoreboard = { win1: 0, winG1: 0, winG2: 0, loss: 0 };
 let currentEngineStatus = "Aguardando inicialização..."; 
 
+// ==========================================
+// 1. BANCO DE DADOS DE SCRIPTS
+// ==========================================
 const strategiesDB = [
     {
         id: "rei_das_binarias",
@@ -45,6 +48,9 @@ const strategiesDB = [
     }
 ];
 
+// ==========================================
+// 2. FUNÇÕES MATEMÁTICAS
+// ==========================================
 function calculateSMA(data, period) {
     if (data.length < period) return null;
     return data.slice(-period).reduce((a, b) => a + b, 0) / period;
@@ -67,6 +73,9 @@ function updateStatus(msg) {
     console.log(`[MOTOR] ${msg}`);
 }
 
+// ==========================================
+// 3. MOTOR DE REGRAS DINÂMICAS
+// ==========================================
 function evaluateStrategy(prices, strategyConfig) {
     if (prices.length < 50) return null;
 
@@ -106,30 +115,31 @@ function evaluateStrategy(prices, strategyConfig) {
 }
 
 // ==========================================
-// 4. MOTOR DE CONEXÃO
+// 4. MOTOR DE CONEXÃO E EXECUÇÃO
 // ==========================================
 async function startConnection(symbol) {
     if (ws) { ws.terminate(); ws = null; }
     
     closePrices = [];
     activeSignals = []; 
-    signalHistory = []; // Zera a tabela
+    signalHistory = []; 
     scoreboard = { win1: 0, winG1: 0, winG2: 0, loss: 0 };
     
     const currentStrategy = strategiesDB.find(s => s.id === currentStrategyId);
     updateStatus(`Carregando histórico de ${symbol.toUpperCase()}...`);
 
     try {
+        // Usa a API de dados públicos da Binance para não sofrer bloqueio de IP
         const response = await axios.get(`https://data-api.binance.vision/api/v3/klines?symbol=${symbol.toUpperCase()}&interval=1m&limit=100`);
         const klines = response.data;
         
-        // BACKTEST INSTANTÂNEO DAS ÚLTIMAS 100 VELAS
+        // BACKTEST INSTANTÂNEO
         for (let i = 0; i < klines.length - 1; i++) {
             const k_time = klines[i][0];
-            const k_o = parseFloat(klines[i][1]); // Abertura
-            const k_c = parseFloat(klines[i][4]); // Fechamento
+            const k_o = parseFloat(klines[i][1]); 
+            const k_c = parseFloat(klines[i][4]); 
             
-            // 1. Resolve sinais pendentes
+            // Resolve sinais pendentes
             activeSignals = activeSignals.filter(sig => {
                 const isGreen = k_c > k_o;
                 const isRed = k_c < k_o;
@@ -154,23 +164,23 @@ async function startConnection(symbol) {
 
             closePrices.push(k_c);
             
-            // 2. Busca nova entrada
+            // Busca nova entrada (Com a hora formatada para o Brasil)
             const newSigType = evaluateStrategy(closePrices, currentStrategy);
             if (newSigType) {
                 const newSig = {
                     id: k_time,
                     type: newSigType,
-                    time: new Date(k_time).toLocaleTimeString(),
+                    time: new Date(k_time).toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' }),
                     step: 0,
                     status: 'Aguardando Vela...'
                 };
                 activeSignals.push(newSig);
-                signalHistory.unshift(newSig); // Grava na memória
-                if (signalHistory.length > 20) signalHistory.pop(); // Guarda apenas as 20 últimas
+                signalHistory.unshift(newSig); 
+                if (signalHistory.length > 20) signalHistory.pop(); 
             }
         }
         
-        // Envia o placar e a tabela cheia para o Front-end!
+        // Envia o placar e a tabela cheia
         io.emit('scoreboard', scoreboard);
         io.emit('history_dump', signalHistory);
 
@@ -187,6 +197,7 @@ async function startConnection(symbol) {
             const secondsLeft = 60 - new Date().getSeconds();
             io.emit('price_update', { price: currentPrice, secondsLeft });
 
+            // FASE 1: PRÉ-ALERTA
             if (closePrices.length > 50 && !isCandleClosed) {
                 let tempPrices = [...closePrices, currentPrice];
                 if (tempPrices.length > 150) tempPrices.shift();
@@ -198,6 +209,7 @@ async function startConnection(symbol) {
                 else io.emit('pre_alert', { call: false, put: false }); 
             }
 
+            // FASE 2: GATILHO OFICIAL
             if (isCandleClosed) { 
                 closePrices.push(currentPrice);
                 if (closePrices.length > 150) closePrices.shift();
@@ -227,11 +239,18 @@ async function startConnection(symbol) {
                     }
                 });
 
+                // Busca nova entrada ao vivo (Com a hora formatada para o Brasil)
                 const newSignalType = evaluateStrategy(closePrices, currentStrategy);
                 if (newSignalType) {
-                    const newSig = { id: Date.now(), type: newSignalType, time: new Date().toLocaleTimeString(), step: 0, status: 'Aguardando Vela...' };
+                    const newSig = { 
+                        id: Date.now(), 
+                        type: newSignalType, 
+                        time: new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' }), 
+                        step: 0, 
+                        status: 'Aguardando Vela...' 
+                    };
                     activeSignals.push(newSig); 
-                    signalHistory.unshift(newSig); // Salva na memória
+                    signalHistory.unshift(newSig); 
                     if (signalHistory.length > 20) signalHistory.pop();
 
                     io.emit('new_signal_history', newSig); 
@@ -261,7 +280,6 @@ async function startConnection(symbol) {
 // 5. COMUNICAÇÃO COM O FRONTEND
 // ==========================================
 io.on('connection', (socket) => {
-    // Quando o usuário conecta (ou dá F5), envia a memória atual do servidor!
     socket.emit('status', { msg: currentEngineStatus });
     socket.emit('available_strategies', strategiesDB.map(s => ({ id: s.id, name: s.name })));
     socket.emit('scoreboard', scoreboard);
