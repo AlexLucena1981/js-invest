@@ -19,13 +19,13 @@ let currentSymbol = 'btcusdt';
 let currentStrategyId = 'rei_das_binarias'; 
 
 let activeSignals = []; 
-let signalHistory = []; // MEMÓRIA DE CURTO PRAZO
+let signalHistory = []; 
 let scoreboard = { win1: 0, winG1: 0, winG2: 0, loss: 0 };
 let currentEngineStatus = "Aguardando inicialização..."; 
 
-// ==========================================
-// 1. BANCO DE DADOS DE SCRIPTS
-// ==========================================
+// SISTEMA ANTI-COLISÃO (Evita que moedas se misturem na troca rápida)
+let currentConnectionId = 0; 
+
 const strategiesDB = [
     {
         id: "rei_das_binarias",
@@ -48,9 +48,6 @@ const strategiesDB = [
     }
 ];
 
-// ==========================================
-// 2. FUNÇÕES MATEMÁTICAS
-// ==========================================
 function calculateSMA(data, period) {
     if (data.length < period) return null;
     return data.slice(-period).reduce((a, b) => a + b, 0) / period;
@@ -73,18 +70,21 @@ function updateStatus(msg) {
     console.log(`[MOTOR] ${msg}`);
 }
 
-// ==========================================
-// 3. MOTOR DE REGRAS DINÂMICAS
-// ==========================================
 function evaluateStrategy(prices, strategyConfig) {
-    if (prices.length < 50) return null;
+    // Escudo: Se a memória corrompeu e esvaziou, aborta a matemática para não crashar
+    if (!prices || prices.length < 50) return null;
 
     if (strategyConfig.isComplex && strategyConfig.id === 'rei_das_binarias') {
         let buf1 = [];
         for(let i = 10; i >= 0; i--) {
             let slice = prices.slice(0, prices.length - i);
-            buf1.push(calculateSMA(slice, 1) - calculateSMA(slice, 34));
+            let sma1 = calculateSMA(slice, 1);
+            let sma34 = calculateSMA(slice, 34);
+            // Se as médias retornarem nulo, aborta
+            if(sma1 === null || sma34 === null) return null;
+            buf1.push(sma1 - sma34);
         }
+        
         const currentB1 = buf1[10];
         const prevB1 = buf1[9];
         const currentB2 = calculateWMA(buf1.slice(-5), 5);
@@ -110,15 +110,24 @@ function evaluateStrategy(prices, strategyConfig) {
 
         if (isCall) return 'CALL';
         if (isPut) return 'PUT';
-    } catch (e) { console.error("Erro na regra da estratégia:", e); }
+    } catch (e) { 
+        console.error("Erro na regra da estratégia:", e); 
+    }
     return null;
 }
 
 // ==========================================
-// 4. MOTOR DE CONEXÃO E EXECUÇÃO
+// 4. MOTOR DE CONEXÃO E EXECUÇÃO BLINDADA
 // ==========================================
 async function startConnection(symbol) {
-    if (ws) { ws.terminate(); ws = null; }
+    // 1. Gera um novo selo de conexão
+    currentConnectionId++;
+    const myConnectionId = currentConnectionId;
+
+    if (ws) { 
+        ws.terminate(); // Mata o fluxo antigo sem piedade
+        ws = null; 
+    }
     
     closePrices = [];
     activeSignals = []; 
@@ -126,11 +135,21 @@ async function startConnection(symbol) {
     scoreboard = { win1: 0, winG1: 0, winG2: 0, loss: 0 };
     
     const currentStrategy = strategiesDB.find(s => s.id === currentStrategyId);
+    if (!currentStrategy) {
+        updateStatus(`Erro: Estratégia não encontrada.`);
+        return;
+    }
     updateStatus(`Carregando histórico de ${symbol.toUpperCase()}...`);
 
     try {
-        // Usa a API de dados públicos da Binance para não sofrer bloqueio de IP
         const response = await axios.get(`https://data-api.binance.vision/api/v3/klines?symbol=${symbol.toUpperCase()}&interval=1m&limit=100`);
+        
+        // 2. Trava Anti-Colisão: Se o usuário trocou de moeda ENQUANTO o axios baixava os dados, ABORTA esta rotina fantasma!
+        if (myConnectionId !== currentConnectionId) {
+            console.log(`[ANTI-COLISÃO] Rotina velha do ${symbol} cancelada.`);
+            return; 
+        }
+
         const klines = response.data;
         
         // BACKTEST INSTANTÂNEO
@@ -139,7 +158,6 @@ async function startConnection(symbol) {
             const k_o = parseFloat(klines[i][1]); 
             const k_c = parseFloat(klines[i][4]); 
             
-            // Resolve sinais pendentes
             activeSignals = activeSignals.filter(sig => {
                 const isGreen = k_c > k_o;
                 const isRed = k_c < k_o;
@@ -164,7 +182,6 @@ async function startConnection(symbol) {
 
             closePrices.push(k_c);
             
-            // Busca nova entrada (Com a hora formatada para o Brasil)
             const newSigType = evaluateStrategy(closePrices, currentStrategy);
             if (newSigType) {
                 const newSig = {
@@ -180,7 +197,6 @@ async function startConnection(symbol) {
             }
         }
         
-        // Envia o placar e a tabela cheia
         io.emit('scoreboard', scoreboard);
         io.emit('history_dump', signalHistory);
 
@@ -189,87 +205,94 @@ async function startConnection(symbol) {
         ws = new WebSocket(`wss://stream.binance.com:9443/ws/${symbol.toLowerCase()}@kline_1m`);
         
         ws.on('message', (data) => {
-            const kline = JSON.parse(data).k;
-            const currentPrice = parseFloat(kline.c);
-            const isCandleClosed = kline.x;
-            const currentOpen = parseFloat(kline.o);
-            
-            const secondsLeft = 60 - new Date().getSeconds();
-            io.emit('price_update', { price: currentPrice, secondsLeft });
+            // 3. Trava Anti-Colisão no WebSocket: Ignora mensagens atrasadas
+            if (myConnectionId !== currentConnectionId) return;
 
-            // FASE 1: PRÉ-ALERTA
-            if (closePrices.length > 50 && !isCandleClosed) {
-                let tempPrices = [...closePrices, currentPrice];
-                if (tempPrices.length > 150) tempPrices.shift();
+            try {
+                const kline = JSON.parse(data).k;
+                const currentPrice = parseFloat(kline.c);
+                const isCandleClosed = kline.x;
+                const currentOpen = parseFloat(kline.o);
                 
-                const tempSignal = evaluateStrategy(tempPrices, currentStrategy);
-                
-                if (tempSignal === 'CALL') io.emit('pre_alert', { call: true, put: false });
-                else if (tempSignal === 'PUT') io.emit('pre_alert', { call: false, put: true });
-                else io.emit('pre_alert', { call: false, put: false }); 
-            }
+                const secondsLeft = 60 - new Date().getSeconds();
+                io.emit('price_update', { price: currentPrice, secondsLeft });
 
-            // FASE 2: GATILHO OFICIAL
-            if (isCandleClosed) { 
-                closePrices.push(currentPrice);
-                if (closePrices.length > 150) closePrices.shift();
+                if (closePrices.length > 50 && !isCandleClosed) {
+                    let tempPrices = [...closePrices, currentPrice];
+                    if (tempPrices.length > 150) tempPrices.shift();
+                    
+                    const tempSignal = evaluateStrategy(tempPrices, currentStrategy);
+                    
+                    if (tempSignal === 'CALL') io.emit('pre_alert', { call: true, put: false });
+                    else if (tempSignal === 'PUT') io.emit('pre_alert', { call: false, put: true });
+                    else io.emit('pre_alert', { call: false, put: false }); 
+                }
 
-                activeSignals = activeSignals.filter(sig => {
-                    const isGreen = currentPrice > currentOpen;
-                    const isRed = currentPrice < currentOpen;
-                    const won = (sig.type === 'CALL' && isGreen) || (sig.type === 'PUT' && isRed);
+                if (isCandleClosed) { 
+                    closePrices.push(currentPrice);
+                    if (closePrices.length > 150) closePrices.shift();
 
-                    if (won) {
-                        if (sig.step === 0) { sig.status = 'WIN 1ª 🎯'; scoreboard.win1++; }
-                        else if (sig.step === 1) { sig.status = 'WIN G1 🎯'; scoreboard.winG1++; }
-                        else if (sig.step === 2) { sig.status = 'WIN G2 🎯'; scoreboard.winG2++; }
-                        io.emit('signal_result', sig);
-                        io.emit('scoreboard', scoreboard); 
-                        return false; 
-                    } else {
-                        sig.step++;
-                        if (sig.step > 2) {
-                            sig.status = 'LOSS 🔴'; scoreboard.loss++;
-                            io.emit('signal_result', sig); io.emit('scoreboard', scoreboard); 
+                    activeSignals = activeSignals.filter(sig => {
+                        const isGreen = currentPrice > currentOpen;
+                        const isRed = currentPrice < currentOpen;
+                        const won = (sig.type === 'CALL' && isGreen) || (sig.type === 'PUT' && isRed);
+
+                        if (won) {
+                            if (sig.step === 0) { sig.status = 'WIN 1ª 🎯'; scoreboard.win1++; }
+                            else if (sig.step === 1) { sig.status = 'WIN G1 🎯'; scoreboard.winG1++; }
+                            else if (sig.step === 2) { sig.status = 'WIN G2 🎯'; scoreboard.winG2++; }
+                            io.emit('signal_result', sig);
+                            io.emit('scoreboard', scoreboard); 
                             return false; 
                         } else {
-                            sig.status = `Gale ${sig.step}...`; io.emit('signal_result', sig);
-                            return true; 
+                            sig.step++;
+                            if (sig.step > 2) {
+                                sig.status = 'LOSS 🔴'; scoreboard.loss++;
+                                io.emit('signal_result', sig); io.emit('scoreboard', scoreboard); 
+                                return false; 
+                            } else {
+                                sig.status = `Gale ${sig.step}...`; io.emit('signal_result', sig);
+                                return true; 
+                            }
                         }
+                    });
+
+                    const newSignalType = evaluateStrategy(closePrices, currentStrategy);
+                    if (newSignalType) {
+                        const newSig = { 
+                            id: Date.now(), 
+                            type: newSignalType, 
+                            time: new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' }), 
+                            step: 0, 
+                            status: 'Aguardando Vela...' 
+                        };
+                        activeSignals.push(newSig); 
+                        signalHistory.unshift(newSig); 
+                        if (signalHistory.length > 20) signalHistory.pop();
+
+                        io.emit('new_signal_history', newSig); 
+                        io.emit('signal', { type: newSignalType, time: newSig.time }); 
                     }
-                });
-
-                // Busca nova entrada ao vivo (Com a hora formatada para o Brasil)
-                const newSignalType = evaluateStrategy(closePrices, currentStrategy);
-                if (newSignalType) {
-                    const newSig = { 
-                        id: Date.now(), 
-                        type: newSignalType, 
-                        time: new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' }), 
-                        step: 0, 
-                        status: 'Aguardando Vela...' 
-                    };
-                    activeSignals.push(newSig); 
-                    signalHistory.unshift(newSig); 
-                    if (signalHistory.length > 20) signalHistory.pop();
-
-                    io.emit('new_signal_history', newSig); 
-                    io.emit('signal', { type: newSignalType, time: newSig.time }); 
                 }
+            } catch (e) {
+                console.error("Erro ao processar mensagem do WebSocket. A blindagem segurou o erro:", e);
             }
         });
 
         ws.on('error', (err) => {
+            if (myConnectionId !== currentConnectionId) return; // Ignora se for o socket velho
             updateStatus('Sinal da corretora perdido. Reconectando em 5s...');
             setTimeout(() => startConnection(currentSymbol), 5000);
         });
 
         ws.on('close', () => {
+            if (myConnectionId !== currentConnectionId) return; // Ignora se for o socket velho
             updateStatus('Conexão encerrada. Reiniciando o motor em 5s...');
             setTimeout(() => startConnection(currentSymbol), 5000);
         });
 
     } catch (error) {
+        if (myConnectionId !== currentConnectionId) return; 
         let motivo = error.response ? `Erro ${error.response.status}` : error.message;
         updateStatus(`Falha ao puxar histórico (${motivo}). Tentando novamente em 5s...`);
         setTimeout(() => startConnection(currentSymbol), 5000);
@@ -296,10 +319,14 @@ io.on('connection', (socket) => {
     });
 
     socket.on('add_new_strategy', (newStrategy) => {
-        const exists = strategiesDB.find(s => s.id === newStrategy.id);
-        if (!exists) {
-            strategiesDB.push(newStrategy);
-            io.emit('available_strategies', strategiesDB.map(s => ({ id: s.id, name: s.name })));
+        try {
+            const exists = strategiesDB.find(s => s.id === newStrategy.id);
+            if (!exists) {
+                strategiesDB.push(newStrategy);
+                io.emit('available_strategies', strategiesDB.map(s => ({ id: s.id, name: s.name })));
+            }
+        } catch (e) {
+            console.error("Erro ao adicionar nova estratégia:", e);
         }
     });
 });
