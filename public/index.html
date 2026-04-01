@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JS Invest - Mesa de Operações</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Roboto:wght@400;700&display=swap');
+
+        body {
+            background-color: #0d1117; color: #c9d1d9; font-family: 'Roboto', sans-serif;
+            display: flex; flex-direction: column; align-items: center;
+            justify-content: flex-start; min-height: 100vh; margin: 0; padding: 40px 0; overflow-y: auto;
+        }
+
+        .dashboard, .history-panel {
+            background: #161b22; border: 1px solid #30363d; border-radius: 16px;
+            padding: 30px; width: 420px; box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+            display: flex; flex-direction: column; align-items: center; margin-bottom: 20px; box-sizing: border-box;
+        }
+
+        h1 { font-family: 'Orbitron', sans-serif; color: #58a6ff; margin-top: 0; text-align: center; font-size: 28px; letter-spacing: 2px;}
+        .subtitle { font-size: 12px; color: #8b949e; text-transform: uppercase; margin-top: -15px; margin-bottom: 20px; letter-spacing: 1px;}
+
+        /* Controles em Grid */
+        .controls { 
+            display: grid; 
+            grid-template-columns: 2fr 1fr; 
+            gap: 10px; 
+            width: 100%; 
+            margin-bottom: 20px; 
+            box-sizing: border-box;
+        }
+
+        /* Grupo do Botão + Script */
+        .script-group { display: flex; gap: 5px; }
+        
+        select {
+            width: 100%; padding: 12px 10px; border-radius: 8px; background: #0d1117;
+            color: #fff; border: 1px solid #30363d; font-size: 13px; outline: none; cursor: pointer;
+            box-sizing: border-box; text-overflow: ellipsis; white-space: nowrap;
+            overflow: hidden; transition: border-color 0.3s;
+        }
+        select:hover, select:focus { border-color: #58a6ff; }
+
+        .btn-add-script { 
+            background: #21262d; color: #58a6ff; border: 1px solid #30363d; 
+            border-radius: 8px; padding: 0 15px; cursor: pointer; font-weight: bold; font-size: 18px;
+            transition: all 0.2s;
+        }
+        .btn-add-script:hover { background: #30363d; color: #fff; }
+
+        .timer-container { display: flex; flex-direction: column; align-items: center; margin-bottom: 20px; }
+        .timer-circle {
+            width: 90px; height: 90px; border-radius: 50%; border: 5px solid #30363d;
+            display: flex; justify-content: center; align-items: center; font-family: 'Orbitron', sans-serif;
+            font-size: 32px; font-weight: 700; color: #58a6ff; transition: border-color 0.3s;
+        }
+        .timer-label { font-size: 12px; color: #8b949e; margin-top: 5px; text-transform: uppercase; }
+
+        .price-box { font-size: 26px; font-weight: bold; margin-bottom: 20px; font-family: 'Orbitron'; }
+
+        .alert-box {
+            width: 100%; padding: 15px; border-radius: 8px; text-align: center; font-weight: bold;
+            font-size: 18px; text-transform: uppercase; letter-spacing: 1px; transition: all 0.3s;
+            background: #21262d; color: #8b949e; border: 1px solid #30363d; box-sizing: border-box;
+        }
+
+        .state-warning { background: rgba(210, 153, 34, 0.15); color: #d29922; border-color: #d29922; animation: blink 1s infinite; }
+        .state-execute-call { background: #238636; color: #ffffff; border-color: #2ea043; font-size: 24px; box-shadow: 0 0 30px rgba(35, 134, 54, 0.5); }
+        .state-execute-put { background: #da3633; color: #ffffff; border-color: #f85149; font-size: 24px; box-shadow: 0 0 30px rgba(218, 54, 51, 0.5); }
+
+        @keyframes blink { 50% { opacity: 0.6; box-shadow: 0 0 15px rgba(210, 153, 34, 0.4); } }
+
+        /* Placar e Assertividade */
+        .overall-accuracy {
+            background: #0d1117; border: 1px solid #30363d; border-radius: 8px; padding: 10px; text-align: center;
+            font-weight: bold; margin-bottom: 15px; color: #c9d1d9; font-size: 14px; text-transform: uppercase; width: 100%; box-sizing: border-box;
+        }
+        .overall-accuracy span { color: #58a6ff; font-size: 18px; font-family: 'Orbitron', sans-serif; margin-left: 10px; }
+
+        .scoreboard { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 25px; padding-bottom: 20px; border-bottom: 1px solid #30363d; width: 100%; }
+        .score-card { background: #0d1117; border: 1px solid #30363d; border-radius: 8px; padding: 12px 2px; flex: 1; text-align: center; }
+        .score-card .title { font-size: 10px; color: #8b949e; text-transform: uppercase; font-weight: bold; }
+        .score-card .value { font-size: 22px; font-weight: 900; font-family: 'Orbitron', sans-serif; margin-top: 5px; }
+        .score-card .percent { font-size: 11px; margin-top: 4px; opacity: 0.8; font-weight: bold; }
+        
+        .score-win1 .value, .score-win1 .percent { color: #3fb950; text-shadow: 0 0 10px rgba(63, 185, 80, 0.3); } 
+        .score-wing1 .value, .score-wing1 .percent { color: #2ea043; } 
+        .score-wing2 .value, .score-wing2 .percent { color: #d29922; } 
+        .score-loss .value, .score-loss .percent { color: #f85149; text-shadow: 0 0 10px rgba(248, 81, 73, 0.3); } 
+
+        .history-panel h3 { margin-top: 0; color: #8b949e; text-align: center; font-size: 14px; text-transform: uppercase; width: 100%; }
+        table { width: 100%; border-collapse: collapse; text-align: center; font-size: 13px; }
+        th { padding: 10px; border-bottom: 1px solid #30363d; color: #c9d1d9; font-weight: 600; }
+        td { padding: 12px 5px; border-bottom: 1px solid #21262d; }
+        
+        .text-green { color: #3fb950; font-weight: bold; }
+        .text-red { color: #f85149; font-weight: bold; }
+        .text-warning { color: #d29922; font-weight: bold; }
+        .text-muted { color: #8b949e; }
+
+        /* Estilos do Modal de Inserção de Script */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0, 0, 0, 0.8); backdrop-filter: blur(5px);
+            display: none; justify-content: center; align-items: center; z-index: 1000;
+        }
+        .modal-box {
+            background: #161b22; border: 1px solid #30363d; border-radius: 16px;
+            padding: 25px; width: 500px; box-shadow: 0 20px 50px rgba(0,0,0,0.8);
+        }
+        .modal-box h2 { color: #58a6ff; margin-top: 0; font-family: 'Orbitron', sans-serif; font-size: 20px; }
+        .modal-box p { color: #8b949e; font-size: 14px; margin-bottom: 15px; }
+        .modal-box textarea {
+            width: 100%; height: 250px; background: #0d1117; color: #3fb950;
+            border: 1px solid #30363d; border-radius: 8px; padding: 15px;
+            font-family: monospace; font-size: 13px; box-sizing: border-box; resize: none; outline: none;
+        }
+        .modal-box textarea:focus { border-color: #58a6ff; }
+        .modal-buttons { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+        .btn { padding: 10px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; border: none; }
+        .btn-cancel { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; }
+        .btn-save { background: #238636; color: #ffffff; }
+        .btn-save:hover { background: #2ea043; }
+    </style>
+</head>
+<body>
+
+    <div class="dashboard" id="mainCard">
+        <h1>🚀 JS INVEST</h1>
+        <div class="subtitle">Análise Quantitativa</div>
+        
+        <div class="controls">
+            <div class="script-group">
+                <select id="strategySelector">
+                    <option value="">Carregando scripts...</option>
+                </select>
+                <button class="btn-add-script" id="btnOpenModal" title="Adicionar Novo Script">+</button>
+            </div>
+
+            <select id="coinSelector">
+                <option value="btcusdt">BTC/USDT</option>
+                <option value="ethusdt">ETH/USDT</option>
+                <option value="solusdt">SOL/USDT</option>
+                <option value="bnbusdt">BNB/USDT</option>
+                <option value="adausdt">ADA/USDT</option>
+                <option value="xrpusdt">XRP/USDT</option>
+                <option value="dogeusdt">DOGE/USDT</option>
+                <option value="dotusdt">DOT/USDT</option>
+                <option value="linkusdt">LINK/USDT</option>
+                <option value="ltcusdt">LTC/USDT</option>
+                <option value="maticusdt">MATIC/USDT</option>
+            </select>
+        </div>
+
+        <div class="timer-container">
+            <div class="timer-circle" id="timerCircle">00</div>
+            <div class="timer-label">Tempo da Vela</div>
+        </div>
+
+        <div class="price-box" id="priceValue">---</div>
+
+        <div class="alert-box" id="alertBox">
+            Inicializando Motor...
+        </div>
+    </div>
+
+    <div class="history-panel">
+        <div class="overall-accuracy">
+            Assertividade Total: <span id="totalAccuracy">0.0%</span>
+        </div>
+
+        <div class="scoreboard">
+            <div class="score-card score-win1">
+                <div class="title">Win 1ª</div>
+                <div class="value" id="scoreWin1">0</div>
+                <div class="percent" id="pctWin1">0.0%</div>
+            </div>
+            <div class="score-card score-wing1">
+                <div class="title">Win G1</div>
+                <div class="value" id="scoreWinG1">0</div>
+                <div class="percent" id="pctWinG1">0.0%</div>
+            </div>
+            <div class="score-card score-wing2">
+                <div class="title">Win G2</div>
+                <div class="value" id="scoreWinG2">0</div>
+                <div class="percent" id="pctWinG2">0.0%</div>
+            </div>
+            <div class="score-card score-loss">
+                <div class="title">Loss</div>
+                <div class="value" id="scoreLoss">0</div>
+                <div class="percent" id="pctLoss">0.0%</div>
+            </div>
+        </div>
+
+        <h3>Histórico de Entradas</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Hora</th>
+                    <th>Direção</th>
+                    <th>Resultado</th>
+                </tr>
+            </thead>
+            <tbody id="historyTableBody"></tbody>
+        </table>
+    </div>
+
+    <div class="modal-overlay" id="scriptModal">
+        <div class="modal-box">
+            <h2>🔌 Plugar Novo Script</h2>
+            <p>Cole o JSON com a configuração dos indicadores e condições matemáticas do seu novo script.</p>
+            <textarea id="jsonInput">
+{
+    "id": "meu_script_novo",
+    "name": "Novo Script: Agulhada Mágica",
+    "indicators": {
+        "linhaRapida": { "type": "SMA", "period": 3 },
+        "linhaLenta": { "type": "SMA", "period": 12 }
+    },
+    "conditions": {
+        "call": "current.linhaRapida > current.linhaLenta && prev.linhaRapida <= prev.linhaLenta",
+        "put": "current.linhaRapida < current.linhaLenta && prev.linhaRapida >= prev.linhaLenta"
+    }
+}
+            </textarea>
+            <div class="modal-buttons">
+                <button class="btn btn-cancel" id="btnCancelModal">Cancelar</button>
+                <button class="btn btn-save" id="btnSaveScript">Salvar & Injetar</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        const priceValue = document.getElementById('priceValue');
+        const alertBox = document.getElementById('alertBox');
+        const timerCircle = document.getElementById('timerCircle');
+        const coinSelector = document.getElementById('coinSelector');
+        const strategySelector = document.getElementById('strategySelector');
+        const historyTableBody = document.getElementById('historyTableBody');
+        
+        // Elementos do Placar
+        const scoreWin1 = document.getElementById('scoreWin1'), pctWin1 = document.getElementById('pctWin1');
+        const scoreWinG1 = document.getElementById('scoreWinG1'), pctWinG1 = document.getElementById('pctWinG1');
+        const scoreWinG2 = document.getElementById('scoreWinG2'), pctWinG2 = document.getElementById('pctWinG2');
+        const scoreLoss = document.getElementById('scoreLoss'), pctLoss = document.getElementById('pctLoss');
+        const totalAccuracy = document.getElementById('totalAccuracy');
+
+        let isSignalActive = false;
+
+        function resetUI(message) {
+            alertBox.className = 'alert-box';
+            alertBox.innerText = message;
+            isSignalActive = false;
+        }
+
+        socket.on('available_strategies', (strategies) => {
+            // Guarda o valor que estava selecionado antes de atualizar a lista
+            const selectedValue = strategySelector.value;
+            
+            strategySelector.innerHTML = ''; 
+            strategies.forEach(strategy => {
+                const option = document.createElement('option');
+                option.value = strategy.id;
+                option.innerText = strategy.name;
+                strategySelector.appendChild(option);
+            });
+            
+            // Tenta manter o script atual selecionado
+            if(selectedValue) strategySelector.value = selectedValue;
+        });
+
+        coinSelector.addEventListener('change', (e) => {
+            resetUI("Carregando nova moeda...");
+            socket.emit('change_coin', e.target.value);
+        });
+
+        strategySelector.addEventListener('change', (e) => {
+            resetUI("Aplicando novo script matemático...");
+            socket.emit('change_strategy', e.target.value);
+        });
+
+        socket.on('clear_history', () => { historyTableBody.innerHTML = ''; });
+
+        socket.on('scoreboard', (data) => {
+            scoreWin1.innerText = data.win1; scoreWinG1.innerText = data.winG1;
+            scoreWinG2.innerText = data.winG2; scoreLoss.innerText = data.loss;
+
+            const totalSignals = data.win1 + data.winG1 + data.winG2 + data.loss;
+            if (totalSignals > 0) {
+                const totalWins = data.win1 + data.winG1 + data.winG2;
+                totalAccuracy.innerText = ((totalWins / totalSignals) * 100).toFixed(1) + '%';
+                pctWin1.innerText = ((data.win1 / totalSignals) * 100).toFixed(1) + '%';
+                pctWinG1.innerText = ((data.winG1 / totalSignals) * 100).toFixed(1) + '%';
+                pctWinG2.innerText = ((data.winG2 / totalSignals) * 100).toFixed(1) + '%';
+                pctLoss.innerText = ((data.loss / totalSignals) * 100).toFixed(1) + '%';
+            } else {
+                totalAccuracy.innerText = '0.0%'; pctWin1.innerText = '0.0%';
+                pctWinG1.innerText = '0.0%'; pctWinG2.innerText = '0.0%'; pctLoss.innerText = '0.0%';
+            }
+        });
+
+        socket.on('price_update', (data) => {
+            let formattedPrice = data.price < 1 ? data.price.toFixed(4) : data.price.toFixed(2);
+            priceValue.innerText = '$ ' + formattedPrice;
+            
+            let secs = data.secondsLeft;
+            timerCircle.innerText = secs < 10 ? '0' + secs : secs;
+            if (secs <= 10) { timerCircle.style.color = '#ff7b72'; timerCircle.style.borderColor = '#ff7b72'; } 
+            else { timerCircle.style.color = '#58a6ff'; timerCircle.style.borderColor = '#30363d'; }
+        });
+
+        socket.on('pre_alert', (data) => {
+            if (isSignalActive) return; 
+            if (data.call || data.put) {
+                alertBox.className = 'alert-box state-warning';
+                let direcao = data.call ? "COMPRA (CALL)" : "VENDA (PUT)";
+                alertBox.innerHTML = `⚠️ PREPARAR: Possível ${direcao}<br><small style="font-size:12px; font-weight:normal;">Aguarde o fim da vela!</small>`;
+            } else { resetUI("Analisando Mercado..."); }
+        });
+
+        socket.on('signal', (data) => {
+            isSignalActive = true;
+            if (data.type === 'CALL') {
+                alertBox.className = 'alert-box state-execute-call'; alertBox.innerHTML = '🟢 ENTRAR: COMPRA!';
+            } else {
+                alertBox.className = 'alert-box state-execute-put'; alertBox.innerHTML = '🔴 ENTRAR: VENDA!';
+            }
+            setTimeout(() => { resetUI("Analisando Mercado..."); }, 20000);
+        });
+
+        socket.on('new_signal_history', (sig) => {
+            const tr = document.createElement('tr');
+            tr.id = `sig-${sig.id}`;
+            const isCall = sig.type === 'CALL';
+            tr.innerHTML = `<td class="text-muted">${sig.time}</td>
+                <td class="${isCall ? 'text-green' : 'text-red'}">${isCall ? '🟢 CALL' : '🔴 PUT'}</td>
+                <td id="res-${sig.id}" class="text-warning">⏳ Analisando...</td>`;
+            historyTableBody.prepend(tr);
+        });
+
+        socket.on('signal_result', (sig) => {
+            const resTd = document.getElementById(`res-${sig.id}`);
+            if (resTd) {
+                resTd.innerText = sig.status;
+                if (sig.status.includes('WIN')) resTd.className = 'text-green';
+                else if (sig.status.includes('LOSS')) resTd.className = 'text-red';
+                else resTd.className = 'text-warning';
+            }
+        });
+
+        socket.on('status', (data) => {
+            if(!isSignalActive && !alertBox.classList.contains('state-warning')) {
+                resetUI(data.msg);
+            }
+        });
+
+        // ==========================================
+        // Lógica do Modal de Novo Script
+        // ==========================================
+        const scriptModal = document.getElementById('scriptModal');
+        const btnOpenModal = document.getElementById('btnOpenModal');
+        const btnCancelModal = document.getElementById('btnCancelModal');
+        const btnSaveScript = document.getElementById('btnSaveScript');
+        const jsonInput = document.getElementById('jsonInput');
+
+        btnOpenModal.addEventListener('click', () => {
+            scriptModal.style.display = 'flex';
+        });
+
+        btnCancelModal.addEventListener('click', () => {
+            scriptModal.style.display = 'none';
+        });
+
+        btnSaveScript.addEventListener('click', () => {
+            try {
+                // Tenta transformar o texto em objeto Javascript
+                const newStrategyJSON = JSON.parse(jsonInput.value);
+                
+                // Envia para o Servidor Node.js
+                socket.emit('add_new_strategy', newStrategyJSON);
+                
+                alert("Script Injetado com Sucesso!");
+                scriptModal.style.display = 'none';
+                
+                // Opcional: já seleciona o novo script no menu e avisa o servidor para trocar
+                strategySelector.value = newStrategyJSON.id;
+                resetUI("Aplicando novo script matemático...");
+                socket.emit('change_strategy', newStrategyJSON.id);
+
+            } catch (error) {
+                alert("Erro de Sintaxe JSON! Verifique as aspas, vírgulas e as chaves.");
+                console.error(error);
+            }
+        });
+    </script>
+</body>
+</html>
