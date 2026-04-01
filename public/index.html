@@ -22,31 +22,19 @@
         h1 { font-family: 'Orbitron', sans-serif; color: #58a6ff; margin-top: 0; text-align: center; font-size: 28px; letter-spacing: 2px;}
         .subtitle { font-size: 12px; color: #8b949e; text-transform: uppercase; margin-top: -15px; margin-bottom: 20px; letter-spacing: 1px;}
 
-        /* Controles em Grid */
-        .controls { 
-            display: grid; 
-            grid-template-columns: 2fr 1fr; 
-            gap: 10px; 
-            width: 100%; 
-            margin-bottom: 20px; 
-            box-sizing: border-box;
-        }
-
-        /* Grupo do Botão + Script */
+        .controls { display: grid; grid-template-columns: 2fr 1fr; gap: 10px; width: 100%; margin-bottom: 20px; box-sizing: border-box; }
         .script-group { display: flex; gap: 5px; }
         
         select {
             width: 100%; padding: 12px 10px; border-radius: 8px; background: #0d1117;
             color: #fff; border: 1px solid #30363d; font-size: 13px; outline: none; cursor: pointer;
-            box-sizing: border-box; text-overflow: ellipsis; white-space: nowrap;
-            overflow: hidden; transition: border-color 0.3s;
+            box-sizing: border-box; text-overflow: ellipsis; white-space: nowrap; overflow: hidden; transition: border-color 0.3s;
         }
         select:hover, select:focus { border-color: #58a6ff; }
 
         .btn-add-script { 
             background: #21262d; color: #58a6ff; border: 1px solid #30363d; 
-            border-radius: 8px; padding: 0 15px; cursor: pointer; font-weight: bold; font-size: 18px;
-            transition: all 0.2s;
+            border-radius: 8px; padding: 0 15px; cursor: pointer; font-weight: bold; font-size: 18px; transition: all 0.2s;
         }
         .btn-add-script:hover { background: #30363d; color: #fff; }
 
@@ -72,7 +60,6 @@
 
         @keyframes blink { 50% { opacity: 0.6; box-shadow: 0 0 15px rgba(210, 153, 34, 0.4); } }
 
-        /* Placar e Assertividade */
         .overall-accuracy {
             background: #0d1117; border: 1px solid #30363d; border-radius: 8px; padding: 10px; text-align: center;
             font-weight: bold; margin-bottom: 15px; color: #c9d1d9; font-size: 14px; text-transform: uppercase; width: 100%; box-sizing: border-box;
@@ -100,7 +87,6 @@
         .text-warning { color: #d29922; font-weight: bold; }
         .text-muted { color: #8b949e; }
 
-        /* Estilos do Modal de Inserção de Script */
         .modal-overlay {
             position: fixed; top: 0; left: 0; right: 0; bottom: 0;
             background: rgba(0, 0, 0, 0.8); backdrop-filter: blur(5px);
@@ -127,15 +113,27 @@
 </head>
 <body>
 
+    <script>
+        const EXPIRATION_DATE = new Date('2026-04-10T23:59:59'); 
+        if (new Date() > EXPIRATION_DATE) {
+            document.body.innerHTML = `
+                <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background-color:#0d1117; color:#c9d1d9; font-family:'Roboto', sans-serif; text-align:center;">
+                    <h1 style="color:#f85149; font-size:40px; margin-bottom:10px;">⏱️ Tempo de Teste Expirado</h1>
+                    <p style="font-size:18px; color:#8b949e;">Seu período de avaliação do JS Invest chegou ao fim.</p>
+                    <a href="#" style="margin-top:20px; padding:15px 30px; background:#238636; color:white; text-decoration:none; border-radius:8px; font-weight:bold; font-size:16px;">Assinar Versão Completa</a>
+                </div>
+            `;
+            throw new Error("Período de teste expirado. Execução interrompida.");
+        }
+    </script>
+
     <div class="dashboard" id="mainCard">
         <h1>🚀 JS INVEST</h1>
         <div class="subtitle">Análise Quantitativa</div>
         
         <div class="controls">
             <div class="script-group">
-                <select id="strategySelector">
-                    <option value="">Carregando scripts...</option>
-                </select>
+                <select id="strategySelector"><option value="">Carregando scripts...</option></select>
                 <button class="btn-add-script" id="btnOpenModal" title="Adicionar Novo Script">+</button>
             </div>
 
@@ -147,10 +145,6 @@
                 <option value="adausdt">ADA/USDT</option>
                 <option value="xrpusdt">XRP/USDT</option>
                 <option value="dogeusdt">DOGE/USDT</option>
-                <option value="dotusdt">DOT/USDT</option>
-                <option value="linkusdt">LINK/USDT</option>
-                <option value="ltcusdt">LTC/USDT</option>
-                <option value="maticusdt">MATIC/USDT</option>
             </select>
         </div>
 
@@ -242,7 +236,6 @@
         const strategySelector = document.getElementById('strategySelector');
         const historyTableBody = document.getElementById('historyTableBody');
         
-        // Elementos do Placar
         const scoreWin1 = document.getElementById('scoreWin1'), pctWin1 = document.getElementById('pctWin1');
         const scoreWinG1 = document.getElementById('scoreWinG1'), pctWinG1 = document.getElementById('pctWinG1');
         const scoreWinG2 = document.getElementById('scoreWinG2'), pctWinG2 = document.getElementById('pctWinG2');
@@ -258,9 +251,7 @@
         }
 
         socket.on('available_strategies', (strategies) => {
-            // Guarda o valor que estava selecionado antes de atualizar a lista
             const selectedValue = strategySelector.value;
-            
             strategySelector.innerHTML = ''; 
             strategies.forEach(strategy => {
                 const option = document.createElement('option');
@@ -268,22 +259,41 @@
                 option.innerText = strategy.name;
                 strategySelector.appendChild(option);
             });
-            
-            // Tenta manter o script atual selecionado
             if(selectedValue) strategySelector.value = selectedValue;
         });
 
         coinSelector.addEventListener('change', (e) => {
             resetUI("Carregando nova moeda...");
+            historyTableBody.innerHTML = ''; 
             socket.emit('change_coin', e.target.value);
         });
 
         strategySelector.addEventListener('change', (e) => {
             resetUI("Aplicando novo script matemático...");
+            historyTableBody.innerHTML = '';
             socket.emit('change_strategy', e.target.value);
         });
 
-        socket.on('clear_history', () => { historyTableBody.innerHTML = ''; });
+        // ==========================================
+        // RECEBE A TABELA CHEIA QUANDO CONECTA
+        // ==========================================
+        socket.on('history_dump', (historyArr) => {
+            historyTableBody.innerHTML = ''; 
+            historyArr.forEach(sig => {
+                const tr = document.createElement('tr');
+                tr.id = `sig-${sig.id}`;
+                const isCall = sig.type === 'CALL';
+                
+                let colorClass = 'text-warning';
+                if (sig.status.includes('WIN')) colorClass = 'text-green';
+                else if (sig.status.includes('LOSS')) colorClass = 'text-red';
+                
+                tr.innerHTML = `<td class="text-muted">${sig.time}</td>
+                    <td class="${isCall ? 'text-green' : 'text-red'}">${isCall ? '🟢 CALL' : '🔴 PUT'}</td>
+                    <td id="res-${sig.id}" class="${colorClass}">${sig.status}</td>`;
+                historyTableBody.appendChild(tr); // Adiciona na tela
+            });
+        });
 
         socket.on('scoreboard', (data) => {
             scoreWin1.innerText = data.win1; scoreWinG1.innerText = data.winG1;
@@ -339,7 +349,7 @@
             tr.innerHTML = `<td class="text-muted">${sig.time}</td>
                 <td class="${isCall ? 'text-green' : 'text-red'}">${isCall ? '🟢 CALL' : '🔴 PUT'}</td>
                 <td id="res-${sig.id}" class="text-warning">⏳ Analisando...</td>`;
-            historyTableBody.prepend(tr);
+            historyTableBody.prepend(tr); // Linha nova vai pro topo
         });
 
         socket.on('signal_result', (sig) => {
@@ -358,42 +368,26 @@
             }
         });
 
-        // ==========================================
-        // Lógica do Modal de Novo Script
-        // ==========================================
         const scriptModal = document.getElementById('scriptModal');
         const btnOpenModal = document.getElementById('btnOpenModal');
         const btnCancelModal = document.getElementById('btnCancelModal');
         const btnSaveScript = document.getElementById('btnSaveScript');
         const jsonInput = document.getElementById('jsonInput');
 
-        btnOpenModal.addEventListener('click', () => {
-            scriptModal.style.display = 'flex';
-        });
-
-        btnCancelModal.addEventListener('click', () => {
-            scriptModal.style.display = 'none';
-        });
+        btnOpenModal.addEventListener('click', () => { scriptModal.style.display = 'flex'; });
+        btnCancelModal.addEventListener('click', () => { scriptModal.style.display = 'none'; });
 
         btnSaveScript.addEventListener('click', () => {
             try {
-                // Tenta transformar o texto em objeto Javascript
                 const newStrategyJSON = JSON.parse(jsonInput.value);
-                
-                // Envia para o Servidor Node.js
                 socket.emit('add_new_strategy', newStrategyJSON);
-                
                 alert("Script Injetado com Sucesso!");
                 scriptModal.style.display = 'none';
-                
-                // Opcional: já seleciona o novo script no menu e avisa o servidor para trocar
                 strategySelector.value = newStrategyJSON.id;
                 resetUI("Aplicando novo script matemático...");
                 socket.emit('change_strategy', newStrategyJSON.id);
-
             } catch (error) {
                 alert("Erro de Sintaxe JSON! Verifique as aspas, vírgulas e as chaves.");
-                console.error(error);
             }
         });
     </script>

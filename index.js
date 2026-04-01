@@ -8,7 +8,6 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-// Serve os arquivos da pasta public
 app.use(express.static('public'));
 
 // ==========================================
@@ -17,22 +16,18 @@ app.use(express.static('public'));
 let closePrices = [];
 let ws = null;
 let currentSymbol = 'btcusdt';
-let currentStrategyId = 'rei_das_binarias'; // Estratégia padrão ao abrir
+let currentStrategyId = 'rei_das_binarias'; 
 
 let activeSignals = []; 
+let signalHistory = []; // <--- NOVA MEMÓRIA DE CURTO PRAZO
 let scoreboard = { win1: 0, winG1: 0, winG2: 0, loss: 0 };
+let currentEngineStatus = "Aguardando inicialização..."; 
 
-// ==========================================
-// 1. BANCO DE DADOS DE SCRIPTS (Simulação SaaS)
-// ==========================================
 const strategiesDB = [
     {
         id: "rei_das_binarias",
         name: "👑 Rei das Binárias (Original)",
-        indicators: {
-            sma1: { type: "SMA", period: 1 },
-            sma34: { type: "SMA", period: 34 }
-        },
+        indicators: { sma1: { type: "SMA", period: 1 }, sma34: { type: "SMA", period: 34 } },
         conditions: {
             call: "current.buffer1 > current.wmaSinal && prev.buffer1 < prev.wmaSinal",
             put: "current.buffer1 < current.wmaSinal && prev.buffer1 > prev.wmaSinal"
@@ -42,37 +37,18 @@ const strategiesDB = [
     {
         id: "cruzamento_sma",
         name: "Script: Cruzamento Simples (5x20)",
-        indicators: {
-            fast: { type: "SMA", period: 5 },
-            slow: { type: "SMA", period: 20 }
-        },
+        indicators: { fast: { type: "SMA", period: 5 }, slow: { type: "SMA", period: 20 } },
         conditions: {
             call: "current.fast > current.slow && prev.fast <= prev.slow",
             put: "current.fast < current.slow && prev.fast >= prev.slow"
         }
-    },
-    {
-        id: "reversao_extrema",
-        name: "Script: Reversão Extrema (SMA 2 x SMA 50)",
-        indicators: {
-            agulhada: { type: "SMA", period: 2 },
-            tendencia: { type: "SMA", period: 50 }
-        },
-        conditions: {
-            call: "current.agulhada > current.tendencia && prev.agulhada <= prev.tendencia",
-            put: "current.agulhada < current.tendencia && prev.agulhada >= prev.tendencia"
-        }
     }
 ];
 
-// ==========================================
-// 2. FUNÇÕES MATEMÁTICAS (Indicadores)
-// ==========================================
 function calculateSMA(data, period) {
     if (data.length < period) return null;
     return data.slice(-period).reduce((a, b) => a + b, 0) / period;
 }
-
 function calculateWMA(data, period) {
     if (data.length < period) return null;
     const slice = data.slice(-period);
@@ -85,20 +61,21 @@ function calculateWMA(data, period) {
     return sum / weightSum;
 }
 
-// ==========================================
-// 3. O MOTOR DE REGRAS DINÂMICAS (JSON PARSER)
-// ==========================================
+function updateStatus(msg) {
+    currentEngineStatus = msg;
+    io.emit('status', { msg });
+    console.log(`[MOTOR] ${msg}`);
+}
+
 function evaluateStrategy(prices, strategyConfig) {
     if (prices.length < 50) return null;
 
-    // LÓGICA ESPECIAL PARA O "REI DAS BINÁRIAS"
     if (strategyConfig.isComplex && strategyConfig.id === 'rei_das_binarias') {
         let buf1 = [];
         for(let i = 10; i >= 0; i--) {
             let slice = prices.slice(0, prices.length - i);
             buf1.push(calculateSMA(slice, 1) - calculateSMA(slice, 34));
         }
-        
         const currentB1 = buf1[10];
         const prevB1 = buf1[9];
         const currentB2 = calculateWMA(buf1.slice(-5), 5);
@@ -109,17 +86,13 @@ function evaluateStrategy(prices, strategyConfig) {
         return null;
     }
 
-    // LÓGICA DINÂMICA PARA NOVOS SCRIPTS
-    let current = {};
-    let prev = {};
-
+    let current = {}, prev = {};
     for (const [key, config] of Object.entries(strategyConfig.indicators)) {
         if (config.type === 'SMA') {
             current[key] = calculateSMA(prices, config.period);
             prev[key] = calculateSMA(prices.slice(0, -1), config.period);
         }
     }
-
     if (Object.values(current).includes(null)) return null;
 
     try {
@@ -128,37 +101,80 @@ function evaluateStrategy(prices, strategyConfig) {
 
         if (isCall) return 'CALL';
         if (isPut) return 'PUT';
-    } catch (e) {
-        console.error("Erro na regra da estratégia:", e);
-    }
-    
+    } catch (e) { console.error("Erro na regra da estratégia:", e); }
     return null;
 }
 
 // ==========================================
-// 4. CONEXÃO COM A CORRETORA (Websocket Binance)
+// 4. MOTOR DE CONEXÃO
 // ==========================================
 async function startConnection(symbol) {
-    if (ws) ws.close();
+    if (ws) { ws.terminate(); ws = null; }
     
     closePrices = [];
     activeSignals = []; 
+    signalHistory = []; // Zera a tabela
     scoreboard = { win1: 0, winG1: 0, winG2: 0, loss: 0 };
-    io.emit('scoreboard', scoreboard);
     
     const currentStrategy = strategiesDB.find(s => s.id === currentStrategyId);
-    
-    io.emit('status', { msg: `Carregando histórico de ${symbol.toUpperCase()}...` });
+    updateStatus(`Carregando histórico de ${symbol.toUpperCase()}...`);
 
     try {
-        const response = await axios.get(`https://api.binance.com/api/v3/klines?symbol=${symbol.toUpperCase()}&interval=1m&limit=100`);
+        const response = await axios.get(`https://data-api.binance.vision/api/v3/klines?symbol=${symbol.toUpperCase()}&interval=1m&limit=100`);
         const klines = response.data;
         
+        // BACKTEST INSTANTÂNEO DAS ÚLTIMAS 100 VELAS
         for (let i = 0; i < klines.length - 1; i++) {
-            closePrices.push(parseFloat(klines[i][4]));
+            const k_time = klines[i][0];
+            const k_o = parseFloat(klines[i][1]); // Abertura
+            const k_c = parseFloat(klines[i][4]); // Fechamento
+            
+            // 1. Resolve sinais pendentes
+            activeSignals = activeSignals.filter(sig => {
+                const isGreen = k_c > k_o;
+                const isRed = k_c < k_o;
+                const won = (sig.type === 'CALL' && isGreen) || (sig.type === 'PUT' && isRed);
+
+                if (won) {
+                    if (sig.step === 0) { sig.status = 'WIN 1ª 🎯'; scoreboard.win1++; }
+                    else if (sig.step === 1) { sig.status = 'WIN G1 🎯'; scoreboard.winG1++; }
+                    else if (sig.step === 2) { sig.status = 'WIN G2 🎯'; scoreboard.winG2++; }
+                    return false; 
+                } else {
+                    sig.step++;
+                    if (sig.step > 2) {
+                        sig.status = 'LOSS 🔴'; scoreboard.loss++;
+                        return false; 
+                    } else {
+                        sig.status = `Gale ${sig.step}...`;
+                        return true; 
+                    }
+                }
+            });
+
+            closePrices.push(k_c);
+            
+            // 2. Busca nova entrada
+            const newSigType = evaluateStrategy(closePrices, currentStrategy);
+            if (newSigType) {
+                const newSig = {
+                    id: k_time,
+                    type: newSigType,
+                    time: new Date(k_time).toLocaleTimeString(),
+                    step: 0,
+                    status: 'Aguardando Vela...'
+                };
+                activeSignals.push(newSig);
+                signalHistory.unshift(newSig); // Grava na memória
+                if (signalHistory.length > 20) signalHistory.pop(); // Guarda apenas as 20 últimas
+            }
         }
         
-        io.emit('status', { msg: `JS Invest analisando o mercado (${symbol.toUpperCase()})...` });
+        // Envia o placar e a tabela cheia para o Front-end!
+        io.emit('scoreboard', scoreboard);
+        io.emit('history_dump', signalHistory);
+
+        updateStatus(`Analisando o mercado (${symbol.toUpperCase()})...`);
         
         ws = new WebSocket(`wss://stream.binance.com:9443/ws/${symbol.toLowerCase()}@kline_1m`);
         
@@ -171,7 +187,6 @@ async function startConnection(symbol) {
             const secondsLeft = 60 - new Date().getSeconds();
             io.emit('price_update', { price: currentPrice, secondsLeft });
 
-            // FASE 1: PRÉ-ALERTA
             if (closePrices.length > 50 && !isCandleClosed) {
                 let tempPrices = [...closePrices, currentPrice];
                 if (tempPrices.length > 150) tempPrices.shift();
@@ -183,7 +198,6 @@ async function startConnection(symbol) {
                 else io.emit('pre_alert', { call: false, put: false }); 
             }
 
-            // FASE 2: GATILHO OFICIAL
             if (isCandleClosed) { 
                 closePrices.push(currentPrice);
                 if (closePrices.length > 150) closePrices.shift();
@@ -215,54 +229,58 @@ async function startConnection(symbol) {
 
                 const newSignalType = evaluateStrategy(closePrices, currentStrategy);
                 if (newSignalType) {
-                    const newSig = {
-                        id: Date.now(),
-                        type: newSignalType,
-                        time: new Date().toLocaleTimeString(),
-                        step: 0,
-                        status: 'Aguardando Vela...'
-                    };
+                    const newSig = { id: Date.now(), type: newSignalType, time: new Date().toLocaleTimeString(), step: 0, status: 'Aguardando Vela...' };
                     activeSignals.push(newSig); 
+                    signalHistory.unshift(newSig); // Salva na memória
+                    if (signalHistory.length > 20) signalHistory.pop();
+
                     io.emit('new_signal_history', newSig); 
                     io.emit('signal', { type: newSignalType, time: newSig.time }); 
                 }
             }
         });
+
+        ws.on('error', (err) => {
+            updateStatus('Sinal da corretora perdido. Reconectando em 5s...');
+            setTimeout(() => startConnection(currentSymbol), 5000);
+        });
+
+        ws.on('close', () => {
+            updateStatus('Conexão encerrada. Reiniciando o motor em 5s...');
+            setTimeout(() => startConnection(currentSymbol), 5000);
+        });
+
     } catch (error) {
-        console.error('Erro na conexão da API:', error);
-        io.emit('status', { msg: 'Erro de conexão com o mercado. Tentando novamente...' });
+        let motivo = error.response ? `Erro ${error.response.status}` : error.message;
+        updateStatus(`Falha ao puxar histórico (${motivo}). Tentando novamente em 5s...`);
+        setTimeout(() => startConnection(currentSymbol), 5000);
     }
 }
 
 // ==========================================
-// 5. COMUNICAÇÃO COM O FRONTEND E INJEÇÃO DE SCRIPT
+// 5. COMUNICAÇÃO COM O FRONTEND
 // ==========================================
 io.on('connection', (socket) => {
-    socket.emit('status', { msg: 'Conectado ao Motor JS Invest.' });
-    
-    // Manda a lista atual
+    // Quando o usuário conecta (ou dá F5), envia a memória atual do servidor!
+    socket.emit('status', { msg: currentEngineStatus });
     socket.emit('available_strategies', strategiesDB.map(s => ({ id: s.id, name: s.name })));
+    socket.emit('scoreboard', scoreboard);
+    socket.emit('history_dump', signalHistory);
     
     socket.on('change_coin', (newSymbol) => {
-        socket.emit('clear_history'); 
         currentSymbol = newSymbol;
         startConnection(currentSymbol);
     });
 
     socket.on('change_strategy', (newStrategyId) => {
-        socket.emit('clear_history'); 
         currentStrategyId = newStrategyId;
         startConnection(currentSymbol); 
     });
 
-    // RECEBE O SCRIPT NOVO DO PAINEL
     socket.on('add_new_strategy', (newStrategy) => {
         const exists = strategiesDB.find(s => s.id === newStrategy.id);
         if (!exists) {
             strategiesDB.push(newStrategy);
-            console.log(`✅ Novo Script Injetado no Motor: ${newStrategy.name}`);
-            
-            // Atualiza o menu de todos os usuários
             io.emit('available_strategies', strategiesDB.map(s => ({ id: s.id, name: s.name })));
         }
     });
