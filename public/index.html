@@ -36,7 +36,7 @@
         .btn-add-script { 
             background: #21262d; color: #58a6ff; border: 1px solid #30363d; 
             border-radius: 8px; padding: 0 15px; cursor: pointer; font-weight: bold; font-size: 18px; transition: all 0.2s;
-            display: none; /* Oculto por padrão, só Admin vê */
+            display: none; 
         }
         .btn-add-script:hover { background: #30363d; color: #fff; }
 
@@ -113,18 +113,14 @@
         .btn-cancel { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; }
         .btn-save { background: #238636; color: #ffffff; width: 100%; }
 
-        /* NOVO DESIGN: BOTÕES DO TOPO (ADMIN E SAIR) */
-        .top-buttons { 
-            position: absolute; top: 20px; right: 30px; display: flex; gap: 10px; z-index: 100;
-        }
+        .top-buttons { position: absolute; top: 20px; right: 30px; display: flex; gap: 10px; z-index: 100; }
         .btn-top {
             background: #161b22; border: 1px solid #30363d; padding: 8px 16px; 
-            border-radius: 8px; font-size: 12px; cursor: pointer; font-weight: bold; 
-            transition: all 0.2s; box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+            border-radius: 8px; font-size: 12px; cursor: pointer; font-weight: bold; transition: all 0.2s; box-shadow: 0 4px 12px rgba(0,0,0,0.5);
         }
         .btn-logout { color: #8b949e; }
         .btn-logout:hover { border-color: #f85149; color: #f85149; }
-        .btn-admin { color: #58a6ff; display: none; } /* Oculto por padrão */
+        .btn-admin { color: #58a6ff; display: none; } 
         .btn-admin:hover { background: #58a6ff; color: #0d1117; }
 
     </style>
@@ -204,18 +200,43 @@
     </div>
 
     <div class="modal-overlay" id="adminModal">
-        <div class="modal-box">
-            <h2>👥 Cadastrar Usuário</h2>
-            <p>Crie o acesso para novos assinantes.</p>
-            <input type="email" id="newUserEmail" placeholder="E-mail do Aluno" />
-            <input type="password" id="newUserPassword" placeholder="Senha (Mín. 6 caracteres)" />
-            <select id="newUserRole" style="margin-bottom: 15px;">
-                <option value="aluno">Acesso: ALUNO (Assinante)</option>
-                <option value="admin">Acesso: ADMIN (Acesso Total)</option>
-            </select>
-            <div class="modal-buttons">
-                <button class="btn btn-cancel" id="btnCancelAdmin">Fechar</button>
-                <button class="btn btn-save" style="width: auto;" id="btnCreateUser">Cadastrar Aluno</button>
+        <div class="modal-box" style="width: 500px;">
+            <h2>👥 Gerenciar Usuários</h2>
+            
+            <div style="text-align: left; margin-bottom: 20px;">
+                <p style="color: #8b949e; font-size: 13px; margin-bottom: 5px;">Cadastrar Novo Assinante:</p>
+                <div style="display: flex; gap: 10px;">
+                    <input type="email" id="newUserEmail" placeholder="E-mail" style="margin-bottom: 0;" />
+                    <input type="password" id="newUserPassword" placeholder="Senha" style="margin-bottom: 0; width: 120px;" />
+                </div>
+                <div style="display: flex; gap: 10px; margin-top: 10px;">
+                    <select id="newUserRole" style="margin-bottom: 0;">
+                        <option value="aluno">Acesso: ALUNO (Assinante)</option>
+                        <option value="admin">Acesso: ADMIN (Acesso Total)</option>
+                    </select>
+                    <button class="btn btn-save" style="width: auto;" id="btnCreateUser">Cadastrar</button>
+                </div>
+            </div>
+
+            <div style="text-align: left; border-top: 1px solid #30363d; padding-top: 15px;">
+                <p style="color: #8b949e; font-size: 13px; margin-bottom: 10px;">Usuários na Plataforma:</p>
+                <div style="max-height: 180px; overflow-y: auto; background: #0d1117; border-radius: 8px; border: 1px solid #30363d;">
+                    <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 12px;">
+                        <thead style="position: sticky; top: 0; background: #161b22;">
+                            <tr>
+                                <th style="padding: 10px; border-bottom: 1px solid #30363d;">E-mail</th>
+                                <th style="padding: 10px; border-bottom: 1px solid #30363d;">Nível</th>
+                            </tr>
+                        </thead>
+                        <tbody id="usersListBody">
+                            <tr><td colspan="2" style="text-align:center; padding: 15px;">Carregando lista...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="modal-buttons" style="justify-content: center; margin-top: 25px;">
+                <button class="btn btn-cancel" style="width: 100%;" id="btnCancelAdmin">Fechar Painel</button>
             </div>
         </div>
     </div>
@@ -226,7 +247,7 @@
     
     <script>
         // ==========================================
-        // 1. CONFIGURAÇÃO DO FIREBASE
+        // 1. CONFIGURAÇÃO DO FIREBASE (Coloquei a sua chave que estava no último arquivo)
         // ==========================================
         const firebaseConfig = {
             apiKey: "AIzaSyCBlpeZG_ITiXaKYTdq378gRcLJ9wVNqqI",
@@ -241,7 +262,6 @@
         const auth = firebase.auth();
         const socket = io();
 
-        // Variáveis de Interface
         const loginScreen = document.getElementById('loginScreen');
         const btnLogin = document.getElementById('btnLogin');
         const loginError = document.getElementById('loginError');
@@ -249,17 +269,14 @@
         const btnAddScript = document.getElementById('btnOpenModal');
 
         // ==========================================
-        // 2. SISTEMA DE AUTENTICAÇÃO E PERMISSÕES (COM TOKEN)
+        // 2. SISTEMA DE AUTENTICAÇÃO E PERMISSÕES
         // ==========================================
         auth.onAuthStateChanged(user => {
             if (user) {
                 loginScreen.style.display = 'none';
-                
-                // Extrai o Carimbo Seguro (JWT) e manda pro Back-end
                 user.getIdToken().then(token => {
                     socket.emit('check_role', token);
                 });
-
             } else {
                 loginScreen.style.display = 'flex';
                 btnAdminPanel.style.display = 'none';
@@ -267,7 +284,6 @@
             }
         });
 
-        // Libera os recursos na tela se o back-end abrir o carimbo e confirmar o Admin
         socket.on('role_result', (data) => {
             if (data.role === 'admin') {
                 btnAdminPanel.style.display = 'inline-block';
@@ -295,12 +311,43 @@
         document.getElementById('btnLogout').addEventListener('click', () => { auth.signOut(); });
 
         // ==========================================
-        // 3. PAINEL ADMIN (CRIAR ALUNOS ENVIANDO O CARIMBO)
+        // 3. PAINEL ADMIN (LISTAGEM E CRIAÇÃO)
         // ==========================================
         const adminModal = document.getElementById('adminModal');
-        btnAdminPanel.addEventListener('click', () => { adminModal.style.display = 'flex'; });
+        
+        // Ao abrir o painel, já pede a lista pro servidor!
+        btnAdminPanel.addEventListener('click', () => { 
+            adminModal.style.display = 'flex'; 
+            document.getElementById('usersListBody').innerHTML = '<tr><td colspan="2" style="text-align:center; padding: 15px;">Carregando lista...</td></tr>';
+            auth.currentUser.getIdToken().then(token => {
+                socket.emit('admin_get_users', token);
+            });
+        });
+        
         document.getElementById('btnCancelAdmin').addEventListener('click', () => { adminModal.style.display = 'none'; });
 
+        // Escuta a lista vindo do servidor
+        socket.on('admin_users_list', (res) => {
+            const tbody = document.getElementById('usersListBody');
+            tbody.innerHTML = '';
+            
+            if (res.success) {
+                if (res.users.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="2" style="text-align:center; padding: 15px; color:#8b949e;">Nenhum usuário encontrado.</td></tr>';
+                } else {
+                    res.users.forEach(u => {
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `<td style="padding: 10px; border-bottom: 1px solid #21262d; color:#c9d1d9;">${u.email}</td>
+                                        <td style="padding: 10px; border-bottom: 1px solid #21262d; color: ${u.role.includes('admin') ? '#58a6ff' : '#8b949e'}; font-weight:bold;">${u.role.toUpperCase()}</td>`;
+                        tbody.appendChild(tr);
+                    });
+                }
+            } else {
+                tbody.innerHTML = `<tr><td colspan="2" style="text-align:center; padding: 15px; color: #f85149;">Erro: ${res.msg}</td></tr>`;
+            }
+        });
+
+        // Criar usuário
         document.getElementById('btnCreateUser').addEventListener('click', () => {
             const newEmail = document.getElementById('newUserEmail').value;
             const newPassword = document.getElementById('newUserPassword').value;
@@ -308,18 +355,24 @@
 
             if(newPassword.length < 6) { alert("A senha precisa ter pelo menos 6 caracteres."); return; }
 
-            // Pega o token seguro do Admin que está logado e envia pro servidor criar o usuário
+            document.getElementById('btnCreateUser').innerText = '...';
             auth.currentUser.getIdToken().then(token => {
                 socket.emit('admin_create_user', { token, newEmail, newPassword, newRole });
             });
         });
 
+        // Resposta da Criação
         socket.on('user_creation_result', (res) => {
             alert(res.msg);
+            document.getElementById('btnCreateUser').innerText = 'Cadastrar';
             if(res.success) {
                 document.getElementById('newUserEmail').value = '';
                 document.getElementById('newUserPassword').value = '';
-                adminModal.style.display = 'none';
+                
+                // Recarrega a lista para mostrar o aluno que acabou de ser criado
+                auth.currentUser.getIdToken().then(token => {
+                    socket.emit('admin_get_users', token);
+                });
             }
         });
 

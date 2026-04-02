@@ -178,7 +178,6 @@ async function startConnection(symbol) {
 
             closePrices.push(k_c);
             
-            // TRAVA DE SEGURANÇA 1: Só busca novo sinal no histórico se não houver NENHUM sinal ativo
             if (activeSignals.length === 0) {
                 const newSigType = evaluateStrategy(closePrices, currentStrategy);
                 if (newSigType) {
@@ -212,7 +211,6 @@ async function startConnection(symbol) {
                 io.emit('price_update', { price: currentPrice, secondsLeft });
 
                 if (closePrices.length > 50 && !isCandleClosed) {
-                    // TRAVA DE SEGURANÇA 2: Só emite pré-alerta se o robô estiver livre
                     if (activeSignals.length === 0) {
                         let tempPrices = [...closePrices, currentPrice];
                         if (tempPrices.length > 150) tempPrices.shift();
@@ -221,7 +219,6 @@ async function startConnection(symbol) {
                         else if (tempSignal === 'PUT') io.emit('pre_alert', { call: false, put: true });
                         else io.emit('pre_alert', { call: false, put: false }); 
                     } else {
-                        // Se estiver operando um sinal, oculta o pré-alerta
                         io.emit('pre_alert', { call: false, put: false });
                     }
                 }
@@ -254,7 +251,6 @@ async function startConnection(symbol) {
                         }
                     });
 
-                    // TRAVA DE SEGURANÇA 3: Só busca nova entrada ao vivo se não sobrou NENHUM sinal ativo
                     if (activeSignals.length === 0) {
                         const newSignalType = evaluateStrategy(closePrices, currentStrategy);
                         if (newSignalType) {
@@ -357,6 +353,45 @@ io.on('connection', (socket) => {
             socket.emit('user_creation_result', { success: true, msg: `Usuário [${data.newEmail}] cadastrado com sucesso!` });
         } catch (error) {
             socket.emit('user_creation_result', { success: false, msg: error.message });
+        }
+    });
+
+    // NOVO: LISTAR USUÁRIOS
+    socket.on('admin_get_users', async (token) => {
+        try {
+            const decodedToken = await admin.auth().verifyIdToken(token);
+            const requesterEmail = decodedToken.email;
+            
+            let isAdmin = false;
+            if (requesterEmail.toLowerCase() === MASTER_EMAIL.toLowerCase()) {
+                isAdmin = true;
+            } else {
+                const snap = await db.collection('users').where('email', '==', requesterEmail).get();
+                if (!snap.empty && snap.docs[0].data().role === 'admin') isAdmin = true;
+            }
+
+            if (!isAdmin) {
+                socket.emit('admin_users_list', { success: false, msg: 'Acesso Negado.' });
+                return;
+            }
+
+            // Puxa a lista do Firestore
+            const snapshot = await db.collection('users').get();
+            let usersList = [];
+            
+            // Adiciona o Master para aparecer na lista visualmente também
+            usersList.push({ id: 'master', email: MASTER_EMAIL, role: 'admin (Master)' });
+
+            snapshot.forEach(doc => {
+                // Previne de mostrar o master duplicado caso você tenha se cadastrado na collection também
+                if(doc.data().email.toLowerCase() !== MASTER_EMAIL.toLowerCase()) {
+                    usersList.push({ id: doc.id, ...doc.data() });
+                }
+            });
+
+            socket.emit('admin_users_list', { success: true, users: usersList });
+        } catch (error) {
+            socket.emit('admin_users_list', { success: false, msg: error.message });
         }
     });
 
