@@ -3,6 +3,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const WebSocket = require('ws');
 const axios = require('axios');
+const admin = require("firebase-admin"); 
 
 const app = express();
 const server = http.createServer(app);
@@ -11,42 +12,55 @@ const io = new Server(server);
 app.use(express.static('public'));
 
 // ==========================================
-// VARIÁVEIS DE ESTADO GLOBAL
+// 1. INICIALIZANDO O BANCO DE DADOS (FIRESTORE)
 // ==========================================
+const serviceAccount = require("./firebase-key.json");
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount)
+});
+
+const db = admin.firestore();
+
+// ==========================================
+// VARIÁVEIS DE ESTADO GLOBAL E PERMISSÕES
+// ==========================================
+const MASTER_EMAIL = 'alexandre.lucena@gmail.com'; // E-mail dono do sistema
+
 let closePrices = [];
 let ws = null;
 let currentSymbol = 'btcusdt';
-let currentStrategyId = 'rei_das_binarias'; 
+let currentStrategyId = ''; 
 
 let activeSignals = []; 
 let signalHistory = []; 
 let scoreboard = { win1: 0, winG1: 0, winG2: 0, loss: 0 };
 let currentEngineStatus = "Aguardando inicialização..."; 
-
-// SISTEMA ANTI-COLISÃO (Evita que moedas se misturem na troca rápida)
 let currentConnectionId = 0; 
 
-const strategiesDB = [
-    {
-        id: "rei_das_binarias",
-        name: "👑 Rei das Binárias (Original)",
-        indicators: { sma1: { type: "SMA", period: 1 }, sma34: { type: "SMA", period: 34 } },
-        conditions: {
-            call: "current.buffer1 > current.wmaSinal && prev.buffer1 < prev.wmaSinal",
-            put: "current.buffer1 < current.wmaSinal && prev.buffer1 > prev.wmaSinal"
-        },
-        isComplex: true 
-    },
-    {
-        id: "cruzamento_sma",
-        name: "Script: Cruzamento Simples (5x20)",
-        indicators: { fast: { type: "SMA", period: 5 }, slow: { type: "SMA", period: 20 } },
-        conditions: {
-            call: "current.fast > current.slow && prev.fast <= prev.slow",
-            put: "current.fast < current.slow && prev.fast >= prev.slow"
+let strategiesDB = [];
+
+async function loadStrategiesFromDB() {
+    try {
+        const snapshot = await db.collection('scripts').get();
+        strategiesDB = [];
+        snapshot.forEach(doc => {
+            strategiesDB.push(doc.data());
+        });
+
+        if (strategiesDB.length > 0) {
+            console.log(`🔥 ${strategiesDB.length} scripts carregados do Firebase!`);
+            currentStrategyId = strategiesDB[0].id; 
+            startConnection(currentSymbol); 
+        } else {
+            console.log("⚠️ Nenhum script encontrado no banco de dados.");
+            updateStatus("Aguardando injeção de scripts no banco...");
         }
+        io.emit('available_strategies', strategiesDB.map(s => ({ id: s.id, name: s.name })));
+    } catch (error) {
+        console.error("Erro ao ler do Firebase:", error);
     }
-];
+}
 
 function calculateSMA(data, period) {
     if (data.length < period) return null;
@@ -67,11 +81,9 @@ function calculateWMA(data, period) {
 function updateStatus(msg) {
     currentEngineStatus = msg;
     io.emit('status', { msg });
-    console.log(`[MOTOR] ${msg}`);
 }
 
 function evaluateStrategy(prices, strategyConfig) {
-    // Escudo: Se a memória corrompeu e esvaziou, aborta a matemática para não crashar
     if (!prices || prices.length < 50) return null;
 
     if (strategyConfig.isComplex && strategyConfig.id === 'rei_das_binarias') {
@@ -80,7 +92,6 @@ function evaluateStrategy(prices, strategyConfig) {
             let slice = prices.slice(0, prices.length - i);
             let sma1 = calculateSMA(slice, 1);
             let sma34 = calculateSMA(slice, 34);
-            // Se as médias retornarem nulo, aborta
             if(sma1 === null || sma34 === null) return null;
             buf1.push(sma1 - sma34);
         }
@@ -117,17 +128,13 @@ function evaluateStrategy(prices, strategyConfig) {
 }
 
 // ==========================================
-// 4. MOTOR DE CONEXÃO E EXECUÇÃO BLINDADA
+// 4. MOTOR DE CONEXÃO
 // ==========================================
 async function startConnection(symbol) {
-    // 1. Gera um novo selo de conexão
     currentConnectionId++;
     const myConnectionId = currentConnectionId;
 
-    if (ws) { 
-        ws.terminate(); // Mata o fluxo antigo sem piedade
-        ws = null; 
-    }
+    if (ws) { ws.terminate(); ws = null; }
     
     closePrices = [];
     activeSignals = []; 
@@ -143,16 +150,10 @@ async function startConnection(symbol) {
 
     try {
         const response = await axios.get(`https://data-api.binance.vision/api/v3/klines?symbol=${symbol.toUpperCase()}&interval=1m&limit=100`);
-        
-        // 2. Trava Anti-Colisão: Se o usuário trocou de moeda ENQUANTO o axios baixava os dados, ABORTA esta rotina fantasma!
-        if (myConnectionId !== currentConnectionId) {
-            console.log(`[ANTI-COLISÃO] Rotina velha do ${symbol} cancelada.`);
-            return; 
-        }
+        if (myConnectionId !== currentConnectionId) return; 
 
         const klines = response.data;
         
-        // BACKTEST INSTANTÂNEO
         for (let i = 0; i < klines.length - 1; i++) {
             const k_time = klines[i][0];
             const k_o = parseFloat(klines[i][1]); 
@@ -170,44 +171,37 @@ async function startConnection(symbol) {
                     return false; 
                 } else {
                     sig.step++;
-                    if (sig.step > 2) {
-                        sig.status = 'LOSS 🔴'; scoreboard.loss++;
-                        return false; 
-                    } else {
-                        sig.status = `Gale ${sig.step}...`;
-                        return true; 
-                    }
+                    if (sig.step > 2) { sig.status = 'LOSS 🔴'; scoreboard.loss++; return false; } 
+                    else { sig.status = `Gale ${sig.step}...`; return true; }
                 }
             });
 
             closePrices.push(k_c);
             
-            const newSigType = evaluateStrategy(closePrices, currentStrategy);
-            if (newSigType) {
-                const newSig = {
-                    id: k_time,
-                    type: newSigType,
-                    time: new Date(k_time).toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' }),
-                    step: 0,
-                    status: 'Aguardando Vela...'
-                };
-                activeSignals.push(newSig);
-                signalHistory.unshift(newSig); 
-                if (signalHistory.length > 20) signalHistory.pop(); 
+            // TRAVA DE SEGURANÇA 1: Só busca novo sinal no histórico se não houver NENHUM sinal ativo
+            if (activeSignals.length === 0) {
+                const newSigType = evaluateStrategy(closePrices, currentStrategy);
+                if (newSigType) {
+                    const newSig = {
+                        id: k_time, type: newSigType,
+                        time: new Date(k_time).toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' }),
+                        step: 0, status: 'Aguardando Vela...'
+                    };
+                    activeSignals.push(newSig);
+                    signalHistory.unshift(newSig); 
+                    if (signalHistory.length > 20) signalHistory.pop(); 
+                }
             }
         }
         
         io.emit('scoreboard', scoreboard);
         io.emit('history_dump', signalHistory);
-
         updateStatus(`Analisando o mercado (${symbol.toUpperCase()})...`);
         
         ws = new WebSocket(`wss://stream.binance.com:9443/ws/${symbol.toLowerCase()}@kline_1m`);
         
         ws.on('message', (data) => {
-            // 3. Trava Anti-Colisão no WebSocket: Ignora mensagens atrasadas
             if (myConnectionId !== currentConnectionId) return;
-
             try {
                 const kline = JSON.parse(data).k;
                 const currentPrice = parseFloat(kline.c);
@@ -218,14 +212,18 @@ async function startConnection(symbol) {
                 io.emit('price_update', { price: currentPrice, secondsLeft });
 
                 if (closePrices.length > 50 && !isCandleClosed) {
-                    let tempPrices = [...closePrices, currentPrice];
-                    if (tempPrices.length > 150) tempPrices.shift();
-                    
-                    const tempSignal = evaluateStrategy(tempPrices, currentStrategy);
-                    
-                    if (tempSignal === 'CALL') io.emit('pre_alert', { call: true, put: false });
-                    else if (tempSignal === 'PUT') io.emit('pre_alert', { call: false, put: true });
-                    else io.emit('pre_alert', { call: false, put: false }); 
+                    // TRAVA DE SEGURANÇA 2: Só emite pré-alerta se o robô estiver livre
+                    if (activeSignals.length === 0) {
+                        let tempPrices = [...closePrices, currentPrice];
+                        if (tempPrices.length > 150) tempPrices.shift();
+                        const tempSignal = evaluateStrategy(tempPrices, currentStrategy);
+                        if (tempSignal === 'CALL') io.emit('pre_alert', { call: true, put: false });
+                        else if (tempSignal === 'PUT') io.emit('pre_alert', { call: false, put: true });
+                        else io.emit('pre_alert', { call: false, put: false }); 
+                    } else {
+                        // Se estiver operando um sinal, oculta o pré-alerta
+                        io.emit('pre_alert', { call: false, put: false });
+                    }
                 }
 
                 if (isCandleClosed) { 
@@ -241,8 +239,7 @@ async function startConnection(symbol) {
                             if (sig.step === 0) { sig.status = 'WIN 1ª 🎯'; scoreboard.win1++; }
                             else if (sig.step === 1) { sig.status = 'WIN G1 🎯'; scoreboard.winG1++; }
                             else if (sig.step === 2) { sig.status = 'WIN G2 🎯'; scoreboard.winG2++; }
-                            io.emit('signal_result', sig);
-                            io.emit('scoreboard', scoreboard); 
+                            io.emit('signal_result', sig); io.emit('scoreboard', scoreboard); 
                             return false; 
                         } else {
                             sig.step++;
@@ -257,50 +254,48 @@ async function startConnection(symbol) {
                         }
                     });
 
-                    const newSignalType = evaluateStrategy(closePrices, currentStrategy);
-                    if (newSignalType) {
-                        const newSig = { 
-                            id: Date.now(), 
-                            type: newSignalType, 
-                            time: new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' }), 
-                            step: 0, 
-                            status: 'Aguardando Vela...' 
-                        };
-                        activeSignals.push(newSig); 
-                        signalHistory.unshift(newSig); 
-                        if (signalHistory.length > 20) signalHistory.pop();
-
-                        io.emit('new_signal_history', newSig); 
-                        io.emit('signal', { type: newSignalType, time: newSig.time }); 
+                    // TRAVA DE SEGURANÇA 3: Só busca nova entrada ao vivo se não sobrou NENHUM sinal ativo
+                    if (activeSignals.length === 0) {
+                        const newSignalType = evaluateStrategy(closePrices, currentStrategy);
+                        if (newSignalType) {
+                            const newSig = { 
+                                id: Date.now(), type: newSignalType, 
+                                time: new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' }), 
+                                step: 0, status: 'Aguardando Vela...' 
+                            };
+                            activeSignals.push(newSig); 
+                            signalHistory.unshift(newSig); 
+                            if (signalHistory.length > 20) signalHistory.pop();
+                            io.emit('new_signal_history', newSig); 
+                            io.emit('signal', { type: newSignalType, time: newSig.time }); 
+                        }
                     }
                 }
             } catch (e) {
-                console.error("Erro ao processar mensagem do WebSocket. A blindagem segurou o erro:", e);
+                console.error("Erro no WebSocket:", e);
             }
         });
 
         ws.on('error', (err) => {
-            if (myConnectionId !== currentConnectionId) return; // Ignora se for o socket velho
+            if (myConnectionId !== currentConnectionId) return;
             updateStatus('Sinal da corretora perdido. Reconectando em 5s...');
             setTimeout(() => startConnection(currentSymbol), 5000);
         });
-
         ws.on('close', () => {
-            if (myConnectionId !== currentConnectionId) return; // Ignora se for o socket velho
+            if (myConnectionId !== currentConnectionId) return;
             updateStatus('Conexão encerrada. Reiniciando o motor em 5s...');
             setTimeout(() => startConnection(currentSymbol), 5000);
         });
 
     } catch (error) {
         if (myConnectionId !== currentConnectionId) return; 
-        let motivo = error.response ? `Erro ${error.response.status}` : error.message;
-        updateStatus(`Falha ao puxar histórico (${motivo}). Tentando novamente em 5s...`);
+        updateStatus(`Falha de conexão com a Binance. Tentando novamente em 5s...`);
         setTimeout(() => startConnection(currentSymbol), 5000);
     }
 }
 
 // ==========================================
-// 5. COMUNICAÇÃO COM O FRONTEND
+// 5. COMUNICAÇÃO COM O FRONTEND E ADMINISTRAÇÃO
 // ==========================================
 io.on('connection', (socket) => {
     socket.emit('status', { msg: currentEngineStatus });
@@ -308,6 +303,63 @@ io.on('connection', (socket) => {
     socket.emit('scoreboard', scoreboard);
     socket.emit('history_dump', signalHistory);
     
+    socket.on('check_role', async (token) => {
+        try {
+            const decodedToken = await admin.auth().verifyIdToken(token);
+            const email = decodedToken.email;
+
+            if (email.toLowerCase() === MASTER_EMAIL.toLowerCase()) {
+                socket.emit('role_result', { role: 'admin' });
+                return;
+            }
+            
+            const snapshot = await db.collection('users').where('email', '==', email).get();
+            if (!snapshot.empty) {
+                socket.emit('role_result', { role: snapshot.docs[0].data().role });
+            } else {
+                socket.emit('role_result', { role: 'aluno' });
+            }
+        } catch (error) {
+            console.error("Erro ao validar token de segurança:", error);
+            socket.emit('role_result', { role: 'aluno' });
+        }
+    });
+
+    socket.on('admin_create_user', async (data) => {
+        try {
+            const decodedToken = await admin.auth().verifyIdToken(data.token);
+            const requesterEmail = decodedToken.email;
+            
+            let isAdmin = false;
+            
+            if (requesterEmail.toLowerCase() === MASTER_EMAIL.toLowerCase()) {
+                isAdmin = true;
+            } else {
+                const snap = await db.collection('users').where('email', '==', requesterEmail).get();
+                if (!snap.empty && snap.docs[0].data().role === 'admin') isAdmin = true;
+            }
+
+            if (!isAdmin) {
+                socket.emit('user_creation_result', { success: false, msg: 'Operação Negada: Você não é administrador.' });
+                return;
+            }
+
+            const userRecord = await admin.auth().createUser({
+                email: data.newEmail,
+                password: data.newPassword,
+            });
+            
+            await db.collection('users').doc(userRecord.uid).set({
+                email: data.newEmail,
+                role: data.newRole,
+                createdAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+            socket.emit('user_creation_result', { success: true, msg: `Usuário [${data.newEmail}] cadastrado com sucesso!` });
+        } catch (error) {
+            socket.emit('user_creation_result', { success: false, msg: error.message });
+        }
+    });
+
     socket.on('change_coin', (newSymbol) => {
         currentSymbol = newSymbol;
         startConnection(currentSymbol);
@@ -318,20 +370,19 @@ io.on('connection', (socket) => {
         startConnection(currentSymbol); 
     });
 
-    socket.on('add_new_strategy', (newStrategy) => {
+    socket.on('add_new_strategy', async (newStrategy) => {
         try {
             const exists = strategiesDB.find(s => s.id === newStrategy.id);
             if (!exists) {
+                await db.collection('scripts').doc(newStrategy.id).set(newStrategy);
                 strategiesDB.push(newStrategy);
                 io.emit('available_strategies', strategiesDB.map(s => ({ id: s.id, name: s.name })));
             }
-        } catch (e) {
-            console.error("Erro ao adicionar nova estratégia:", e);
-        }
+        } catch (e) { console.error("Erro ao salvar nova estratégia:", e); }
     });
 });
 
-startConnection(currentSymbol);
+loadStrategiesFromDB();
 
 server.listen(3000, () => {
     console.log('🚀 Motor JS Invest operando na porta 3000!');

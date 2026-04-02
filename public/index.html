@@ -17,13 +17,14 @@
             background: #161b22; border: 1px solid #30363d; border-radius: 16px;
             padding: 30px; width: 420px; box-shadow: 0 20px 40px rgba(0,0,0,0.6);
             display: flex; flex-direction: column; align-items: center; margin-bottom: 20px; box-sizing: border-box;
+            position: relative;
         }
 
         h1 { font-family: 'Orbitron', sans-serif; color: #58a6ff; margin-top: 0; text-align: center; font-size: 28px; letter-spacing: 2px;}
         .subtitle { font-size: 12px; color: #8b949e; text-transform: uppercase; margin-top: -15px; margin-bottom: 20px; letter-spacing: 1px;}
 
         .controls { display: grid; grid-template-columns: 2fr 1fr; gap: 10px; width: 100%; margin-bottom: 20px; box-sizing: border-box; }
-        .script-group { display: flex; gap: 5px; }
+        .script-group { display: flex; gap: 5px; width: 100%; }
         
         select {
             width: 100%; padding: 12px 10px; border-radius: 8px; background: #0d1117;
@@ -35,6 +36,7 @@
         .btn-add-script { 
             background: #21262d; color: #58a6ff; border: 1px solid #30363d; 
             border-radius: 8px; padding: 0 15px; cursor: pointer; font-weight: bold; font-size: 18px; transition: all 0.2s;
+            display: none; /* Oculto por padrão, só Admin vê */
         }
         .btn-add-script:hover { background: #30363d; color: #fff; }
 
@@ -60,10 +62,7 @@
 
         @keyframes blink { 50% { opacity: 0.6; box-shadow: 0 0 15px rgba(210, 153, 34, 0.4); } }
 
-        .overall-accuracy {
-            background: #0d1117; border: 1px solid #30363d; border-radius: 8px; padding: 10px; text-align: center;
-            font-weight: bold; margin-bottom: 15px; color: #c9d1d9; font-size: 14px; text-transform: uppercase; width: 100%; box-sizing: border-box;
-        }
+        .overall-accuracy { background: #0d1117; border: 1px solid #30363d; border-radius: 8px; padding: 10px; text-align: center; font-weight: bold; margin-bottom: 15px; color: #c9d1d9; font-size: 14px; text-transform: uppercase; width: 100%; box-sizing: border-box; }
         .overall-accuracy span { color: #58a6ff; font-size: 18px; font-family: 'Orbitron', sans-serif; margin-left: 10px; }
 
         .scoreboard { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 25px; padding-bottom: 20px; border-bottom: 1px solid #30363d; width: 100%; }
@@ -77,7 +76,6 @@
         .score-wing2 .value, .score-wing2 .percent { color: #d29922; } 
         .score-loss .value, .score-loss .percent { color: #f85149; text-shadow: 0 0 10px rgba(248, 81, 73, 0.3); } 
 
-        .history-panel h3 { margin-top: 0; color: #8b949e; text-align: center; font-size: 14px; text-transform: uppercase; width: 100%; }
         table { width: 100%; border-collapse: collapse; text-align: center; font-size: 13px; }
         th { padding: 10px; border-bottom: 1px solid #30363d; color: #c9d1d9; font-weight: 600; }
         td { padding: 12px 5px; border-bottom: 1px solid #21262d; }
@@ -87,45 +85,67 @@
         .text-warning { color: #d29922; font-weight: bold; }
         .text-muted { color: #8b949e; }
 
-        .modal-overlay {
+        .modal-overlay, .login-overlay {
             position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0, 0, 0, 0.8); backdrop-filter: blur(5px);
+            background: rgba(13, 17, 23, 0.95); backdrop-filter: blur(8px);
             display: none; justify-content: center; align-items: center; z-index: 1000;
         }
+        .login-overlay { display: flex; z-index: 9999; } 
+        
         .modal-box {
             background: #161b22; border: 1px solid #30363d; border-radius: 16px;
-            padding: 25px; width: 500px; box-shadow: 0 20px 50px rgba(0,0,0,0.8);
+            padding: 30px; width: 380px; box-shadow: 0 20px 50px rgba(0,0,0,0.8); text-align: center;
         }
-        .modal-box h2 { color: #58a6ff; margin-top: 0; font-family: 'Orbitron', sans-serif; font-size: 20px; }
-        .modal-box p { color: #8b949e; font-size: 14px; margin-bottom: 15px; }
+        .modal-box h2 { color: #58a6ff; margin-top: 0; font-family: 'Orbitron', sans-serif; font-size: 22px; }
+        .modal-box p { color: #8b949e; font-size: 14px; margin-bottom: 20px; }
+        
+        .modal-box input {
+            width: 100%; padding: 15px; margin-bottom: 15px; border-radius: 8px;
+            background: #0d1117; color: #fff; border: 1px solid #30363d; outline: none; box-sizing: border-box; font-size: 14px;
+        }
         .modal-box textarea {
             width: 100%; height: 250px; background: #0d1117; color: #3fb950;
-            border: 1px solid #30363d; border-radius: 8px; padding: 15px;
+            border: 1px solid #30363d; border-radius: 8px; padding: 15px; text-align: left;
             font-family: monospace; font-size: 13px; box-sizing: border-box; resize: none; outline: none;
         }
-        .modal-box textarea:focus { border-color: #58a6ff; }
         .modal-buttons { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
-        .btn { padding: 10px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; border: none; }
+        .btn { padding: 12px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; border: none; font-size: 14px; }
         .btn-cancel { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; }
-        .btn-save { background: #238636; color: #ffffff; }
-        .btn-save:hover { background: #2ea043; }
+        .btn-save { background: #238636; color: #ffffff; width: 100%; }
+
+        /* NOVO DESIGN: BOTÕES DO TOPO (ADMIN E SAIR) */
+        .top-buttons { 
+            position: absolute; top: 20px; right: 30px; display: flex; gap: 10px; z-index: 100;
+        }
+        .btn-top {
+            background: #161b22; border: 1px solid #30363d; padding: 8px 16px; 
+            border-radius: 8px; font-size: 12px; cursor: pointer; font-weight: bold; 
+            transition: all 0.2s; box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+        }
+        .btn-logout { color: #8b949e; }
+        .btn-logout:hover { border-color: #f85149; color: #f85149; }
+        .btn-admin { color: #58a6ff; display: none; } /* Oculto por padrão */
+        .btn-admin:hover { background: #58a6ff; color: #0d1117; }
+
     </style>
 </head>
 <body>
 
-    <script>
-        const EXPIRATION_DATE = new Date('2026-04-10T23:59:59'); 
-        if (new Date() > EXPIRATION_DATE) {
-            document.body.innerHTML = `
-                <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background-color:#0d1117; color:#c9d1d9; font-family:'Roboto', sans-serif; text-align:center;">
-                    <h1 style="color:#f85149; font-size:40px; margin-bottom:10px;">⏱️ Tempo de Teste Expirado</h1>
-                    <p style="font-size:18px; color:#8b949e;">Seu período de avaliação do JS Invest chegou ao fim.</p>
-                    <a href="#" style="margin-top:20px; padding:15px 30px; background:#238636; color:white; text-decoration:none; border-radius:8px; font-weight:bold; font-size:16px;">Assinar Versão Completa</a>
-                </div>
-            `;
-            throw new Error("Período de teste expirado. Execução interrompida.");
-        }
-    </script>
+    <div class="login-overlay" id="loginScreen">
+        <div class="modal-box">
+            <h2>🔒 JS INVEST</h2>
+            <p>Área Restrita. Identifique-se para acessar os algoritmos quantitativos.</p>
+            <input type="email" id="emailInput" placeholder="Seu E-mail" />
+            <input type="password" id="passwordInput" placeholder="Sua Senha" />
+            <button class="btn btn-save" id="btnLogin">Acessar Sistema</button>
+            <div id="loginError" style="color: #f85149; margin-top: 15px; font-size: 12px; display: none;"></div>
+        </div>
+    </div>
+
+    <div class="top-buttons">
+        <button class="btn-top btn-admin" id="btnAdminPanel">Painel Admin</button>
+        <button class="btn-top btn-logout" id="btnLogout">Sair</button>
+    </div>
 
     <div class="dashboard" id="mainCard">
         <h1>🚀 JS INVEST</h1>
@@ -154,202 +174,243 @@
         </div>
 
         <div class="price-box" id="priceValue">---</div>
-
-        <div class="alert-box" id="alertBox">
-            Inicializando Motor...
-        </div>
+        <div class="alert-box" id="alertBox">Inicializando Motor...</div>
     </div>
 
     <div class="history-panel">
-        <div class="overall-accuracy">
-            Assertividade Total: <span id="totalAccuracy">0.0%</span>
-        </div>
-
+        <div class="overall-accuracy">Assertividade Total: <span id="totalAccuracy">0.0%</span></div>
         <div class="scoreboard">
-            <div class="score-card score-win1">
-                <div class="title">Win 1ª</div>
-                <div class="value" id="scoreWin1">0</div>
-                <div class="percent" id="pctWin1">0.0%</div>
-            </div>
-            <div class="score-card score-wing1">
-                <div class="title">Win G1</div>
-                <div class="value" id="scoreWinG1">0</div>
-                <div class="percent" id="pctWinG1">0.0%</div>
-            </div>
-            <div class="score-card score-wing2">
-                <div class="title">Win G2</div>
-                <div class="value" id="scoreWinG2">0</div>
-                <div class="percent" id="pctWinG2">0.0%</div>
-            </div>
-            <div class="score-card score-loss">
-                <div class="title">Loss</div>
-                <div class="value" id="scoreLoss">0</div>
-                <div class="percent" id="pctLoss">0.0%</div>
-            </div>
+            <div class="score-card score-win1"><div class="title">Win 1ª</div><div class="value" id="scoreWin1">0</div><div class="percent" id="pctWin1">0.0%</div></div>
+            <div class="score-card score-wing1"><div class="title">Win G1</div><div class="value" id="scoreWinG1">0</div><div class="percent" id="pctWinG1">0.0%</div></div>
+            <div class="score-card score-wing2"><div class="title">Win G2</div><div class="value" id="scoreWinG2">0</div><div class="percent" id="pctWinG2">0.0%</div></div>
+            <div class="score-card score-loss"><div class="title">Loss</div><div class="value" id="scoreLoss">0</div><div class="percent" id="pctLoss">0.0%</div></div>
         </div>
-
-        <h3>Histórico de Entradas</h3>
+        <h3 style="color: #8b949e; text-transform: uppercase; font-size: 14px;">Histórico de Entradas</h3>
         <table>
-            <thead>
-                <tr>
-                    <th>Hora</th>
-                    <th>Direção</th>
-                    <th>Resultado</th>
-                </tr>
-            </thead>
+            <thead><tr><th>Hora</th><th>Direção</th><th>Resultado</th></tr></thead>
             <tbody id="historyTableBody"></tbody>
         </table>
     </div>
 
     <div class="modal-overlay" id="scriptModal">
-        <div class="modal-box">
-            <h2>🔌 Plugar Novo Script</h2>
-            <p>Cole o JSON com a configuração dos indicadores e condições matemáticas do seu novo script.</p>
-            <textarea id="jsonInput">
-{
-    "id": "meu_script_novo",
-    "name": "Novo Script: Agulhada Mágica",
-    "indicators": {
-        "linhaRapida": { "type": "SMA", "period": 3 },
-        "linhaLenta": { "type": "SMA", "period": 12 }
-    },
-    "conditions": {
-        "call": "current.linhaRapida > current.linhaLenta && prev.linhaRapida <= prev.linhaLenta",
-        "put": "current.linhaRapida < current.linhaLenta && prev.linhaRapida >= prev.linhaLenta"
-    }
-}
-            </textarea>
+        <div class="modal-box" style="text-align: left; width: 500px;">
+            <h2 style="text-align: center;">🔌 Plugar Novo Script</h2>
+            <textarea id="jsonInput"></textarea>
             <div class="modal-buttons">
-                <button class="btn btn-cancel" id="btnCancelModal">Cancelar</button>
-                <button class="btn btn-save" id="btnSaveScript">Salvar & Injetar</button>
+                <button class="btn btn-cancel" id="btnCancelScript">Cancelar</button>
+                <button class="btn btn-save" style="width: auto;" id="btnSaveScript">Salvar & Injetar</button>
             </div>
         </div>
     </div>
 
+    <div class="modal-overlay" id="adminModal">
+        <div class="modal-box">
+            <h2>👥 Cadastrar Usuário</h2>
+            <p>Crie o acesso para novos assinantes.</p>
+            <input type="email" id="newUserEmail" placeholder="E-mail do Aluno" />
+            <input type="password" id="newUserPassword" placeholder="Senha (Mín. 6 caracteres)" />
+            <select id="newUserRole" style="margin-bottom: 15px;">
+                <option value="aluno">Acesso: ALUNO (Assinante)</option>
+                <option value="admin">Acesso: ADMIN (Acesso Total)</option>
+            </select>
+            <div class="modal-buttons">
+                <button class="btn btn-cancel" id="btnCancelAdmin">Fechar</button>
+                <button class="btn btn-save" style="width: auto;" id="btnCreateUser">Cadastrar Aluno</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <script src="/socket.io/socket.io.js"></script>
+    
     <script>
+        // ==========================================
+        // 1. CONFIGURAÇÃO DO FIREBASE
+        // ==========================================
+        const firebaseConfig = {
+            apiKey: "AIzaSyCBlpeZG_ITiXaKYTdq378gRcLJ9wVNqqI",
+            authDomain: "js-invest-40d0b.firebaseapp.com",
+            projectId: "js-invest-40d0b",
+            storageBucket: "js-invest-40d0b.firebasestorage.app",
+            messagingSenderId: "747269065592",
+            appId: "1:747269065592:web:40cc8036b3c96ad6d6d68d"
+        };
+        
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
         const socket = io();
+
+        // Variáveis de Interface
+        const loginScreen = document.getElementById('loginScreen');
+        const btnLogin = document.getElementById('btnLogin');
+        const loginError = document.getElementById('loginError');
+        const btnAdminPanel = document.getElementById('btnAdminPanel');
+        const btnAddScript = document.getElementById('btnOpenModal');
+
+        // ==========================================
+        // 2. SISTEMA DE AUTENTICAÇÃO E PERMISSÕES (COM TOKEN)
+        // ==========================================
+        auth.onAuthStateChanged(user => {
+            if (user) {
+                loginScreen.style.display = 'none';
+                
+                // Extrai o Carimbo Seguro (JWT) e manda pro Back-end
+                user.getIdToken().then(token => {
+                    socket.emit('check_role', token);
+                });
+
+            } else {
+                loginScreen.style.display = 'flex';
+                btnAdminPanel.style.display = 'none';
+                btnAddScript.style.display = 'none';
+            }
+        });
+
+        // Libera os recursos na tela se o back-end abrir o carimbo e confirmar o Admin
+        socket.on('role_result', (data) => {
+            if (data.role === 'admin') {
+                btnAdminPanel.style.display = 'inline-block';
+                btnAddScript.style.display = 'inline-block';
+            }
+        });
+
+        btnLogin.addEventListener('click', () => {
+            loginError.style.display = 'none';
+            btnLogin.innerText = "Verificando...";
+            
+            auth.signInWithEmailAndPassword(document.getElementById('emailInput').value, document.getElementById('passwordInput').value)
+                .then(() => {
+                    btnLogin.innerText = "Acessar Sistema";
+                    document.getElementById('emailInput').value = '';
+                    document.getElementById('passwordInput').value = '';
+                })
+                .catch(error => {
+                    btnLogin.innerText = "Acessar Sistema";
+                    loginError.innerText = "Acesso Negado: Verifique seu e-mail e senha.";
+                    loginError.style.display = 'block';
+                });
+        });
+
+        document.getElementById('btnLogout').addEventListener('click', () => { auth.signOut(); });
+
+        // ==========================================
+        // 3. PAINEL ADMIN (CRIAR ALUNOS ENVIANDO O CARIMBO)
+        // ==========================================
+        const adminModal = document.getElementById('adminModal');
+        btnAdminPanel.addEventListener('click', () => { adminModal.style.display = 'flex'; });
+        document.getElementById('btnCancelAdmin').addEventListener('click', () => { adminModal.style.display = 'none'; });
+
+        document.getElementById('btnCreateUser').addEventListener('click', () => {
+            const newEmail = document.getElementById('newUserEmail').value;
+            const newPassword = document.getElementById('newUserPassword').value;
+            const newRole = document.getElementById('newUserRole').value;
+
+            if(newPassword.length < 6) { alert("A senha precisa ter pelo menos 6 caracteres."); return; }
+
+            // Pega o token seguro do Admin que está logado e envia pro servidor criar o usuário
+            auth.currentUser.getIdToken().then(token => {
+                socket.emit('admin_create_user', { token, newEmail, newPassword, newRole });
+            });
+        });
+
+        socket.on('user_creation_result', (res) => {
+            alert(res.msg);
+            if(res.success) {
+                document.getElementById('newUserEmail').value = '';
+                document.getElementById('newUserPassword').value = '';
+                adminModal.style.display = 'none';
+            }
+        });
+
+        // ==========================================
+        // 4. LÓGICA DO MOTOR
+        // ==========================================
         const priceValue = document.getElementById('priceValue');
         const alertBox = document.getElementById('alertBox');
         const timerCircle = document.getElementById('timerCircle');
-        const coinSelector = document.getElementById('coinSelector');
-        const strategySelector = document.getElementById('strategySelector');
         const historyTableBody = document.getElementById('historyTableBody');
-        
-        const scoreWin1 = document.getElementById('scoreWin1'), pctWin1 = document.getElementById('pctWin1');
-        const scoreWinG1 = document.getElementById('scoreWinG1'), pctWinG1 = document.getElementById('pctWinG1');
-        const scoreWinG2 = document.getElementById('scoreWinG2'), pctWinG2 = document.getElementById('pctWinG2');
-        const scoreLoss = document.getElementById('scoreLoss'), pctLoss = document.getElementById('pctLoss');
-        const totalAccuracy = document.getElementById('totalAccuracy');
-
         let isSignalActive = false;
 
-        function resetUI(message) {
-            alertBox.className = 'alert-box';
-            alertBox.innerText = message;
-            isSignalActive = false;
-        }
+        function resetUI(message) { alertBox.className = 'alert-box'; alertBox.innerText = message; isSignalActive = false; }
 
         socket.on('available_strategies', (strategies) => {
-            const selectedValue = strategySelector.value;
-            strategySelector.innerHTML = ''; 
-            strategies.forEach(strategy => {
-                const option = document.createElement('option');
-                option.value = strategy.id;
-                option.innerText = strategy.name;
-                strategySelector.appendChild(option);
+            const selector = document.getElementById('strategySelector');
+            const selectedValue = selector.value;
+            selector.innerHTML = ''; 
+            strategies.forEach(s => {
+                const opt = document.createElement('option'); opt.value = s.id; opt.innerText = s.name;
+                selector.appendChild(opt);
             });
-            if(selectedValue) strategySelector.value = selectedValue;
+            if(selectedValue) selector.value = selectedValue;
         });
 
-        coinSelector.addEventListener('change', (e) => {
-            resetUI("Carregando nova moeda...");
-            historyTableBody.innerHTML = ''; 
-            socket.emit('change_coin', e.target.value);
+        document.getElementById('coinSelector').addEventListener('change', (e) => {
+            resetUI("Carregando nova moeda..."); historyTableBody.innerHTML = ''; socket.emit('change_coin', e.target.value);
         });
 
-        strategySelector.addEventListener('change', (e) => {
-            resetUI("Aplicando novo script matemático...");
-            historyTableBody.innerHTML = '';
-            socket.emit('change_strategy', e.target.value);
+        document.getElementById('strategySelector').addEventListener('change', (e) => {
+            resetUI("Aplicando novo script matemático..."); historyTableBody.innerHTML = ''; socket.emit('change_strategy', e.target.value);
         });
 
-        // ==========================================
-        // RECEBE A TABELA CHEIA QUANDO CONECTA
-        // ==========================================
         socket.on('history_dump', (historyArr) => {
             historyTableBody.innerHTML = ''; 
             historyArr.forEach(sig => {
-                const tr = document.createElement('tr');
-                tr.id = `sig-${sig.id}`;
+                const tr = document.createElement('tr'); tr.id = `sig-${sig.id}`;
                 const isCall = sig.type === 'CALL';
-                
                 let colorClass = 'text-warning';
                 if (sig.status.includes('WIN')) colorClass = 'text-green';
                 else if (sig.status.includes('LOSS')) colorClass = 'text-red';
-                
                 tr.innerHTML = `<td class="text-muted">${sig.time}</td>
                     <td class="${isCall ? 'text-green' : 'text-red'}">${isCall ? '🟢 CALL' : '🔴 PUT'}</td>
                     <td id="res-${sig.id}" class="${colorClass}">${sig.status}</td>`;
-                historyTableBody.appendChild(tr); // Adiciona na tela
+                historyTableBody.appendChild(tr); 
             });
         });
 
         socket.on('scoreboard', (data) => {
-            scoreWin1.innerText = data.win1; scoreWinG1.innerText = data.winG1;
-            scoreWinG2.innerText = data.winG2; scoreLoss.innerText = data.loss;
-
-            const totalSignals = data.win1 + data.winG1 + data.winG2 + data.loss;
-            if (totalSignals > 0) {
-                const totalWins = data.win1 + data.winG1 + data.winG2;
-                totalAccuracy.innerText = ((totalWins / totalSignals) * 100).toFixed(1) + '%';
-                pctWin1.innerText = ((data.win1 / totalSignals) * 100).toFixed(1) + '%';
-                pctWinG1.innerText = ((data.winG1 / totalSignals) * 100).toFixed(1) + '%';
-                pctWinG2.innerText = ((data.winG2 / totalSignals) * 100).toFixed(1) + '%';
-                pctLoss.innerText = ((data.loss / totalSignals) * 100).toFixed(1) + '%';
-            } else {
-                totalAccuracy.innerText = '0.0%'; pctWin1.innerText = '0.0%';
-                pctWinG1.innerText = '0.0%'; pctWinG2.innerText = '0.0%'; pctLoss.innerText = '0.0%';
+            document.getElementById('scoreWin1').innerText = data.win1; document.getElementById('scoreWinG1').innerText = data.winG1;
+            document.getElementById('scoreWinG2').innerText = data.winG2; document.getElementById('scoreLoss').innerText = data.loss;
+            const total = data.win1 + data.winG1 + data.winG2 + data.loss;
+            if (total > 0) {
+                const wins = data.win1 + data.winG1 + data.winG2;
+                document.getElementById('totalAccuracy').innerText = ((wins / total) * 100).toFixed(1) + '%';
+                document.getElementById('pctWin1').innerText = ((data.win1 / total) * 100).toFixed(1) + '%';
+                document.getElementById('pctWinG1').innerText = ((data.winG1 / total) * 100).toFixed(1) + '%';
+                document.getElementById('pctWinG2').innerText = ((data.winG2 / total) * 100).toFixed(1) + '%';
+                document.getElementById('pctLoss').innerText = ((data.loss / total) * 100).toFixed(1) + '%';
             }
         });
 
         socket.on('price_update', (data) => {
-            let formattedPrice = data.price < 1 ? data.price.toFixed(4) : data.price.toFixed(2);
-            priceValue.innerText = '$ ' + formattedPrice;
-            
+            priceValue.innerText = '$ ' + (data.price < 1 ? data.price.toFixed(4) : data.price.toFixed(2));
             let secs = data.secondsLeft;
             timerCircle.innerText = secs < 10 ? '0' + secs : secs;
-            if (secs <= 10) { timerCircle.style.color = '#ff7b72'; timerCircle.style.borderColor = '#ff7b72'; } 
-            else { timerCircle.style.color = '#58a6ff'; timerCircle.style.borderColor = '#30363d'; }
+            timerCircle.style.color = secs <= 10 ? '#ff7b72' : '#58a6ff';
+            timerCircle.style.borderColor = secs <= 10 ? '#ff7b72' : '#30363d';
         });
 
         socket.on('pre_alert', (data) => {
             if (isSignalActive) return; 
             if (data.call || data.put) {
                 alertBox.className = 'alert-box state-warning';
-                let direcao = data.call ? "COMPRA (CALL)" : "VENDA (PUT)";
-                alertBox.innerHTML = `⚠️ PREPARAR: Possível ${direcao}<br><small style="font-size:12px; font-weight:normal;">Aguarde o fim da vela!</small>`;
+                alertBox.innerHTML = `⚠️ PREPARAR: Possível ${data.call ? "COMPRA (CALL)" : "VENDA (PUT)"}<br><small style="font-size:12px; font-weight:normal;">Aguarde o fim da vela!</small>`;
             } else { resetUI("Analisando Mercado..."); }
         });
 
         socket.on('signal', (data) => {
             isSignalActive = true;
-            if (data.type === 'CALL') {
-                alertBox.className = 'alert-box state-execute-call'; alertBox.innerHTML = '🟢 ENTRAR: COMPRA!';
-            } else {
-                alertBox.className = 'alert-box state-execute-put'; alertBox.innerHTML = '🔴 ENTRAR: VENDA!';
-            }
+            if (data.type === 'CALL') { alertBox.className = 'alert-box state-execute-call'; alertBox.innerHTML = '🟢 ENTRAR: COMPRA!'; } 
+            else { alertBox.className = 'alert-box state-execute-put'; alertBox.innerHTML = '🔴 ENTRAR: VENDA!'; }
             setTimeout(() => { resetUI("Analisando Mercado..."); }, 20000);
         });
 
         socket.on('new_signal_history', (sig) => {
-            const tr = document.createElement('tr');
-            tr.id = `sig-${sig.id}`;
-            const isCall = sig.type === 'CALL';
+            const tr = document.createElement('tr'); tr.id = `sig-${sig.id}`;
             tr.innerHTML = `<td class="text-muted">${sig.time}</td>
-                <td class="${isCall ? 'text-green' : 'text-red'}">${isCall ? '🟢 CALL' : '🔴 PUT'}</td>
+                <td class="${sig.type === 'CALL' ? 'text-green' : 'text-red'}">${sig.type === 'CALL' ? '🟢 CALL' : '🔴 PUT'}</td>
                 <td id="res-${sig.id}" class="text-warning">⏳ Analisando...</td>`;
-            historyTableBody.prepend(tr); // Linha nova vai pro topo
+            historyTableBody.prepend(tr); 
         });
 
         socket.on('signal_result', (sig) => {
@@ -362,33 +423,23 @@
             }
         });
 
-        socket.on('status', (data) => {
-            if(!isSignalActive && !alertBox.classList.contains('state-warning')) {
-                resetUI(data.msg);
-            }
-        });
+        socket.on('status', (data) => { if(!isSignalActive && !alertBox.classList.contains('state-warning')) resetUI(data.msg); });
 
+        // MODAL DE SCRIPT
         const scriptModal = document.getElementById('scriptModal');
-        const btnOpenModal = document.getElementById('btnOpenModal');
-        const btnCancelModal = document.getElementById('btnCancelModal');
-        const btnSaveScript = document.getElementById('btnSaveScript');
-        const jsonInput = document.getElementById('jsonInput');
+        btnAddScript.addEventListener('click', () => { scriptModal.style.display = 'flex'; });
+        document.getElementById('btnCancelScript').addEventListener('click', () => { scriptModal.style.display = 'none'; });
 
-        btnOpenModal.addEventListener('click', () => { scriptModal.style.display = 'flex'; });
-        btnCancelModal.addEventListener('click', () => { scriptModal.style.display = 'none'; });
-
-        btnSaveScript.addEventListener('click', () => {
+        document.getElementById('btnSaveScript').addEventListener('click', () => {
             try {
-                const newStrategyJSON = JSON.parse(jsonInput.value);
+                const newStrategyJSON = JSON.parse(document.getElementById('jsonInput').value);
                 socket.emit('add_new_strategy', newStrategyJSON);
                 alert("Script Injetado com Sucesso!");
                 scriptModal.style.display = 'none';
-                strategySelector.value = newStrategyJSON.id;
+                document.getElementById('strategySelector').value = newStrategyJSON.id;
                 resetUI("Aplicando novo script matemático...");
                 socket.emit('change_strategy', newStrategyJSON.id);
-            } catch (error) {
-                alert("Erro de Sintaxe JSON! Verifique as aspas, vírgulas e as chaves.");
-            }
+            } catch (error) { alert("Erro de Sintaxe JSON! Verifique as aspas, vírgulas e as chaves."); }
         });
     </script>
 </body>
