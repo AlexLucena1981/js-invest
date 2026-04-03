@@ -4,63 +4,84 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>JS Invest - Mesa de Operações</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Roboto:wght@400;700&display=swap');
 
         body {
             background-color: #0d1117; color: #c9d1d9; font-family: 'Roboto', sans-serif;
-            display: flex; flex-direction: column; align-items: center;
-            justify-content: flex-start; min-height: 100vh; margin: 0; padding: 40px 0; overflow-y: auto;
+            display: flex; flex-direction: column; align-items: center; justify-content: flex-start; min-height: 100vh; margin: 0; padding: 60px 20px; overflow-y: auto; box-sizing: border-box;
+        }
+
+        h1 { font-family: 'Orbitron', sans-serif; color: #58a6ff; margin-top: 0; text-align: center; font-size: 28px; letter-spacing: 2px;}
+        .subtitle { font-size: 12px; color: #8b949e; text-transform: uppercase; margin-top: -15px; margin-bottom: 20px; letter-spacing: 1px; text-align: center;}
+
+        .main-container {
+            display: flex; gap: 30px; width: 100%; max-width: 1000px; justify-content: center; align-items: flex-start;
         }
 
         .dashboard, .history-panel {
             background: #161b22; border: 1px solid #30363d; border-radius: 16px;
-            padding: 30px; width: 420px; box-shadow: 0 20px 40px rgba(0,0,0,0.6);
-            display: flex; flex-direction: column; align-items: center; margin-bottom: 20px; box-sizing: border-box;
-            position: relative;
+            padding: 30px; box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+            display: flex; flex-direction: column; align-items: center; box-sizing: border-box; position: relative;
+            flex: 1; width: 100%;
         }
 
-        h1 { font-family: 'Orbitron', sans-serif; color: #58a6ff; margin-top: 0; text-align: center; font-size: 28px; letter-spacing: 2px;}
-        .subtitle { font-size: 12px; color: #8b949e; text-transform: uppercase; margin-top: -15px; margin-bottom: 20px; letter-spacing: 1px;}
+        @media (max-width: 900px) {
+            .main-container { flex-direction: column; align-items: center; }
+            .dashboard, .history-panel { max-width: 450px; }
+        }
 
         .controls { display: grid; grid-template-columns: 2fr 1fr; gap: 10px; width: 100%; margin-bottom: 20px; box-sizing: border-box; }
         .script-group { display: flex; gap: 5px; width: 100%; }
+        select, input { width: 100%; padding: 12px 10px; border-radius: 8px; background: #0d1117; color: #fff; border: 1px solid #30363d; font-size: 13px; outline: none; box-sizing: border-box; }
+
+        .btn-add-script { background: #21262d; color: #58a6ff; border: 1px solid #30363d; border-radius: 8px; padding: 0 15px; cursor: pointer; font-weight: bold; font-size: 18px; transition: all 0.2s; display: none; }
         
-        select {
-            width: 100%; padding: 12px 10px; border-radius: 8px; background: #0d1117;
-            color: #fff; border: 1px solid #30363d; font-size: 13px; outline: none; cursor: pointer;
-            box-sizing: border-box; text-overflow: ellipsis; white-space: nowrap; overflow: hidden; transition: border-color 0.3s;
-        }
-        select:hover, select:focus { border-color: #58a6ff; }
+        .broker-panel { background: #0d1117; border: 1px solid #30363d; border-radius: 8px; padding: 15px; width: 100%; margin-bottom: 20px; box-sizing: border-box; }
+        .broker-panel h3 { margin: 0 0 15px 0; font-size: 14px; color: #58a6ff; text-align: center; display: flex; align-items: center; justify-content: center; gap: 8px;}
+        .balances { display: flex; justify-content: space-between; margin-bottom: 15px;}
+        .balance-item { text-align: center; flex: 1; border-right: 1px solid #30363d; }
+        .balance-item:last-child { border: none; }
+        .balance-item span { display: block; font-size: 10px; color: #8b949e; text-transform: uppercase;}
+        .balance-item strong { font-size: 16px; font-family: 'Orbitron', sans-serif; transition: color 0.5s, text-shadow 0.5s; }
+        .bal-demo strong { color: #d29922; }
+        .bal-real strong { color: #3fb950; }
 
-        .btn-add-script { 
-            background: #21262d; color: #58a6ff; border: 1px solid #30363d; 
-            border-radius: 8px; padding: 0 15px; cursor: pointer; font-weight: bold; font-size: 18px; transition: all 0.2s;
-            display: none; 
-        }
-        .btn-add-script:hover { background: #30363d; color: #fff; }
+        .risk-panel { width: 100%; border-top: 1px solid #30363d; padding-top: 15px;}
+        .risk-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; }
+        .risk-item label { display: block; font-size: 11px; color: #8b949e; margin-bottom: 5px; text-transform: uppercase; }
+        .btn-toggle-bot { width: 100%; padding: 15px; font-size: 14px; font-weight: bold; border-radius: 8px; border: none; cursor: pointer; transition: all 0.3s; }
+        .bot-off { background: #238636; color: #fff; box-shadow: 0 0 15px rgba(35, 134, 54, 0.4); }
+        .bot-on { background: #da3633; color: #fff; box-shadow: 0 0 15px rgba(218, 54, 51, 0.4); }
+        .profit-display { text-align: center; font-size: 14px; margin-top: 10px; color: #8b949e; }
+        .profit-display strong { font-family: 'Orbitron'; font-size: 18px; margin-left: 5px; }
 
-        .timer-container { display: flex; flex-direction: column; align-items: center; margin-bottom: 20px; }
-        .timer-circle {
-            width: 90px; height: 90px; border-radius: 50%; border: 5px solid #30363d;
-            display: flex; justify-content: center; align-items: center; font-family: 'Orbitron', sans-serif;
-            font-size: 32px; font-weight: 700; color: #58a6ff; transition: border-color 0.3s;
-        }
-        .timer-label { font-size: 12px; color: #8b949e; margin-top: 5px; text-transform: uppercase; }
+        .timer-container { display: flex; flex-direction: column; align-items: center; margin-bottom: 20px; width: 100%; }
+        .timer-circle { width: 90px; height: 90px; border-radius: 50%; border: 5px solid #30363d; display: flex; justify-content: center; align-items: center; font-family: 'Orbitron', sans-serif; font-size: 32px; font-weight: 700; color: #58a6ff; }
+        .price-box { font-size: 26px; font-weight: bold; margin-bottom: 20px; font-family: 'Orbitron'; text-align: center; }
+        
+        @keyframes pulseGreen { 0% { box-shadow: 0 0 0 0 rgba(46,160,67, 0.7); } 70% { box-shadow: 0 0 0 20px rgba(46,160,67, 0); } 100% { box-shadow: 0 0 0 0 rgba(46,160,67, 0); } }
+        @keyframes pulseOrange { 0% { box-shadow: 0 0 0 0 rgba(210,153,34, 0.7); } 70% { box-shadow: 0 0 0 20px rgba(210,153,34, 0); } 100% { box-shadow: 0 0 0 0 rgba(210,153,34, 0); } }
+        
+        .alert-box { width: 100%; padding: 15px; border-radius: 8px; text-align: center; font-weight: bold; font-size: 18px; text-transform: uppercase; background: #21262d; color: #8b949e; border: 1px solid #30363d; box-sizing: border-box; transition: all 0.3s; }
+        .alert-pre { background: #d29922 !important; color: #000 !important; animation: pulseOrange 1.5s infinite; border-color: #b07e15 !important;}
+        .alert-go { background: #2ea043 !important; color: #fff !important; animation: pulseGreen 1.5s infinite; border-color: #238636 !important;}
 
-        .price-box { font-size: 26px; font-weight: bold; margin-bottom: 20px; font-family: 'Orbitron'; }
-
-        .alert-box {
-            width: 100%; padding: 15px; border-radius: 8px; text-align: center; font-weight: bold;
-            font-size: 18px; text-transform: uppercase; letter-spacing: 1px; transition: all 0.3s;
-            background: #21262d; color: #8b949e; border: 1px solid #30363d; box-sizing: border-box;
-        }
-
-        .state-warning { background: rgba(210, 153, 34, 0.15); color: #d29922; border-color: #d29922; animation: blink 1s infinite; }
-        .state-execute-call { background: #238636; color: #ffffff; border-color: #2ea043; font-size: 24px; box-shadow: 0 0 30px rgba(35, 134, 54, 0.5); }
-        .state-execute-put { background: #da3633; color: #ffffff; border-color: #f85149; font-size: 24px; box-shadow: 0 0 30px rgba(218, 54, 51, 0.5); }
-
-        @keyframes blink { 50% { opacity: 0.6; box-shadow: 0 0 15px rgba(210, 153, 34, 0.4); } }
+        .btn { padding: 12px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; border: none; font-size: 14px; }
+        .btn-save { background: #238636; color: #ffffff; }
+        
+        .login-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(13, 17, 23, 0.98); backdrop-filter: blur(10px); display: flex; justify-content: center; align-items: center; z-index: 1000; }
+        .modal-box { background: #161b22; border: 1px solid #30363d; border-radius: 16px; padding: 40px 30px; width: 380px; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.8); }
+        
+        .top-buttons { position: absolute; top: 20px; right: 30px; display: flex; gap: 10px; z-index: 100; }
+        .btn-top { background: #161b22; border: 1px solid #30363d; padding: 8px 16px; border-radius: 8px; font-size: 12px; cursor: pointer; font-weight: bold; transition: all 0.2s; color: #8b949e; }
+        .btn-top:hover { border-color: #58a6ff; color: #58a6ff; }
+        .btn-admin { display: none; }
+        
+        .btn-affiliate { background: linear-gradient(135deg, #d29922, #b07e15); color: #fff; text-decoration: none; padding: 15px; display: block; border-radius: 8px; font-weight: bold; font-size: 14px; margin-top: 15px; box-shadow: 0 5px 15px rgba(210, 153, 34, 0.3); animation: pulse 2s infinite; }
 
         .overall-accuracy { background: #0d1117; border: 1px solid #30363d; border-radius: 8px; padding: 10px; text-align: center; font-weight: bold; margin-bottom: 15px; color: #c9d1d9; font-size: 14px; text-transform: uppercase; width: 100%; box-sizing: border-box; }
         .overall-accuracy span { color: #58a6ff; font-size: 18px; font-family: 'Orbitron', sans-serif; margin-left: 10px; }
@@ -76,8 +97,9 @@
         .score-wing2 .value, .score-wing2 .percent { color: #d29922; } 
         .score-loss .value, .score-loss .percent { color: #f85149; text-shadow: 0 0 10px rgba(248, 81, 73, 0.3); } 
 
+        .history-table-wrapper { width: 100%; max-height: 400px; overflow-y: auto; background: #0d1117; border-radius: 8px; border: 1px solid #30363d; }
         table { width: 100%; border-collapse: collapse; text-align: center; font-size: 13px; }
-        th { padding: 10px; border-bottom: 1px solid #30363d; color: #c9d1d9; font-weight: 600; }
+        th { padding: 10px; border-bottom: 1px solid #30363d; color: #c9d1d9; font-weight: 600; background: #161b22; position: sticky; top: 0;}
         td { padding: 12px 5px; border-bottom: 1px solid #21262d; }
         
         .text-green { color: #3fb950; font-weight: bold; }
@@ -85,337 +107,438 @@
         .text-warning { color: #d29922; font-weight: bold; }
         .text-muted { color: #8b949e; }
 
-        .modal-overlay, .login-overlay {
-            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(13, 17, 23, 0.95); backdrop-filter: blur(8px);
-            display: none; justify-content: center; align-items: center; z-index: 1000;
-        }
-        .login-overlay { display: flex; z-index: 9999; } 
-        
-        .modal-box {
-            background: #161b22; border: 1px solid #30363d; border-radius: 16px;
-            padding: 30px; width: 380px; box-shadow: 0 20px 50px rgba(0,0,0,0.8); text-align: center;
-        }
-        .modal-box h2 { color: #58a6ff; margin-top: 0; font-family: 'Orbitron', sans-serif; font-size: 22px; }
-        .modal-box p { color: #8b949e; font-size: 14px; margin-bottom: 20px; }
-        
-        .modal-box input {
-            width: 100%; padding: 15px; margin-bottom: 15px; border-radius: 8px;
-            background: #0d1117; color: #fff; border: 1px solid #30363d; outline: none; box-sizing: border-box; font-size: 14px;
-        }
-        .modal-box textarea {
-            width: 100%; height: 250px; background: #0d1117; color: #3fb950;
-            border: 1px solid #30363d; border-radius: 8px; padding: 15px; text-align: left;
-            font-family: monospace; font-size: 13px; box-sizing: border-box; resize: none; outline: none;
-        }
         .modal-buttons { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
-        .btn { padding: 12px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; border: none; font-size: 14px; }
         .btn-cancel { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; }
-        .btn-save { background: #238636; color: #ffffff; width: 100%; }
-
-        .top-buttons { position: absolute; top: 20px; right: 30px; display: flex; gap: 10px; z-index: 100; }
-        .btn-top {
-            background: #161b22; border: 1px solid #30363d; padding: 8px 16px; 
-            border-radius: 8px; font-size: 12px; cursor: pointer; font-weight: bold; transition: all 0.2s; box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-        }
-        .btn-logout { color: #8b949e; }
-        .btn-logout:hover { border-color: #f85149; color: #f85149; }
-        .btn-admin { color: #58a6ff; display: none; } 
-        .btn-admin:hover { background: #58a6ff; color: #0d1117; }
-
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(13, 17, 23, 0.95); justify-content: center; align-items: center; z-index: 1000; }
     </style>
 </head>
 <body>
 
-    <div class="login-overlay" id="loginScreen">
+    <div class="login-overlay" id="loginScreen" style="display: flex;">
         <div class="modal-box">
-            <h2>🔒 JS INVEST</h2>
-            <p>Área Restrita. Identifique-se para acessar os algoritmos quantitativos.</p>
-            <input type="email" id="emailInput" placeholder="Seu E-mail" />
-            <input type="password" id="passwordInput" placeholder="Sua Senha" />
-            <button class="btn btn-save" id="btnLogin">Acessar Sistema</button>
-            <div id="loginError" style="color: #f85149; margin-top: 15px; font-size: 12px; display: none;"></div>
+            <h2 style="color:#58a6ff; font-family:'Orbitron'; margin-top:0;">🚀 JS INVEST</h2>
+            <p style="font-size: 13px; color: #8b949e; margin-bottom: 25px;">Conecte sua conta da <b>Vellox Broker</b> para validar sua assinatura e liberar o Auto-Trading.</p>
+            
+            <input type="text" id="brokerLoginInput" placeholder="Login ou E-mail da Corretora" style="margin-bottom:10px;" />
+            <input type="password" id="brokerPassInput" placeholder="Senha da Corretora" style="margin-bottom:20px;"/>
+            
+            <button class="btn btn-save" style="width:100%;" id="btnLogin">Acessar Sistema</button>
+            
+            <div id="loginError" style="color: #f85149; margin-top: 15px; font-size: 12px; display: none; font-weight: bold;"></div>
+            
+            <a href="https://velloxbroker.com/?ref=SEU_CODIGO_AQUI" target="_blank" class="btn-affiliate" id="btnAffiliate" style="display:none;">
+                ⭐ Não tem conta? Crie grátis e libere o robô!
+            </a>
         </div>
     </div>
 
     <div class="top-buttons">
         <button class="btn-top btn-admin" id="btnAdminPanel">Painel Admin</button>
-        <button class="btn-top btn-logout" id="btnLogout">Sair</button>
+        <button class="btn-top" id="btnLogout">Sair / Desconectar</button>
     </div>
 
-    <div class="dashboard" id="mainCard">
-        <h1>🚀 JS INVEST</h1>
-        <div class="subtitle">Análise Quantitativa</div>
-        
-        <div class="controls">
-            <div class="script-group">
-                <select id="strategySelector"><option value="">Carregando scripts...</option></select>
-                <button class="btn-add-script" id="btnOpenModal" title="Adicionar Novo Script">+</button>
+    <div class="main-container">
+
+        <div class="dashboard">
+            <h1>🚀 JS INVEST</h1>
+            <div class="subtitle">Análise Quantitativa</div>
+            
+            <div class="controls">
+                <div class="script-group">
+                    <select id="strategySelector"><option value="">Carregando scripts...</option></select>
+                    <button class="btn-add-script" id="btnOpenModal" title="Adicionar Script">+</button>
+                </div>
+                <select id="coinSelector">
+                    <option value="btcusdt">BTC/USDT</option>
+                    <option value="ethusdt">ETH/USDT</option>
+                    <option value="solusdt">SOL/USDT</option>
+                    <option value="bnbusdt">BNB/USDT</option>
+                </select>
             </div>
 
-            <select id="coinSelector">
-                <option value="btcusdt">BTC/USDT</option>
-                <option value="ethusdt">ETH/USDT</option>
-                <option value="solusdt">SOL/USDT</option>
-                <option value="bnbusdt">BNB/USDT</option>
-                <option value="adausdt">ADA/USDT</option>
-                <option value="xrpusdt">XRP/USDT</option>
-                <option value="dogeusdt">DOGE/USDT</option>
-            </select>
+            <div class="broker-panel">
+                <h3>🟢 Conectado à Vellox Broker</h3>
+                
+                <div class="balances">
+                    <div class="balance-item bal-demo"><span>Banca Demo</span><strong id="valDemo">R$ ---</strong></div>
+                    <div class="balance-item bal-real"><span>Banca Real</span><strong id="valReal">R$ 0,00</strong></div>
+                </div>
+
+                <div class="risk-panel" id="riskPanel">
+                    <h3 style="color:#c9d1d9; margin-top:0; font-size: 12px;">⚙️ GERENCIAMENTO DE RISCO</h3>
+                    <div class="risk-grid">
+                        <div class="risk-item">
+                            <label>Conta</label>
+                            <select id="riskAccount">
+                                <option value="demo">Demo</option>
+                                <option value="real">Real</option>
+                            </select>
+                        </div>
+                        <div class="risk-item">
+                            <label>Valor (R$)</label>
+                            <input type="number" id="riskAmount" value="5" min="2" />
+                        </div>
+                        <div class="risk-item">
+                            <label>Martingale</label>
+                            <select id="riskGale">
+                                <option value="0">Sem Gale</option>
+                                <option value="1">Até Gale 1</option>
+                                <option value="2" selected>Até Gale 2</option>
+                            </select>
+                        </div>
+                        <div class="risk-item" style="display: flex; gap: 5px;">
+                            <div><label>Win</label><input type="number" id="riskWin" value="50" /></div>
+                            <div><label>Loss</label><input type="number" id="riskLoss" value="50" /></div>
+                        </div>
+                    </div>
+
+                    <button class="btn-toggle-bot bot-off" id="btnToggleBot">ATIVAR AUTO-TRADE</button>
+                    <div class="profit-display" id="statusBot">Status: Aguardando Configuração</div>
+                    <div class="profit-display">Lucro da Sessão: <strong id="profitVal" style="color:#3fb950;">R$ 0,00</strong></div>
+                </div>
+            </div>
+
+            <div class="timer-container"><div class="timer-circle" id="timerCircle">00</div></div>
+            <div class="price-box" id="priceValue">---</div>
+
+            <div class="manual-trade-panel" id="manualTradePanel" style="display: none; width: 100%; gap: 10px; margin-bottom: 20px;">
+                <button class="btn" id="btnManualCall" style="flex: 1; background: #2ea043; color: white; padding: 15px; font-size: 16px; box-shadow: 0 0 15px rgba(46,160,67,0.3); font-weight: 900;">🟢 COMPRAR</button>
+                <button class="btn" id="btnManualPut" style="flex: 1; background: #f85149; color: white; padding: 15px; font-size: 16px; box-shadow: 0 0 15px rgba(248,81,73,0.3); font-weight: 900;">🔴 VENDER</button>
+            </div>
+
+            <div class="alert-box" id="alertBox">Aguardando Conexão...</div>
         </div>
 
-        <div class="timer-container">
-            <div class="timer-circle" id="timerCircle">00</div>
-            <div class="timer-label">Tempo da Vela</div>
+        <div class="history-panel">
+            
+            <div id="liveTradeCard" style="display: none; background: #0d1117; border: 1px solid #30363d; border-radius: 8px; padding: 15px; margin-bottom: 20px; width: 100%; box-sizing: border-box;">
+                <h3 style="color: #58a6ff; font-size: 14px; margin-top: 0; text-align: center; border-bottom: 1px solid #30363d; padding-bottom: 10px; font-family: 'Orbitron';">📡 RAIO-X DA OPERAÇÃO</h3>
+                
+                <div style="display: flex; justify-content: space-between; text-align: center; margin-bottom: 15px;">
+                    <div style="flex: 1;"><div style="font-size: 10px; color: #8b949e;">DIREÇÃO</div><div id="liveDir" style="font-weight: bold; font-size: 16px;">--</div></div>
+                    <div style="flex: 1; border-left: 1px solid #30363d; border-right: 1px solid #30363d;"><div style="font-size: 10px; color: #8b949e;">STATUS LIVE</div><div id="liveStatus" style="font-weight: bold; font-size: 16px;">--</div></div>
+                    <div style="flex: 1;"><div style="font-size: 10px; color: #8b949e;">TEMPO</div><div id="liveTime" style="font-weight: bold; font-size: 16px; color: #c9d1d9;">00s</div></div>
+                </div>
+
+                <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 10px;">
+                    <div style="color: #8b949e;">Entrada: <strong id="liveEntry" style="color: #fff;">0.00</strong></div>
+                    <div style="color: #8b949e;">Atual: <strong id="liveCurrent" style="color: #fff;">0.00</strong></div>
+                </div>
+
+                <div style="width: 100%; height: 100px; position: relative;">
+                    <canvas id="liveChart"></canvas>
+                </div>
+            </div>
+
+            <h3 style="color: #58a6ff; text-align: center; font-family: 'Orbitron'; margin-top: 0;">📊 PERFORMANCE</h3>
+            
+            <div class="overall-accuracy">Assertividade Total: <span id="totalAccuracy">0.0%</span></div>
+            
+            <div class="scoreboard">
+                <div class="score-card score-win1"><div class="title">Win 1ª</div><div class="value" id="scoreWin1">0</div><div class="percent" id="pctWin1">0.0%</div></div>
+                <div class="score-card score-wing1"><div class="title">Win G1</div><div class="value" id="scoreWinG1">0</div><div class="percent" id="pctWinG1">0.0%</div></div>
+                <div class="score-card score-wing2"><div class="title">Win G2</div><div class="value" id="scoreWinG2">0</div><div class="percent" id="pctWinG2">0.0%</div></div>
+                <div class="score-card score-loss"><div class="title">Loss</div><div class="value" id="scoreLoss">0</div><div class="percent" id="pctLoss">0.0%</div></div>
+            </div>
+
+            <h3 style="color: #8b949e; text-transform: uppercase; font-size: 12px; margin-bottom: 10px; width: 100%;">Últimas Entradas</h3>
+            
+            <div class="history-table-wrapper">
+                <table>
+                    <thead><tr><th>Hora</th><th>Direção</th><th>Resultado</th></tr></thead>
+                    <tbody id="historyTableBody"></tbody>
+                </table>
+            </div>
         </div>
 
-        <div class="price-box" id="priceValue">---</div>
-        <div class="alert-box" id="alertBox">Inicializando Motor...</div>
-    </div>
-
-    <div class="history-panel">
-        <div class="overall-accuracy">Assertividade Total: <span id="totalAccuracy">0.0%</span></div>
-        <div class="scoreboard">
-            <div class="score-card score-win1"><div class="title">Win 1ª</div><div class="value" id="scoreWin1">0</div><div class="percent" id="pctWin1">0.0%</div></div>
-            <div class="score-card score-wing1"><div class="title">Win G1</div><div class="value" id="scoreWinG1">0</div><div class="percent" id="pctWinG1">0.0%</div></div>
-            <div class="score-card score-wing2"><div class="title">Win G2</div><div class="value" id="scoreWinG2">0</div><div class="percent" id="pctWinG2">0.0%</div></div>
-            <div class="score-card score-loss"><div class="title">Loss</div><div class="value" id="scoreLoss">0</div><div class="percent" id="pctLoss">0.0%</div></div>
-        </div>
-        <h3 style="color: #8b949e; text-transform: uppercase; font-size: 14px;">Histórico de Entradas</h3>
-        <table>
-            <thead><tr><th>Hora</th><th>Direção</th><th>Resultado</th></tr></thead>
-            <tbody id="historyTableBody"></tbody>
-        </table>
     </div>
 
     <div class="modal-overlay" id="scriptModal">
         <div class="modal-box" style="text-align: left; width: 500px;">
-            <h2 style="text-align: center;">🔌 Plugar Novo Script</h2>
-            <textarea id="jsonInput"></textarea>
-            <div class="modal-buttons">
-                <button class="btn btn-cancel" id="btnCancelScript">Cancelar</button>
-                <button class="btn btn-save" style="width: auto;" id="btnSaveScript">Salvar & Injetar</button>
-            </div>
+            <h2 style="text-align: center; color: #58a6ff; font-family: 'Orbitron';">🔌 Plugar Novo Script</h2>
+            <textarea id="jsonInput" style="width: 100%; height: 200px; background:#0d1117; color:#3fb950; font-family:monospace; padding:10px; border: 1px solid #30363d; border-radius: 8px;"></textarea>
+            <div class="modal-buttons"><button class="btn btn-cancel" id="btnCancelScript">Cancelar</button><button class="btn btn-save" style="width: auto;" id="btnSaveScript">Salvar & Injetar</button></div>
         </div>
     </div>
 
     <div class="modal-overlay" id="adminModal">
         <div class="modal-box" style="width: 500px;">
-            <h2>👥 Gerenciar Usuários</h2>
-            
+            <h2 style="color: #58a6ff; font-family: 'Orbitron';">👥 Gerenciar Usuários</h2>
             <div style="text-align: left; margin-bottom: 20px;">
-                <p style="color: #8b949e; font-size: 13px; margin-bottom: 5px;">Cadastrar Novo Assinante:</p>
-                <div style="display: flex; gap: 10px;">
-                    <input type="email" id="newUserEmail" placeholder="E-mail" style="margin-bottom: 0;" />
-                    <input type="password" id="newUserPassword" placeholder="Senha" style="margin-bottom: 0; width: 120px;" />
-                </div>
-                <div style="display: flex; gap: 10px; margin-top: 10px;">
-                    <select id="newUserRole" style="margin-bottom: 0;">
-                        <option value="aluno">Acesso: ALUNO (Assinante)</option>
-                        <option value="admin">Acesso: ADMIN (Acesso Total)</option>
-                    </select>
-                    <button class="btn btn-save" style="width: auto;" id="btnCreateUser">Cadastrar</button>
-                </div>
+                <p style="color: #8b949e; font-size: 13px; margin-bottom: 5px;">Cadastrar Novo Assinante (Use o Login da Corretora):</p>
+                <div style="display: flex; gap: 10px;"><input type="text" id="newUserEmail" placeholder="Login / E-mail da Corretora" style="margin-bottom: 0;" /><input type="password" id="newUserPassword" placeholder="Senha App" style="margin-bottom: 0; width: 120px;" /></div>
+                <div style="display: flex; gap: 10px; margin-top: 10px;"><select id="newUserRole" style="margin-bottom: 0;"><option value="aluno">Acesso: ALUNO</option><option value="admin">Acesso: ADMIN</option></select><button class="btn btn-save" style="width: auto;" id="btnCreateUser">Cadastrar</button></div>
             </div>
-
             <div style="text-align: left; border-top: 1px solid #30363d; padding-top: 15px;">
-                <p style="color: #8b949e; font-size: 13px; margin-bottom: 10px;">Usuários na Plataforma:</p>
                 <div style="max-height: 180px; overflow-y: auto; background: #0d1117; border-radius: 8px; border: 1px solid #30363d;">
                     <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 12px;">
-                        <thead style="position: sticky; top: 0; background: #161b22;">
-                            <tr>
-                                <th style="padding: 10px; border-bottom: 1px solid #30363d;">E-mail</th>
-                                <th style="padding: 10px; border-bottom: 1px solid #30363d;">Nível</th>
-                            </tr>
-                        </thead>
-                        <tbody id="usersListBody">
-                            <tr><td colspan="2" style="text-align:center; padding: 15px;">Carregando lista...</td></tr>
-                        </tbody>
+                        <thead style="position: sticky; top: 0; background: #161b22;"><tr><th style="padding: 10px; border-bottom: 1px solid #30363d;">E-mail / Login</th><th style="padding: 10px; border-bottom: 1px solid #30363d;">Nível</th></tr></thead>
+                        <tbody id="usersListBody"><tr><td colspan="2" style="text-align:center; padding: 15px;">Carregando...</td></tr></tbody>
                     </table>
                 </div>
             </div>
-
-            <div class="modal-buttons" style="justify-content: center; margin-top: 25px;">
-                <button class="btn btn-cancel" style="width: 100%;" id="btnCancelAdmin">Fechar Painel</button>
-            </div>
+            <div class="modal-buttons" style="justify-content: center; margin-top: 25px;"><button class="btn btn-cancel" style="width: 100%;" id="btnCancelAdmin">Fechar Painel</button></div>
         </div>
     </div>
-
+    
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <script src="/socket.io/socket.io.js"></script>
     
     <script>
-        // ==========================================
-        // 1. CONFIGURAÇÃO DO FIREBASE (Coloquei a sua chave que estava no último arquivo)
-        // ==========================================
-        const firebaseConfig = {
-            apiKey: "AIzaSyCBlpeZG_ITiXaKYTdq378gRcLJ9wVNqqI",
-            authDomain: "js-invest-40d0b.firebaseapp.com",
-            projectId: "js-invest-40d0b",
-            storageBucket: "js-invest-40d0b.firebasestorage.app",
-            messagingSenderId: "747269065592",
-            appId: "1:747269065592:web:40cc8036b3c96ad6d6d68d"
-        };
-        
+        const firebaseConfig = { apiKey: "AIzaSyCBlpeZG_ITiXaKYTdq378gRcLJ9wVNqqI", authDomain: "js-invest-40d0b.firebaseapp.com", projectId: "js-invest-40d0b" };
         firebase.initializeApp(firebaseConfig);
-        const auth = firebase.auth();
-        const socket = io();
+        const auth = firebase.auth(); const socket = io();
 
-        const loginScreen = document.getElementById('loginScreen');
-        const btnLogin = document.getElementById('btnLogin');
-        const loginError = document.getElementById('loginError');
-        const btnAdminPanel = document.getElementById('btnAdminPanel');
-        const btnAddScript = document.getElementById('btnOpenModal');
+        let isBotActive = false;
+        let currentEntryPrice = 0; // Guarda a cotação de entrada para o Gráfico
 
         // ==========================================
-        // 2. SISTEMA DE AUTENTICAÇÃO E PERMISSÕES
+        // 🎯 INICIALIZAÇÃO DO GRÁFICO CHART.JS
         // ==========================================
-        auth.onAuthStateChanged(user => {
-            if (user) {
-                loginScreen.style.display = 'none';
-                user.getIdToken().then(token => {
-                    socket.emit('check_role', token);
-                });
-            } else {
-                loginScreen.style.display = 'flex';
-                btnAdminPanel.style.display = 'none';
-                btnAddScript.style.display = 'none';
-            }
-        });
-
-        socket.on('role_result', (data) => {
-            if (data.role === 'admin') {
-                btnAdminPanel.style.display = 'inline-block';
-                btnAddScript.style.display = 'inline-block';
-            }
-        });
-
-        btnLogin.addEventListener('click', () => {
-            loginError.style.display = 'none';
-            btnLogin.innerText = "Verificando...";
-            
-            auth.signInWithEmailAndPassword(document.getElementById('emailInput').value, document.getElementById('passwordInput').value)
-                .then(() => {
-                    btnLogin.innerText = "Acessar Sistema";
-                    document.getElementById('emailInput').value = '';
-                    document.getElementById('passwordInput').value = '';
-                })
-                .catch(error => {
-                    btnLogin.innerText = "Acessar Sistema";
-                    loginError.innerText = "Acesso Negado: Verifique seu e-mail e senha.";
-                    loginError.style.display = 'block';
-                });
-        });
-
-        document.getElementById('btnLogout').addEventListener('click', () => { auth.signOut(); });
-
-        // ==========================================
-        // 3. PAINEL ADMIN (LISTAGEM E CRIAÇÃO)
-        // ==========================================
-        const adminModal = document.getElementById('adminModal');
-        
-        // Ao abrir o painel, já pede a lista pro servidor!
-        btnAdminPanel.addEventListener('click', () => { 
-            adminModal.style.display = 'flex'; 
-            document.getElementById('usersListBody').innerHTML = '<tr><td colspan="2" style="text-align:center; padding: 15px;">Carregando lista...</td></tr>';
-            auth.currentUser.getIdToken().then(token => {
-                socket.emit('admin_get_users', token);
-            });
-        });
-        
-        document.getElementById('btnCancelAdmin').addEventListener('click', () => { adminModal.style.display = 'none'; });
-
-        // Escuta a lista vindo do servidor
-        socket.on('admin_users_list', (res) => {
-            const tbody = document.getElementById('usersListBody');
-            tbody.innerHTML = '';
-            
-            if (res.success) {
-                if (res.users.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="2" style="text-align:center; padding: 15px; color:#8b949e;">Nenhum usuário encontrado.</td></tr>';
-                } else {
-                    res.users.forEach(u => {
-                        const tr = document.createElement('tr');
-                        tr.innerHTML = `<td style="padding: 10px; border-bottom: 1px solid #21262d; color:#c9d1d9;">${u.email}</td>
-                                        <td style="padding: 10px; border-bottom: 1px solid #21262d; color: ${u.role.includes('admin') ? '#58a6ff' : '#8b949e'}; font-weight:bold;">${u.role.toUpperCase()}</td>`;
-                        tbody.appendChild(tr);
-                    });
+        const ctx = document.getElementById('liveChart').getContext('2d');
+        const liveChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [], // Linha do Tempo
+                datasets: [
+                    {
+                        label: 'Preço Atual',
+                        data: [],
+                        borderColor: '#58a6ff',
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        tension: 0.1
+                    },
+                    {
+                        label: 'Linha de Entrada',
+                        data: [],
+                        borderColor: '#8b949e',
+                        borderWidth: 1,
+                        borderDash: [5, 5], // Linha tracejada
+                        pointRadius: 0
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false, // Desliga animação para não travar nos milissegundos
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { display: false }, 
+                    y: { position: 'right', grid: { color: '#30363d' }, ticks: { color: '#8b949e', font: {size: 10} } }
                 }
-            } else {
-                tbody.innerHTML = `<tr><td colspan="2" style="text-align:center; padding: 15px; color: #f85149;">Erro: ${res.msg}</td></tr>`;
             }
         });
 
-        // Criar usuário
-        document.getElementById('btnCreateUser').addEventListener('click', () => {
-            const newEmail = document.getElementById('newUserEmail').value;
-            const newPassword = document.getElementById('newUserPassword').value;
-            const newRole = document.getElementById('newUserRole').value;
-
-            if(newPassword.length < 6) { alert("A senha precisa ter pelo menos 6 caracteres."); return; }
-
-            document.getElementById('btnCreateUser').innerText = '...';
-            auth.currentUser.getIdToken().then(token => {
-                socket.emit('admin_create_user', { token, newEmail, newPassword, newRole });
-            });
+        // LOGIN HÍBRIDO E AFILIADO
+        document.getElementById('btnLogin').addEventListener('click', () => {
+            const btn = document.getElementById('btnLogin');
+            btn.innerText = "Autenticando Corretora...";
+            document.getElementById('loginError').style.display = 'none';
+            document.getElementById('btnAffiliate').style.display = 'none';
+            socket.emit('hybrid_login', { brokerUser: document.getElementById('brokerLoginInput').value, brokerPass: document.getElementById('brokerPassInput').value });
         });
 
-        // Resposta da Criação
-        socket.on('user_creation_result', (res) => {
-            alert(res.msg);
-            document.getElementById('btnCreateUser').innerText = 'Cadastrar';
-            if(res.success) {
-                document.getElementById('newUserEmail').value = '';
-                document.getElementById('newUserPassword').value = '';
-                
-                // Recarrega a lista para mostrar o aluno que acabou de ser criado
-                auth.currentUser.getIdToken().then(token => {
-                    socket.emit('admin_get_users', token);
+        socket.on('hybrid_login_result', (res) => {
+            document.getElementById('btnLogin').innerText = "Acessar Sistema";
+            if (res.success) {
+                auth.signInWithCustomToken(res.firebaseToken).then(() => {
+                    document.getElementById('loginScreen').style.display = 'none';
+                    document.getElementById('valReal').innerText = `R$ ${res.balance.real}`;
+                    document.getElementById('manualTradePanel').style.display = 'flex';
+                    if (res.role === 'admin') { document.getElementById('btnAdminPanel').style.display = 'inline-block'; document.getElementById('btnOpenModal').style.display = 'inline-block'; }
+                }).catch(err => {
+                    document.getElementById('loginError').innerText = "Erro Interno: " + err.message;
+                    document.getElementById('loginError').style.display = 'block';
                 });
+            } else {
+                document.getElementById('loginError').innerText = res.msg;
+                document.getElementById('loginError').style.display = 'block';
+                if (res.reason === 'broker') {
+                    document.getElementById('btnAffiliate').style.display = 'block';
+                    alert("Conta não encontrada! Será redirecionado para criar a sua conta gratuitamente.");
+                    window.open('https://velloxbroker.com/?ref=SEU_CODIGO_AQUI', '_blank');
+                }
+            }
+        });
+
+        document.getElementById('btnLogout').addEventListener('click', () => { auth.signOut().then(() => { window.location.reload(); }); });
+
+        // CONTROLES
+        socket.on('available_strategies', (strats) => {
+            const sel = document.getElementById('strategySelector'); sel.innerHTML = '';
+            strats.forEach(s => { const opt = document.createElement('option'); opt.value = s.id; opt.innerText = s.name; sel.appendChild(opt); });
+        });
+        document.getElementById('coinSelector').addEventListener('change', (e) => socket.emit('change_coin', e.target.value));
+        document.getElementById('strategySelector').addEventListener('change', (e) => socket.emit('change_strategy', e.target.value));
+
+        // ==========================================
+        // 🎯 O CORAÇÃO DO PAINEL LIVE (TICK A TICK)
+        // ==========================================
+        socket.on('price_update', (data) => {
+            document.getElementById('priceValue').innerText = '$ ' + data.price.toFixed(2);
+            document.getElementById('timerCircle').innerText = data.secondsLeft < 10 ? '0'+data.secondsLeft : data.secondsLeft;
+
+            const liveCard = document.getElementById('liveTradeCard');
+            
+            if (data.activeSignal) {
+                // Revela o cartão se estiver escondido e limpa o gráfico velho
+                if (liveCard.style.display === 'none') {
+                    liveCard.style.display = 'block';
+                    liveChart.data.labels = [];
+                    liveChart.data.datasets[0].data = [];
+                    liveChart.data.datasets[1].data = [];
+                    currentEntryPrice = data.activeSignal.entryPrice;
+                }
+
+                // Atualiza os textos
+                const isCall = data.activeSignal.type === 'CALL';
+                document.getElementById('liveDir').innerText = isCall ? '🟢 CALL' : '🔴 PUT';
+                document.getElementById('liveDir').style.color = isCall ? '#3fb950' : '#f85149';
+                document.getElementById('liveTime').innerText = data.secondsLeft + 's';
+                document.getElementById('liveEntry').innerText = currentEntryPrice.toFixed(2);
+                document.getElementById('liveCurrent').innerText = data.price.toFixed(2);
+
+                // Lógica de Win/Loss visual
+                let isWin = (isCall && data.price > currentEntryPrice) || (!isCall && data.price < currentEntryPrice);
+                let isTie = data.price === currentEntryPrice;
+                
+                const statusEl = document.getElementById('liveStatus');
+                if (isTie) {
+                    statusEl.innerText = 'EMPATANDO'; statusEl.style.color = '#d29922';
+                } else if (isWin) {
+                    statusEl.innerText = 'WIN 🎯'; statusEl.style.color = '#3fb950';
+                } else {
+                    statusEl.innerText = 'LOSS 🔴'; statusEl.style.color = '#f85149';
+                }
+
+                // Injeta no Gráfico
+                liveChart.data.labels.push('');
+                liveChart.data.datasets[0].data.push(data.price);
+                liveChart.data.datasets[1].data.push(currentEntryPrice); // Linha tracejada reta
+                
+                // A linha do preço muda de cor consoante o status!
+                liveChart.data.datasets[0].borderColor = isTie ? '#d29922' : (isWin ? '#3fb950' : '#f85149');
+
+                if (liveChart.data.labels.length > 60) {
+                    liveChart.data.labels.shift();
+                    liveChart.data.datasets[0].data.shift();
+                    liveChart.data.datasets[1].data.shift();
+                }
+                
+                liveChart.update();
+
+            } else {
+                liveCard.style.display = 'none'; // Esconde quando não há operações
             }
         });
 
         // ==========================================
-        // 4. LÓGICA DO MOTOR
+        // ANIMAÇÕES DE PRÉ-ALERTA E AUTO-TRADE
         // ==========================================
-        const priceValue = document.getElementById('priceValue');
-        const alertBox = document.getElementById('alertBox');
-        const timerCircle = document.getElementById('timerCircle');
+        socket.on('pre_alert', (data) => {
+            const alertBox = document.getElementById('alertBox');
+            if(data.call || data.put) {
+                alertBox.innerHTML = `⚠️ PREPARAR: ${data.call ? "COMPRA" : "VENDA"}`;
+                alertBox.className = "alert-box alert-pre";
+            } else {
+                alertBox.innerHTML = "Analisando Mercado...";
+                alertBox.className = "alert-box";
+            }
+        });
+
+        socket.on('signal', (data) => {
+            const alertBox = document.getElementById('alertBox');
+            alertBox.innerHTML = data.type === 'CALL' ? '🟢 ENTRAR: COMPRA!' : '🔴 ENTRAR: VENDA!';
+            alertBox.className = "alert-box alert-go";
+            setTimeout(() => { alertBox.className = "alert-box"; }, 4000); 
+        });
+
+        document.getElementById('btnToggleBot').addEventListener('click', () => {
+            isBotActive = !isBotActive;
+            const config = {
+                active: isBotActive, accountType: document.getElementById('riskAccount').value,
+                baseAmount: parseFloat(document.getElementById('riskAmount').value), maxGale: parseInt(document.getElementById('riskGale').value),
+                stopWin: parseFloat(document.getElementById('riskWin').value), stopLoss: parseFloat(document.getElementById('riskLoss').value)
+            };
+            socket.emit('setup_auto_trade', config);
+        });
+
+        socket.on('auto_trade_status', (res) => {
+            isBotActive = res.active;
+            const btn = document.getElementById('btnToggleBot'); const status = document.getElementById('statusBot');
+            if(isBotActive) { btn.className = "btn-toggle-bot bot-on"; btn.innerText = "PARAR AUTO-TRADE"; status.innerText = res.msg; status.style.color = "#58a6ff"; } 
+            else { btn.className = "btn-toggle-bot bot-off"; btn.innerText = "ATIVAR AUTO-TRADE"; status.innerText = res.msg; status.style.color = res.msg.includes("STOP") ? "#f85149" : "#8b949e"; }
+            if (res.profit !== undefined) {
+                const pVal = document.getElementById('profitVal'); pVal.innerText = `R$ ${res.profit.toFixed(2)}`; pVal.style.color = res.profit >= 0 ? "#3fb950" : "#f85149";
+            }
+        });
+
+        // ==========================================
+        // ATUALIZAÇÃO OTIMISTA DE SALDO
+        // ==========================================
+        socket.on('update_balance', (data) => {
+            const el = document.getElementById(data.isDemo ? 'valDemo' : 'valReal');
+            el.innerText = `R$ ${data.balance}`;
+            el.style.color = data.isDemo ? '#3fb950' : '#58a6ff'; 
+            setTimeout(() => { el.style.color = data.isDemo ? '#d29922' : '#3fb950'; }, 1000);
+        });
+
+        socket.on('win_balance_update', (data) => {
+            const elId = data.isDemo ? 'valDemo' : 'valReal';
+            const el = document.getElementById(elId);
+            let currentText = el.innerText.replace('R$ ', '').replace(/\./g, '').replace(',', '.');
+            let currentVal = parseFloat(currentText);
+            
+            if (!isNaN(currentVal)) {
+                let newVal = currentVal + data.prize;
+                el.innerText = `R$ ${newVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                el.style.color = '#3fb950'; 
+                el.style.textShadow = '0 0 15px rgba(63, 185, 80, 0.8)';
+                setTimeout(() => { 
+                    el.style.color = data.isDemo ? '#d29922' : '#3fb950'; 
+                    el.style.textShadow = 'none';
+                }, 2000);
+            }
+        });
+
+        socket.on('sniper_success', (msg) => { alert("✅ " + msg); });
+        socket.on('sniper_error', (msg) => { alert("❌ Erro: " + msg); });
+
+        document.getElementById('btnManualCall').addEventListener('click', () => { 
+            if(confirm("Confirma COMPRA manual?")) { 
+                const config = { accountType: document.getElementById('riskAccount').value, baseAmount: parseFloat(document.getElementById('riskAmount').value), maxGale: parseInt(document.getElementById('riskGale').value) };
+                socket.emit('manual_trade', { direction: 'CALL', config: config }); 
+            } 
+        });
+
+        document.getElementById('btnManualPut').addEventListener('click', () => { 
+            if(confirm("Confirma VENDA manual?")) { 
+                const config = { accountType: document.getElementById('riskAccount').value, baseAmount: parseFloat(document.getElementById('riskAmount').value), maxGale: parseInt(document.getElementById('riskGale').value) };
+                socket.emit('manual_trade', { direction: 'PUT', config: config }); 
+            } 
+        });
+
+        // ==========================================
+        // HISTÓRICO COM NOME DA MOEDA
+        // ==========================================
         const historyTableBody = document.getElementById('historyTableBody');
-        let isSignalActive = false;
-
-        function resetUI(message) { alertBox.className = 'alert-box'; alertBox.innerText = message; isSignalActive = false; }
-
-        socket.on('available_strategies', (strategies) => {
-            const selector = document.getElementById('strategySelector');
-            const selectedValue = selector.value;
-            selector.innerHTML = ''; 
-            strategies.forEach(s => {
-                const opt = document.createElement('option'); opt.value = s.id; opt.innerText = s.name;
-                selector.appendChild(opt);
-            });
-            if(selectedValue) selector.value = selectedValue;
-        });
-
-        document.getElementById('coinSelector').addEventListener('change', (e) => {
-            resetUI("Carregando nova moeda..."); historyTableBody.innerHTML = ''; socket.emit('change_coin', e.target.value);
-        });
-
-        document.getElementById('strategySelector').addEventListener('change', (e) => {
-            resetUI("Aplicando novo script matemático..."); historyTableBody.innerHTML = ''; socket.emit('change_strategy', e.target.value);
-        });
-
+        
         socket.on('history_dump', (historyArr) => {
             historyTableBody.innerHTML = ''; 
             historyArr.forEach(sig => {
                 const tr = document.createElement('tr'); tr.id = `sig-${sig.id}`;
                 const isCall = sig.type === 'CALL';
                 let colorClass = 'text-warning';
+                
                 if (sig.status.includes('WIN')) colorClass = 'text-green';
                 else if (sig.status.includes('LOSS')) colorClass = 'text-red';
+                else if (sig.status.includes('Sniper') || sig.status.includes('Manual')) colorClass = 'text-warning';
+                
                 tr.innerHTML = `<td class="text-muted">${sig.time}</td>
-                    <td class="${isCall ? 'text-green' : 'text-red'}">${isCall ? '🟢 CALL' : '🔴 PUT'}</td>
+                    <td class="${isCall ? 'text-green' : 'text-red'}"><span style="font-size:10px; color:#8b949e; display:block;">${sig.symbol || 'BTCUSDT'}</span>${isCall ? '🟢 CALL' : '🔴 PUT'}</td>
                     <td id="res-${sig.id}" class="${colorClass}">${sig.status}</td>`;
                 historyTableBody.appendChild(tr); 
             });
@@ -435,34 +558,14 @@
             }
         });
 
-        socket.on('price_update', (data) => {
-            priceValue.innerText = '$ ' + (data.price < 1 ? data.price.toFixed(4) : data.price.toFixed(2));
-            let secs = data.secondsLeft;
-            timerCircle.innerText = secs < 10 ? '0' + secs : secs;
-            timerCircle.style.color = secs <= 10 ? '#ff7b72' : '#58a6ff';
-            timerCircle.style.borderColor = secs <= 10 ? '#ff7b72' : '#30363d';
-        });
-
-        socket.on('pre_alert', (data) => {
-            if (isSignalActive) return; 
-            if (data.call || data.put) {
-                alertBox.className = 'alert-box state-warning';
-                alertBox.innerHTML = `⚠️ PREPARAR: Possível ${data.call ? "COMPRA (CALL)" : "VENDA (PUT)"}<br><small style="font-size:12px; font-weight:normal;">Aguarde o fim da vela!</small>`;
-            } else { resetUI("Analisando Mercado..."); }
-        });
-
-        socket.on('signal', (data) => {
-            isSignalActive = true;
-            if (data.type === 'CALL') { alertBox.className = 'alert-box state-execute-call'; alertBox.innerHTML = '🟢 ENTRAR: COMPRA!'; } 
-            else { alertBox.className = 'alert-box state-execute-put'; alertBox.innerHTML = '🔴 ENTRAR: VENDA!'; }
-            setTimeout(() => { resetUI("Analisando Mercado..."); }, 20000);
-        });
-
         socket.on('new_signal_history', (sig) => {
             const tr = document.createElement('tr'); tr.id = `sig-${sig.id}`;
+            let colorClass = 'text-warning';
+            if (sig.status.includes('Sniper') || sig.status.includes('Manual')) colorClass = 'text-warning';
+            
             tr.innerHTML = `<td class="text-muted">${sig.time}</td>
-                <td class="${sig.type === 'CALL' ? 'text-green' : 'text-red'}">${sig.type === 'CALL' ? '🟢 CALL' : '🔴 PUT'}</td>
-                <td id="res-${sig.id}" class="text-warning">⏳ Analisando...</td>`;
+                <td class="${sig.type === 'CALL' ? 'text-green' : 'text-red'}"><span style="font-size:10px; color:#8b949e; display:block;">${sig.symbol || 'BTCUSDT'}</span>${sig.type === 'CALL' ? '🟢 CALL' : '🔴 PUT'}</td>
+                <td id="res-${sig.id}" class="${colorClass}">${sig.status}</td>`;
             historyTableBody.prepend(tr); 
         });
 
@@ -476,23 +579,43 @@
             }
         });
 
-        socket.on('status', (data) => { if(!isSignalActive && !alertBox.classList.contains('state-warning')) resetUI(data.msg); });
-
-        // MODAL DE SCRIPT
+        // MODAIS
         const scriptModal = document.getElementById('scriptModal');
-        btnAddScript.addEventListener('click', () => { scriptModal.style.display = 'flex'; });
+        document.getElementById('btnOpenModal').addEventListener('click', () => { scriptModal.style.display = 'flex'; });
         document.getElementById('btnCancelScript').addEventListener('click', () => { scriptModal.style.display = 'none'; });
-
         document.getElementById('btnSaveScript').addEventListener('click', () => {
             try {
                 const newStrategyJSON = JSON.parse(document.getElementById('jsonInput').value);
                 socket.emit('add_new_strategy', newStrategyJSON);
-                alert("Script Injetado com Sucesso!");
-                scriptModal.style.display = 'none';
+                alert("Script Injetado com Sucesso!"); scriptModal.style.display = 'none';
                 document.getElementById('strategySelector').value = newStrategyJSON.id;
-                resetUI("Aplicando novo script matemático...");
                 socket.emit('change_strategy', newStrategyJSON.id);
-            } catch (error) { alert("Erro de Sintaxe JSON! Verifique as aspas, vírgulas e as chaves."); }
+            } catch (error) { alert("Erro de Sintaxe JSON!"); }
+        });
+
+        const adminModal = document.getElementById('adminModal');
+        document.getElementById('btnAdminPanel').addEventListener('click', () => { 
+            adminModal.style.display = 'flex'; auth.currentUser.getIdToken().then(token => socket.emit('admin_get_users', token));
+        });
+        document.getElementById('btnCancelAdmin').addEventListener('click', () => { adminModal.style.display = 'none'; });
+
+        socket.on('admin_users_list', (res) => {
+            const tbody = document.getElementById('usersListBody'); tbody.innerHTML = '';
+            if (res.success) {
+                if (res.users.length === 0) tbody.innerHTML = '<tr><td colspan="2" style="text-align:center;">Vazio.</td></tr>';
+                else { res.users.forEach(u => { const tr = document.createElement('tr'); tr.innerHTML = `<td style="padding: 10px; border-bottom: 1px solid #21262d;">${u.email}</td><td style="padding: 10px; border-bottom: 1px solid #21262d; color: ${u.role.includes('admin') ? '#58a6ff' : '#8b949e'};">${u.role.toUpperCase()}</td>`; tbody.appendChild(tr); }); }
+            }
+        });
+
+        document.getElementById('btnCreateUser').addEventListener('click', () => {
+            const newEmail = document.getElementById('newUserEmail').value; const newPassword = document.getElementById('newUserPassword').value; const newRole = document.getElementById('newUserRole').value;
+            document.getElementById('btnCreateUser').innerText = '...';
+            auth.currentUser.getIdToken().then(token => socket.emit('admin_create_user', { token, newEmail, newPassword, newRole }));
+        });
+
+        socket.on('user_creation_result', (res) => {
+            alert(res.msg); document.getElementById('btnCreateUser').innerText = 'Cadastrar';
+            if(res.success) { document.getElementById('newUserEmail').value = ''; document.getElementById('newUserPassword').value = ''; auth.currentUser.getIdToken().then(token => socket.emit('admin_get_users', token)); }
         });
     </script>
 </body>
