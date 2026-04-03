@@ -77,6 +77,7 @@
         .btn-admin { display: none; }
         
         .btn-affiliate { background: linear-gradient(135deg, #d29922, #b07e15); color: #fff; text-decoration: none; padding: 15px; display: block; border-radius: 8px; font-weight: bold; font-size: 14px; margin-top: 15px; box-shadow: 0 5px 15px rgba(210, 153, 34, 0.3); animation: pulse 2s infinite; }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.03); } 100% { transform: scale(1); } }
 
         .overall-accuracy { background: #0d1117; border: 1px solid #30363d; border-radius: 8px; padding: 10px; text-align: center; font-weight: bold; margin-bottom: 15px; color: #c9d1d9; font-size: 14px; text-transform: uppercase; width: 100%; box-sizing: border-box; }
         .overall-accuracy span { color: #58a6ff; font-size: 18px; font-family: 'Orbitron', sans-serif; margin-left: 10px; }
@@ -102,6 +103,8 @@
         .text-warning { color: #d29922; font-weight: bold; }
         .text-muted { color: #8b949e; }
 
+        .modal-buttons { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+        .btn-cancel { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; }
         .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(13, 17, 23, 0.95); justify-content: center; align-items: center; z-index: 1000; }
     </style>
 </head>
@@ -110,7 +113,7 @@
     <div class="login-overlay" id="loginScreen" style="display: flex;">
         <div class="modal-box">
             <h2 style="color:#58a6ff; font-family:'Orbitron'; margin-top:0;">🚀 JS INVEST</h2>
-            <p style="font-size: 13px; color: #8b949e; margin-bottom: 25px;">Conecte sua conta da <b>Vellox Broker</b> para validar sua assinatura e liberar o Auto-Trading.</p>
+            <p style="font-size: 13px; color: #8b949e; margin-bottom: 25px;">Conecte sua conta da <b>Vellox Broker</b> para liberar a plataforma.</p>
             
             <input type="text" id="brokerLoginInput" placeholder="Login ou E-mail da Corretora" style="margin-bottom:10px;" />
             <input type="password" id="brokerPassInput" placeholder="Senha da Corretora" style="margin-bottom:20px;"/>
@@ -144,6 +147,8 @@
                 <select id="coinSelector">
                     <option value="btcusdt">BTC/USDT</option>
                     <option value="ethusdt">ETH/USDT</option>
+                    <option value="solusdt">SOL/USDT</option>
+                    <option value="bnbusdt">BNB/USDT</option>
                 </select>
             </div>
 
@@ -370,7 +375,6 @@
             strats.forEach(s => { const opt = document.createElement('option'); opt.value = s.id; opt.innerText = s.name; sel.appendChild(opt); });
         });
 
-        // 🌐 OUVINTE DE MOEDAS DINÂMICAS DA BINANCE
         socket.on('available_coins', (coins) => {
             const coinSel = document.getElementById('coinSelector');
             const currentVal = coinSel.value; 
