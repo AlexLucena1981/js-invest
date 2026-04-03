@@ -41,6 +41,7 @@ let currentEngineStatus = "Aguardando inicialização...";
 
 let currentConnectionId = 0; 
 let lastClosedCandleTime = 0; 
+let lastResolvedCandleTime = 0; // 🛡️ Trava de Respiro (Impede entradas grudadas uma na outra)
 
 let strategiesDB = [];
 let activeBrokers = {}; 
@@ -283,6 +284,7 @@ async function startConnection(symbol) {
     signalHistory = []; 
     scoreboard = { win1: 0, winG1: 0, winG2: 0, loss: 0 };
     lastClosedCandleTime = 0; 
+    lastResolvedCandleTime = 0; // Limpa o respiro ao mudar de estratégia
     
     const currentStrategy = strategiesDB.find(s => s.id === currentStrategyId);
     if (!currentStrategy) {
@@ -369,7 +371,6 @@ async function startConnection(symbol) {
                 
                 currentGlobalPrice = currentPrice;
 
-                // 🎯 O PULO DO GATO AQUI: Injetamos o sinal ativo na encomenda!
                 let currentActive = activeSignals.length > 0 ? activeSignals[0] : null;
                 io.emit('price_update', { 
                     price: currentPrice, 
@@ -377,7 +378,8 @@ async function startConnection(symbol) {
                     activeSignal: currentActive 
                 });
 
-                if (closePrices.length > 50 && !isCandleClosed) {
+                // Alerta pré-fechamento (Apenas se a trava de respiro permitir)
+                if (closePrices.length > 50 && !isCandleClosed && candleStartTime !== lastResolvedCandleTime) {
                     if (activeSignals.length === 0) {
                         let tempPrices = [...closePrices, currentPrice];
                         if (tempPrices.length > 150) {
@@ -409,6 +411,8 @@ async function startConnection(symbol) {
                         closePrices.shift();
                     }
 
+                    let signalResolvedThisCandle = false;
+
                     activeSignals = activeSignals.filter(sig => {
                         const won = (sig.type === 'CALL' && currentPrice > sig.entryPrice) || 
                                     (sig.type === 'PUT' && currentPrice < sig.entryPrice);
@@ -424,6 +428,7 @@ async function startConnection(symbol) {
                             
                             io.emit('signal_result', sig); 
                             io.emit('scoreboard', scoreboard); 
+                            signalResolvedThisCandle = true;
                             return false; 
                         } else {
                             updateBrokerProfits(sig.step, false, sig.isManual); 
@@ -435,6 +440,7 @@ async function startConnection(symbol) {
                                 
                                 io.emit('signal_result', sig); 
                                 io.emit('scoreboard', scoreboard); 
+                                signalResolvedThisCandle = true;
                                 return false; 
                             } else {
                                 sig.status = prefix + `Gale ${sig.step}...`; 
@@ -465,7 +471,13 @@ async function startConnection(symbol) {
                         }
                     });
 
-                    if (activeSignals.length === 0) {
+                    // Registra que uma operação finalizou agora para dar a Trava de Respiro
+                    if (signalResolvedThisCandle) {
+                        lastResolvedCandleTime = candleStartTime;
+                    }
+
+                    // Nova Entrada do Auto-Trade (Apenas se a fila estiver vazia E respeitar o Respiro)
+                    if (activeSignals.length === 0 && candleStartTime !== lastResolvedCandleTime) {
                         const newSignalType = evaluateStrategy(closePrices, currentStrategy);
                         
                         if (newSignalType) {
@@ -657,9 +669,20 @@ io.on('connection', (socket) => {
             return; 
         }
 
-        if (activeSignals.length > 0) {
-            socket.emit('sniper_error', 'Aguarde! Já existe uma operação em andamento.');
+        // 🛡️ A CORREÇÃO MÁGICA: O PASSE LIVRE DO SNIPER
+        // Tenta descobrir se o robô está REALMENTE operando com dinheiro no momento
+        const isBotTrading = Object.values(activeBrokers).some(b => b.autoTradeActive);
+        const hasRealSignal = activeSignals.some(s => s.isManual || isBotTrading);
+
+        if (activeSignals.length > 0 && hasRealSignal) {
+            socket.emit('sniper_error', 'Aguarde! Já existe uma operação real em andamento.');
             return;
+        }
+
+        // Se chegou aqui e tem sinal na fila, é um Sinal Virtual (Robô Desligado). 
+        // Nós limpamos a fila para o Sniper assumir o trono e disparar o tiro!
+        if (activeSignals.length > 0) {
+            activeSignals = []; 
         }
 
         if (currentGlobalPrice === 0) {

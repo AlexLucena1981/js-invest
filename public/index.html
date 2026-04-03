@@ -107,8 +107,6 @@
         .text-warning { color: #d29922; font-weight: bold; }
         .text-muted { color: #8b949e; }
 
-        .modal-buttons { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
-        .btn-cancel { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; }
         .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(13, 17, 23, 0.95); justify-content: center; align-items: center; z-index: 1000; }
     </style>
 </head>
@@ -126,7 +124,7 @@
             
             <div id="loginError" style="color: #f85149; margin-top: 15px; font-size: 12px; display: none; font-weight: bold;"></div>
             
-            <a href="https://velloxbroker.com/?ref=SEU_CODIGO_AQUI" target="_blank" class="btn-affiliate" id="btnAffiliate" style="display:none;">
+            <a href="https://joaosilva.top/corretora-vellox" target="_blank" class="btn-affiliate" id="btnAffiliate" style="display:none;">
                 ⭐ Não tem conta? Crie grátis e libere o robô!
             </a>
         </div>
@@ -251,13 +249,16 @@
             </div>
         </div>
 
-    </div>
+    </div> 
 
     <div class="modal-overlay" id="scriptModal">
         <div class="modal-box" style="text-align: left; width: 500px;">
             <h2 style="text-align: center; color: #58a6ff; font-family: 'Orbitron';">🔌 Plugar Novo Script</h2>
             <textarea id="jsonInput" style="width: 100%; height: 200px; background:#0d1117; color:#3fb950; font-family:monospace; padding:10px; border: 1px solid #30363d; border-radius: 8px;"></textarea>
-            <div class="modal-buttons"><button class="btn btn-cancel" id="btnCancelScript">Cancelar</button><button class="btn btn-save" style="width: auto;" id="btnSaveScript">Salvar & Injetar</button></div>
+            <div class="modal-buttons">
+                <button class="btn btn-cancel" id="btnCancelScript">Cancelar</button>
+                <button class="btn btn-save" style="width: auto;" id="btnSaveScript">Salvar & Injetar</button>
+            </div>
         </div>
     </div>
 
@@ -266,13 +267,25 @@
             <h2 style="color: #58a6ff; font-family: 'Orbitron';">👥 Gerenciar Usuários</h2>
             <div style="text-align: left; margin-bottom: 20px;">
                 <p style="color: #8b949e; font-size: 13px; margin-bottom: 5px;">Cadastrar Novo Assinante (Use o Login da Corretora):</p>
-                <div style="display: flex; gap: 10px;"><input type="text" id="newUserEmail" placeholder="Login / E-mail da Corretora" style="margin-bottom: 0;" /><input type="password" id="newUserPassword" placeholder="Senha App" style="margin-bottom: 0; width: 120px;" /></div>
-                <div style="display: flex; gap: 10px; margin-top: 10px;"><select id="newUserRole" style="margin-bottom: 0;"><option value="aluno">Acesso: ALUNO</option><option value="admin">Acesso: ADMIN</option></select><button class="btn btn-save" style="width: auto;" id="btnCreateUser">Cadastrar</button></div>
+                <div style="display: flex; gap: 10px;">
+                    <input type="text" id="newUserEmail" placeholder="Login / E-mail da Corretora" style="margin-bottom: 0;" />
+                    <input type="password" id="newUserPassword" placeholder="Senha App" style="margin-bottom: 0; width: 120px;" />
+                </div>
+                <div style="display: flex; gap: 10px; margin-top: 10px;">
+                    <select id="newUserRole" style="margin-bottom: 0;">
+                        <option value="aluno">Acesso: ALUNO</option>
+                        <option value="admin">Acesso: ADMIN</option>
+                    </select>
+                    <button class="btn btn-save" style="width: auto;" id="btnCreateUser">Cadastrar</button>
+                </div>
             </div>
+
             <div style="text-align: left; border-top: 1px solid #30363d; padding-top: 15px;">
                 <div style="max-height: 180px; overflow-y: auto; background: #0d1117; border-radius: 8px; border: 1px solid #30363d;">
                     <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 12px;">
-                        <thead style="position: sticky; top: 0; background: #161b22;"><tr><th style="padding: 10px; border-bottom: 1px solid #30363d;">E-mail / Login</th><th style="padding: 10px; border-bottom: 1px solid #30363d;">Nível</th></tr></thead>
+                        <thead style="position: sticky; top: 0; background: #161b22;">
+                            <tr><th style="padding: 10px; border-bottom: 1px solid #30363d;">E-mail / Login</th><th style="padding: 10px; border-bottom: 1px solid #30363d;">Nível</th></tr>
+                        </thead>
                         <tbody id="usersListBody"><tr><td colspan="2" style="text-align:center; padding: 15px;">Carregando...</td></tr></tbody>
                     </table>
                 </div>
@@ -291,64 +304,54 @@
         const auth = firebase.auth(); const socket = io();
 
         let isBotActive = false;
-        let currentEntryPrice = 0; // Guarda a cotação de entrada para o Gráfico
+        let currentEntryPrice = 0; 
 
-        // ==========================================
-        // 🎯 INICIALIZAÇÃO DO GRÁFICO CHART.JS
-        // ==========================================
         const ctx = document.getElementById('liveChart').getContext('2d');
         const liveChart = new Chart(ctx, {
             type: 'line',
             data: {
-                labels: [], // Linha do Tempo
+                labels: [], 
                 datasets: [
-                    {
-                        label: 'Preço Atual',
-                        data: [],
-                        borderColor: '#58a6ff',
-                        borderWidth: 2,
-                        pointRadius: 0,
-                        tension: 0.1
-                    },
-                    {
-                        label: 'Linha de Entrada',
-                        data: [],
-                        borderColor: '#8b949e',
-                        borderWidth: 1,
-                        borderDash: [5, 5], // Linha tracejada
-                        pointRadius: 0
-                    }
+                    { label: 'Preço Atual', data: [], borderColor: '#58a6ff', borderWidth: 2, pointRadius: 0, tension: 0.1 },
+                    { label: 'Linha de Entrada', data: [], borderColor: '#8b949e', borderWidth: 1, borderDash: [5, 5], pointRadius: 0 }
                 ]
             },
             options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                animation: false, // Desliga animação para não travar nos milissegundos
+                responsive: true, maintainAspectRatio: false, animation: false, 
                 plugins: { legend: { display: false } },
-                scales: {
-                    x: { display: false }, 
-                    y: { position: 'right', grid: { color: '#30363d' }, ticks: { color: '#8b949e', font: {size: 10} } }
-                }
+                scales: { x: { display: false }, y: { position: 'right', grid: { color: '#30363d' }, ticks: { color: '#8b949e', font: {size: 10} } } }
             }
         });
 
-        // LOGIN HÍBRIDO E AFILIADO
         document.getElementById('btnLogin').addEventListener('click', () => {
             const btn = document.getElementById('btnLogin');
             btn.innerText = "Autenticando Corretora...";
+            
             document.getElementById('loginError').style.display = 'none';
             document.getElementById('btnAffiliate').style.display = 'none';
-            socket.emit('hybrid_login', { brokerUser: document.getElementById('brokerLoginInput').value, brokerPass: document.getElementById('brokerPassInput').value });
+
+            socket.emit('hybrid_login', {
+                brokerUser: document.getElementById('brokerLoginInput').value,
+                brokerPass: document.getElementById('brokerPassInput').value
+            });
         });
 
         socket.on('hybrid_login_result', (res) => {
-            document.getElementById('btnLogin').innerText = "Acessar Sistema";
+            const btn = document.getElementById('btnLogin');
+            btn.innerText = "Acessar Sistema";
+
             if (res.success) {
                 auth.signInWithCustomToken(res.firebaseToken).then(() => {
                     document.getElementById('loginScreen').style.display = 'none';
                     document.getElementById('valReal').innerText = `R$ ${res.balance.real}`;
+                    document.getElementById('valDemo').innerText = res.balance.demo;
+                    
                     document.getElementById('manualTradePanel').style.display = 'flex';
-                    if (res.role === 'admin') { document.getElementById('btnAdminPanel').style.display = 'inline-block'; document.getElementById('btnOpenModal').style.display = 'inline-block'; }
+
+                    if (res.role === 'admin') {
+                        document.getElementById('btnAdminPanel').style.display = 'inline-block';
+                        document.getElementById('btnOpenModal').style.display = 'inline-block';
+                    }
                 }).catch(err => {
                     document.getElementById('loginError').innerText = "Erro Interno: " + err.message;
                     document.getElementById('loginError').style.display = 'block';
@@ -356,27 +359,27 @@
             } else {
                 document.getElementById('loginError').innerText = res.msg;
                 document.getElementById('loginError').style.display = 'block';
+                
                 if (res.reason === 'broker') {
                     document.getElementById('btnAffiliate').style.display = 'block';
                     alert("Conta não encontrada! Será redirecionado para criar a sua conta gratuitamente.");
-                    window.open('https://velloxbroker.com/?ref=SEU_CODIGO_AQUI', '_blank');
+                    window.open('https://joaosilva.top/corretora-vellox', '_blank');
                 }
             }
         });
 
-        document.getElementById('btnLogout').addEventListener('click', () => { auth.signOut().then(() => { window.location.reload(); }); });
+        document.getElementById('btnLogout').addEventListener('click', () => {
+            auth.signOut().then(() => { window.location.reload(); });
+        });
 
-        // CONTROLES
         socket.on('available_strategies', (strats) => {
             const sel = document.getElementById('strategySelector'); sel.innerHTML = '';
             strats.forEach(s => { const opt = document.createElement('option'); opt.value = s.id; opt.innerText = s.name; sel.appendChild(opt); });
         });
+
         document.getElementById('coinSelector').addEventListener('change', (e) => socket.emit('change_coin', e.target.value));
         document.getElementById('strategySelector').addEventListener('change', (e) => socket.emit('change_strategy', e.target.value));
 
-        // ==========================================
-        // 🎯 O CORAÇÃO DO PAINEL LIVE (TICK A TICK)
-        // ==========================================
         socket.on('price_update', (data) => {
             document.getElementById('priceValue').innerText = '$ ' + data.price.toFixed(2);
             document.getElementById('timerCircle').innerText = data.secondsLeft < 10 ? '0'+data.secondsLeft : data.secondsLeft;
@@ -384,7 +387,6 @@
             const liveCard = document.getElementById('liveTradeCard');
             
             if (data.activeSignal) {
-                // Revela o cartão se estiver escondido e limpa o gráfico velho
                 if (liveCard.style.display === 'none') {
                     liveCard.style.display = 'block';
                     liveChart.data.labels = [];
@@ -393,7 +395,6 @@
                     currentEntryPrice = data.activeSignal.entryPrice;
                 }
 
-                // Atualiza os textos
                 const isCall = data.activeSignal.type === 'CALL';
                 document.getElementById('liveDir').innerText = isCall ? '🟢 CALL' : '🔴 PUT';
                 document.getElementById('liveDir').style.color = isCall ? '#3fb950' : '#f85149';
@@ -401,7 +402,6 @@
                 document.getElementById('liveEntry').innerText = currentEntryPrice.toFixed(2);
                 document.getElementById('liveCurrent').innerText = data.price.toFixed(2);
 
-                // Lógica de Win/Loss visual
                 let isWin = (isCall && data.price > currentEntryPrice) || (!isCall && data.price < currentEntryPrice);
                 let isTie = data.price === currentEntryPrice;
                 
@@ -414,12 +414,10 @@
                     statusEl.innerText = 'LOSS 🔴'; statusEl.style.color = '#f85149';
                 }
 
-                // Injeta no Gráfico
                 liveChart.data.labels.push('');
                 liveChart.data.datasets[0].data.push(data.price);
-                liveChart.data.datasets[1].data.push(currentEntryPrice); // Linha tracejada reta
+                liveChart.data.datasets[1].data.push(currentEntryPrice); 
                 
-                // A linha do preço muda de cor consoante o status!
                 liveChart.data.datasets[0].borderColor = isTie ? '#d29922' : (isWin ? '#3fb950' : '#f85149');
 
                 if (liveChart.data.labels.length > 60) {
@@ -431,13 +429,10 @@
                 liveChart.update();
 
             } else {
-                liveCard.style.display = 'none'; // Esconde quando não há operações
+                liveCard.style.display = 'none'; 
             }
         });
 
-        // ==========================================
-        // ANIMAÇÕES DE PRÉ-ALERTA E AUTO-TRADE
-        // ==========================================
         socket.on('pre_alert', (data) => {
             const alertBox = document.getElementById('alertBox');
             if(data.call || data.put) {
@@ -476,9 +471,6 @@
             }
         });
 
-        // ==========================================
-        // ATUALIZAÇÃO OTIMISTA DE SALDO
-        // ==========================================
         socket.on('update_balance', (data) => {
             const el = document.getElementById(data.isDemo ? 'valDemo' : 'valReal');
             el.innerText = `R$ ${data.balance}`;
@@ -489,12 +481,14 @@
         socket.on('win_balance_update', (data) => {
             const elId = data.isDemo ? 'valDemo' : 'valReal';
             const el = document.getElementById(elId);
+            
             let currentText = el.innerText.replace('R$ ', '').replace(/\./g, '').replace(',', '.');
             let currentVal = parseFloat(currentText);
             
             if (!isNaN(currentVal)) {
                 let newVal = currentVal + data.prize;
                 el.innerText = `R$ ${newVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                
                 el.style.color = '#3fb950'; 
                 el.style.textShadow = '0 0 15px rgba(63, 185, 80, 0.8)';
                 setTimeout(() => { 
@@ -509,21 +503,26 @@
 
         document.getElementById('btnManualCall').addEventListener('click', () => { 
             if(confirm("Confirma COMPRA manual?")) { 
-                const config = { accountType: document.getElementById('riskAccount').value, baseAmount: parseFloat(document.getElementById('riskAmount').value), maxGale: parseInt(document.getElementById('riskGale').value) };
+                const config = {
+                    accountType: document.getElementById('riskAccount').value,
+                    baseAmount: parseFloat(document.getElementById('riskAmount').value),
+                    maxGale: parseInt(document.getElementById('riskGale').value)
+                };
                 socket.emit('manual_trade', { direction: 'CALL', config: config }); 
             } 
         });
 
         document.getElementById('btnManualPut').addEventListener('click', () => { 
             if(confirm("Confirma VENDA manual?")) { 
-                const config = { accountType: document.getElementById('riskAccount').value, baseAmount: parseFloat(document.getElementById('riskAmount').value), maxGale: parseInt(document.getElementById('riskGale').value) };
+                const config = {
+                    accountType: document.getElementById('riskAccount').value,
+                    baseAmount: parseFloat(document.getElementById('riskAmount').value),
+                    maxGale: parseInt(document.getElementById('riskGale').value)
+                };
                 socket.emit('manual_trade', { direction: 'PUT', config: config }); 
             } 
         });
 
-        // ==========================================
-        // HISTÓRICO COM NOME DA MOEDA
-        // ==========================================
         const historyTableBody = document.getElementById('historyTableBody');
         
         socket.on('history_dump', (historyArr) => {
@@ -561,6 +560,7 @@
         socket.on('new_signal_history', (sig) => {
             const tr = document.createElement('tr'); tr.id = `sig-${sig.id}`;
             let colorClass = 'text-warning';
+            
             if (sig.status.includes('Sniper') || sig.status.includes('Manual')) colorClass = 'text-warning';
             
             tr.innerHTML = `<td class="text-muted">${sig.time}</td>
@@ -579,7 +579,6 @@
             }
         });
 
-        // MODAIS
         const scriptModal = document.getElementById('scriptModal');
         document.getElementById('btnOpenModal').addEventListener('click', () => { scriptModal.style.display = 'flex'; });
         document.getElementById('btnCancelScript').addEventListener('click', () => { scriptModal.style.display = 'none'; });
@@ -595,7 +594,8 @@
 
         const adminModal = document.getElementById('adminModal');
         document.getElementById('btnAdminPanel').addEventListener('click', () => { 
-            adminModal.style.display = 'flex'; auth.currentUser.getIdToken().then(token => socket.emit('admin_get_users', token));
+            adminModal.style.display = 'flex'; 
+            auth.currentUser.getIdToken().then(token => socket.emit('admin_get_users', token));
         });
         document.getElementById('btnCancelAdmin').addEventListener('click', () => { adminModal.style.display = 'none'; });
 
@@ -603,20 +603,33 @@
             const tbody = document.getElementById('usersListBody'); tbody.innerHTML = '';
             if (res.success) {
                 if (res.users.length === 0) tbody.innerHTML = '<tr><td colspan="2" style="text-align:center;">Vazio.</td></tr>';
-                else { res.users.forEach(u => { const tr = document.createElement('tr'); tr.innerHTML = `<td style="padding: 10px; border-bottom: 1px solid #21262d;">${u.email}</td><td style="padding: 10px; border-bottom: 1px solid #21262d; color: ${u.role.includes('admin') ? '#58a6ff' : '#8b949e'};">${u.role.toUpperCase()}</td>`; tbody.appendChild(tr); }); }
+                else {
+                    res.users.forEach(u => {
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `<td style="padding: 10px; border-bottom: 1px solid #21262d;">${u.email}</td>
+                                        <td style="padding: 10px; border-bottom: 1px solid #21262d; color: ${u.role.includes('admin') ? '#58a6ff' : '#8b949e'};">${u.role.toUpperCase()}</td>`;
+                        tbody.appendChild(tr);
+                    });
+                }
             }
         });
 
         document.getElementById('btnCreateUser').addEventListener('click', () => {
-            const newEmail = document.getElementById('newUserEmail').value; const newPassword = document.getElementById('newUserPassword').value; const newRole = document.getElementById('newUserRole').value;
+            const newEmail = document.getElementById('newUserEmail').value;
+            const newPassword = document.getElementById('newUserPassword').value;
+            const newRole = document.getElementById('newUserRole').value;
             document.getElementById('btnCreateUser').innerText = '...';
             auth.currentUser.getIdToken().then(token => socket.emit('admin_create_user', { token, newEmail, newPassword, newRole }));
         });
 
         socket.on('user_creation_result', (res) => {
             alert(res.msg); document.getElementById('btnCreateUser').innerText = 'Cadastrar';
-            if(res.success) { document.getElementById('newUserEmail').value = ''; document.getElementById('newUserPassword').value = ''; auth.currentUser.getIdToken().then(token => socket.emit('admin_get_users', token)); }
+            if(res.success) {
+                document.getElementById('newUserEmail').value = ''; document.getElementById('newUserPassword').value = '';
+                auth.currentUser.getIdToken().then(token => socket.emit('admin_get_users', token));
+            }
         });
+
     </script>
 </body>
 </html>
