@@ -18,9 +18,7 @@
         h1 { font-family: 'Orbitron', sans-serif; color: #58a6ff; margin-top: 0; text-align: center; font-size: 28px; letter-spacing: 2px;}
         .subtitle { font-size: 12px; color: #8b949e; text-transform: uppercase; margin-top: -15px; margin-bottom: 20px; letter-spacing: 1px; text-align: center;}
 
-        .main-container {
-            display: flex; gap: 30px; width: 100%; max-width: 1000px; justify-content: center; align-items: flex-start;
-        }
+        .main-container { display: flex; gap: 30px; width: 100%; max-width: 1000px; justify-content: center; align-items: flex-start; }
 
         .dashboard, .history-panel {
             background: #161b22; border: 1px solid #30363d; border-radius: 16px;
@@ -29,10 +27,7 @@
             flex: 1; width: 100%;
         }
 
-        @media (max-width: 900px) {
-            .main-container { flex-direction: column; align-items: center; }
-            .dashboard, .history-panel { max-width: 450px; }
-        }
+        @media (max-width: 900px) { .main-container { flex-direction: column; align-items: center; } .dashboard, .history-panel { max-width: 450px; } }
 
         .controls { display: grid; grid-template-columns: 2fr 1fr; gap: 10px; width: 100%; margin-bottom: 20px; box-sizing: border-box; }
         .script-group { display: flex; gap: 5px; width: 100%; }
@@ -149,8 +144,6 @@
                 <select id="coinSelector">
                     <option value="btcusdt">BTC/USDT</option>
                     <option value="ethusdt">ETH/USDT</option>
-                    <option value="solusdt">SOL/USDT</option>
-                    <option value="bnbusdt">BNB/USDT</option>
                 </select>
             </div>
 
@@ -375,6 +368,27 @@
         socket.on('available_strategies', (strats) => {
             const sel = document.getElementById('strategySelector'); sel.innerHTML = '';
             strats.forEach(s => { const opt = document.createElement('option'); opt.value = s.id; opt.innerText = s.name; sel.appendChild(opt); });
+        });
+
+        // 🌐 OUVINTE DE MOEDAS DINÂMICAS DA BINANCE
+        socket.on('available_coins', (coins) => {
+            const coinSel = document.getElementById('coinSelector');
+            const currentVal = coinSel.value; 
+            
+            coinSel.innerHTML = ''; 
+            
+            coins.forEach(coin => {
+                const opt = document.createElement('option');
+                opt.value = coin;
+                opt.innerText = coin.replace('usdt', '').toUpperCase() + '/USDT';
+                coinSel.appendChild(opt);
+            });
+            
+            if (coins.includes(currentVal)) {
+                coinSel.value = currentVal;
+            } else if (coins.includes('btcusdt')) {
+                coinSel.value = 'btcusdt'; 
+            }
         });
 
         document.getElementById('coinSelector').addEventListener('change', (e) => socket.emit('change_coin', e.target.value));
