@@ -58,6 +58,7 @@
         .timer-circle { width: 90px; height: 90px; border-radius: 50%; border: 5px solid #30363d; display: flex; justify-content: center; align-items: center; font-family: 'Orbitron', sans-serif; font-size: 32px; font-weight: 700; color: #58a6ff; }
         .price-box { font-size: 26px; font-weight: bold; margin-bottom: 20px; font-family: 'Orbitron'; text-align: center; }
         
+        /* 🎯 EFEITOS DE PULSO */
         @keyframes pulseGreen { 0% { box-shadow: 0 0 0 0 rgba(46,160,67, 0.7); } 70% { box-shadow: 0 0 0 20px rgba(46,160,67, 0); } 100% { box-shadow: 0 0 0 0 rgba(46,160,67, 0); } }
         @keyframes pulseOrange { 0% { box-shadow: 0 0 0 0 rgba(210,153,34, 0.7); } 70% { box-shadow: 0 0 0 20px rgba(210,153,34, 0); } 100% { box-shadow: 0 0 0 0 rgba(210,153,34, 0); } }
         
@@ -77,7 +78,6 @@
         .btn-admin { display: none; }
         
         .btn-affiliate { background: linear-gradient(135deg, #d29922, #b07e15); color: #fff; text-decoration: none; padding: 15px; display: block; border-radius: 8px; font-weight: bold; font-size: 14px; margin-top: 15px; box-shadow: 0 5px 15px rgba(210, 153, 34, 0.3); animation: pulse 2s infinite; }
-        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.03); } 100% { transform: scale(1); } }
 
         .overall-accuracy { background: #0d1117; border: 1px solid #30363d; border-radius: 8px; padding: 10px; text-align: center; font-weight: bold; margin-bottom: 15px; color: #c9d1d9; font-size: 14px; text-transform: uppercase; width: 100%; box-sizing: border-box; }
         .overall-accuracy span { color: #58a6ff; font-size: 18px; font-family: 'Orbitron', sans-serif; margin-left: 10px; }
@@ -113,7 +113,7 @@
     <div class="login-overlay" id="loginScreen" style="display: flex;">
         <div class="modal-box">
             <h2 style="color:#58a6ff; font-family:'Orbitron'; margin-top:0;">🚀 JS INVEST</h2>
-            <p style="font-size: 13px; color: #8b949e; margin-bottom: 25px;">Conecte sua conta da <b>Vellox Broker</b> para liberar a plataforma.</p>
+            <p style="font-size: 13px; color: #8b949e; margin-bottom: 25px;">Conecte sua conta da <b>Vellox Broker</b> para validar sua assinatura e liberar o Auto-Trading.</p>
             
             <input type="text" id="brokerLoginInput" placeholder="Login ou E-mail da Corretora" style="margin-bottom:10px;" />
             <input type="password" id="brokerPassInput" placeholder="Senha da Corretora" style="margin-bottom:20px;"/>
@@ -147,8 +147,6 @@
                 <select id="coinSelector">
                     <option value="btcusdt">BTC/USDT</option>
                     <option value="ethusdt">ETH/USDT</option>
-                    <option value="solusdt">SOL/USDT</option>
-                    <option value="bnbusdt">BNB/USDT</option>
                 </select>
             </div>
 
@@ -279,6 +277,7 @@
             </div>
 
             <div style="text-align: left; border-top: 1px solid #30363d; padding-top: 15px;">
+                <p style="color: #8b949e; font-size: 13px; margin-bottom: 10px;">Usuários na Plataforma:</p>
                 <div style="max-height: 180px; overflow-y: auto; background: #0d1117; border-radius: 8px; border: 1px solid #30363d;">
                     <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 12px;">
                         <thead style="position: sticky; top: 0; background: #161b22;">
@@ -304,6 +303,7 @@
         let isBotActive = false;
         let currentEntryPrice = 0; 
 
+        // 🎯 INICIALIZAÇÃO DO GRÁFICO
         const ctx = document.getElementById('liveChart').getContext('2d');
         const liveChart = new Chart(ctx, {
             type: 'line',
@@ -321,6 +321,9 @@
             }
         });
 
+        // ==========================================
+        // LOGIN & AFILIADO
+        // ==========================================
         document.getElementById('btnLogin').addEventListener('click', () => {
             const btn = document.getElementById('btnLogin');
             btn.innerText = "Autenticando Corretora...";
@@ -361,6 +364,7 @@
                 if (res.reason === 'broker') {
                     document.getElementById('btnAffiliate').style.display = 'block';
                     alert("Conta não encontrada! Será redirecionado para criar a sua conta gratuitamente.");
+                    // 🎯 LINK DO AFILIADO CORRETO
                     window.open('https://joaosilva.top/corretora-vellox', '_blank');
                 }
             }
@@ -370,6 +374,9 @@
             auth.signOut().then(() => { window.location.reload(); });
         });
 
+        // ==========================================
+        // CARREGAMENTO DE ESTRATÉGIAS E MOEDAS
+        // ==========================================
         socket.on('available_strategies', (strats) => {
             const sel = document.getElementById('strategySelector'); sel.innerHTML = '';
             strats.forEach(s => { const opt = document.createElement('option'); opt.value = s.id; opt.innerText = s.name; sel.appendChild(opt); });
@@ -398,6 +405,9 @@
         document.getElementById('coinSelector').addEventListener('change', (e) => socket.emit('change_coin', e.target.value));
         document.getElementById('strategySelector').addEventListener('change', (e) => socket.emit('change_strategy', e.target.value));
 
+        // ==========================================
+        // 🎯 ATUALIZAÇÃO DO GRÁFICO E PREÇO
+        // ==========================================
         socket.on('price_update', (data) => {
             document.getElementById('priceValue').innerText = '$ ' + data.price.toFixed(2);
             document.getElementById('timerCircle').innerText = data.secondsLeft < 10 ? '0'+data.secondsLeft : data.secondsLeft;
@@ -451,6 +461,9 @@
             }
         });
 
+        // ==========================================
+        // EFEITOS VISUAIS E AVISOS
+        // ==========================================
         socket.on('pre_alert', (data) => {
             const alertBox = document.getElementById('alertBox');
             if(data.call || data.put) {
@@ -489,6 +502,9 @@
             }
         });
 
+        // ==========================================
+        // ATUALIZAÇÃO MATEMÁTICA DO SALDO
+        // ==========================================
         socket.on('update_balance', (data) => {
             const el = document.getElementById(data.isDemo ? 'valDemo' : 'valReal');
             el.innerText = `R$ ${data.balance}`;
@@ -516,6 +532,9 @@
             }
         });
 
+        // ==========================================
+        // 🎯 TIRO SNIPER MANUAL LENDO OS INPUTS DA TELA
+        // ==========================================
         socket.on('sniper_success', (msg) => { alert("✅ " + msg); });
         socket.on('sniper_error', (msg) => { alert("❌ Erro: " + msg); });
 
@@ -541,6 +560,9 @@
             } 
         });
 
+        // ==========================================
+        // TABELAS DE HISTÓRICO COM A MOEDA CARIMBADA
+        // ==========================================
         const historyTableBody = document.getElementById('historyTableBody');
         
         socket.on('history_dump', (historyArr) => {
@@ -597,6 +619,9 @@
             }
         });
 
+        // ==========================================
+        // MODAIS E ADMINISTRAÇÃO
+        // ==========================================
         const scriptModal = document.getElementById('scriptModal');
         document.getElementById('btnOpenModal').addEventListener('click', () => { scriptModal.style.display = 'flex'; });
         document.getElementById('btnCancelScript').addEventListener('click', () => { scriptModal.style.display = 'none'; });

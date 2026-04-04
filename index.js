@@ -41,14 +41,14 @@ let currentEngineStatus = "Aguardando inicialização...";
 
 let currentConnectionId = 0; 
 let lastClosedCandleTime = 0; 
-let lastResolvedCandleTime = 0; 
+let lastResolvedCandleTime = 0; // Trava de Respiro (Evita metralhadora de sinais)
 
 let strategiesDB = [];
 let activeBrokers = {}; 
-let availableCoins = ['btcusdt', 'ethusdt', 'solusdt', 'bnbusdt']; 
+let availableCoins = ['btcusdt', 'ethusdt', 'solusdt', 'bnbusdt']; // Fallback seguro
 
 // ============================================================================
-// 3. CARREGAMENTO DE DADOS (BINANCE E FIREBASE)
+// 3. CARREGAMENTO DE DADOS E MOEDAS (BINANCE API)
 // ============================================================================
 async function loadStrategiesFromDB() {
     try {
@@ -182,9 +182,7 @@ async function dispararOrdemVellox(socketId, tokenUsuario, accountId, isDemo, sy
         console.log(`[✅ DISPARO EXECUTADO] R$ ${amount} | Direção: ${direction} | Conta ID: ${accountId}`);
 
         let novoSaldo = response.data.user_credit;
-        if (!novoSaldo && response.data.data) {
-            novoSaldo = response.data.data.user_credit;
-        }
+        if (!novoSaldo && response.data.data) novoSaldo = response.data.data.user_credit;
 
         return { success: true, balance: novoSaldo };
 
@@ -195,7 +193,7 @@ async function dispararOrdemVellox(socketId, tokenUsuario, accountId, isDemo, sy
 }
 
 // ============================================================================
-// 6. GESTOR DE RISCO E LUCRO
+// 6. GESTOR DE RISCO E LUCRO (COM STOP WIN E LOSS)
 // ============================================================================
 function updateBrokerProfits(step, isWin, isManual = false) {
     Object.values(activeBrokers).forEach(broker => {
@@ -307,9 +305,11 @@ async function startConnection(symbol) {
                 
                 currentGlobalPrice = currentPrice;
 
+                // Envia a telemetria ao vivo para o Gráfico Raio-X
                 let currentActive = activeSignals.length > 0 ? activeSignals[0] : null;
                 io.emit('price_update', { price: currentPrice, secondsLeft: secondsLeft, activeSignal: currentActive });
 
+                // Alerta pré-fechamento (Apenas se a trava de respiro permitir)
                 if (closePrices.length > 50 && !isCandleClosed && candleStartTime !== lastResolvedCandleTime) {
                     if (activeSignals.length === 0) {
                         let tempPrices = [...closePrices, currentPrice];
@@ -372,8 +372,10 @@ async function startConnection(symbol) {
                         }
                     });
 
+                    // Registra Respiro: Dá 1 vela de pausa antes de procurar o próximo padrão
                     if (signalResolvedThisCandle) lastResolvedCandleTime = candleStartTime;
 
+                    // Nova Entrada (Apenas se a fila estiver vazia E respeitar o Respiro)
                     if (activeSignals.length === 0 && candleStartTime !== lastResolvedCandleTime) {
                         const newSignalType = evaluateStrategy(closePrices, currentStrategy);
                         
@@ -430,7 +432,7 @@ io.on('connection', (socket) => {
     
     socket.emit('status', { msg: currentEngineStatus });
     socket.emit('available_strategies', strategiesDB.map(s => ({ id: s.id, name: s.name })));
-    socket.emit('available_coins', availableCoins); 
+    socket.emit('available_coins', availableCoins); // 🌐 Lista dinâmica da Binance
     socket.emit('scoreboard', scoreboard);
     socket.emit('history_dump', signalHistory);
     
@@ -448,40 +450,29 @@ io.on('connection', (socket) => {
             const brokerToken = loginResponse.data.token || loginResponse.data.access_token;
             if (!brokerToken) throw new Error("BROKER_FAIL");
 
-            // 🎯 ESPIÕES INJETADOS PARA DESCOBRIR OS IDs DAS CONTAS!
-            console.log("\n======================================");
-            console.log("🕵️‍♂️ DADOS DO LOGIN VELLOX:", JSON.stringify(loginResponse.data, null, 2));
-            console.log("======================================\n");
-
-            let uid = brokerUser; 
-            let userRole = 'aluno';
+            let isSubscribed = false; let uid = ''; let userRole = 'aluno';
             const userLower = brokerUser.toLowerCase();
             
             if (userLower === MASTER_EMAIL.toLowerCase() || userLower === MASTER_BROKER_LOGIN.toLowerCase()) {
-                uid = 'admin_master'; userRole = 'admin';
+                isSubscribed = true; uid = 'admin_master'; userRole = 'admin';
             } else {
                 const snapshot = await db.collection('users').where('email', '==', brokerUser).get();
-                if (!snapshot.empty) { uid = snapshot.docs[0].id; userRole = snapshot.docs[0].data().role; }
+                if (!snapshot.empty) { isSubscribed = true; uid = snapshot.docs[0].id; userRole = snapshot.docs[0].data().role; }
+            }
+
+            if (!isSubscribed) {
+                socket.emit('hybrid_login_result', { success: false, reason: 'subscription', msg: 'Assinatura Inativa. Adquira seu acesso ao JS Invest para continuar.' });
+                return;
             }
 
             const customToken = await admin.auth().createCustomToken(uid, { email: brokerUser });
             
             const balanceResponse = await axios.get(`${API_BASE_URL}/api/public/users/balance`, { headers: { 'Authorization': `Bearer ${brokerToken}` } });
-            
-            console.log("\n======================================");
-            console.log("🕵️‍♂️ DADOS DO SALDO VELLOX:", JSON.stringify(balanceResponse.data, null, 2));
-            console.log("======================================\n");
-
             const realBalance = balanceResponse.data.credit || "0,00";
             
             activeBrokers[socket.id] = { 
-                socketId: socket.id, 
-                token: brokerToken, 
-                demoAccountId: '8', // Nós vamos trocar isto assim que você me passar o log!
-                realAccountId: '1', // Nós vamos trocar isto assim que você me passar o log!
-                autoTradeActive: false, 
-                config: { active: false, accountType: 'demo', baseAmount: 5, maxGale: 2, stopWin: 99999, stopLoss: 99999 }, 
-                sessionProfit: 0 
+                socketId: socket.id, token: brokerToken, demoAccountId: '8', realAccountId: '0', autoTradeActive: false, 
+                config: { active: false, accountType: 'demo', baseAmount: 5, maxGale: 2, stopWin: 99999, stopLoss: 99999 }, sessionProfit: 0 
             };
             
             socket.emit('hybrid_login_result', { success: true, firebaseToken: customToken, role: userRole, balance: { demo: "--- (Dê 1 tiro para carregar)", real: realBalance } });
@@ -501,17 +492,17 @@ io.on('connection', (socket) => {
         }
     });
 
+    // 🎯 O MODO SNIPER TOTALMENTE BLINDADO
     socket.on('manual_trade', async (data) => {
-        // 🛡️ MÁXIMA SEGURANÇA: Se vier String (cache velho da tela), a gente converte!
-        const direction = typeof data === 'string' ? data : data.direction;
-        const frontendConfig = typeof data === 'string' ? null : data.config;
-
+        const direction = data.direction;
+        const frontendConfig = data.config;
         const broker = activeBrokers[socket.id];
         
         if (!broker || !broker.token) {
             socket.emit('sniper_error', 'Você precisa conectar na corretora antes de atirar!'); return; 
         }
 
+        // Trava para não atropelar operação real rodando
         const isBotTrading = Object.values(activeBrokers).some(b => b.autoTradeActive);
         const hasRealSignal = activeSignals.some(s => s.isManual || isBotTrading);
 
@@ -519,6 +510,7 @@ io.on('connection', (socket) => {
             socket.emit('sniper_error', 'Aguarde! Já existe uma operação real em andamento.'); return;
         }
 
+        // Se for um sinal apenas visual da tela, o Sniper destrói e assume a prioridade!
         if (activeSignals.length > 0) activeSignals = []; 
 
         if (currentGlobalPrice === 0) {
@@ -526,7 +518,6 @@ io.on('connection', (socket) => {
             if (currentGlobalPrice === 0) { socket.emit('sniper_error', 'Aguardando sincronização de preço com a Binance...'); return; }
         }
 
-        // Lê os valores da interface no momento do clique (Se existirem!)
         if (frontendConfig) {
             if (!broker.config) broker.config = { active: false, stopWin: 99999, stopLoss: 99999 };
             broker.config.accountType = frontendConfig.accountType;
@@ -534,17 +525,17 @@ io.on('connection', (socket) => {
             broker.config.maxGale = frontendConfig.maxGale;
         }
 
-        let accType = broker.config ? broker.config.accountType : 'demo';
-        let amount = broker.config ? parseFloat(broker.config.baseAmount).toFixed(2).replace('.', ',') : '5,00';
+        let accType = broker.config.accountType;
+        let amount = parseFloat(broker.config.baseAmount).toFixed(2).replace('.', ',');
         let isDemo = accType === 'demo';
         let accId = isDemo ? broker.demoAccountId : broker.realAccountId;
 
-        console.log(`[🎯 MODO SNIPER] Atirando ${direction} R$ ${amount} | Conta ID: ${accId}`);
+        console.log(`[🎯 MODO SNIPER] Usuário atirando ${direction} R$ ${amount}...`);
         
         const result = await dispararOrdemVellox(broker.socketId, broker.token, accId, isDemo, currentSymbol, direction, amount, currentGlobalPrice);
 
         if (result.success) {
-            socket.emit('sniper_success', `Ordem ${direction} de R$ ${amount} enviada!`);
+            socket.emit('sniper_success', `Ordem ${direction} enviada!`);
             if (result.balance) socket.emit('update_balance', { isDemo: isDemo, balance: result.balance });
 
             const manualSig = { 
@@ -590,7 +581,7 @@ io.on('connection', (socket) => {
     socket.on('change_coin', (newSymbol) => { currentSymbol = newSymbol; startConnection(currentSymbol); });
     socket.on('change_strategy', (newStrategyId) => { currentStrategyId = newStrategyId; startConnection(currentSymbol); });
     socket.on('add_new_strategy', async (newStrategy) => {
-        try { const exists = strategiesDB.find(s => s.id === newStrategy.id); if (!exists) { await db.collection('scripts').doc(newStrategy.id).set(newStrategy); strategiesDB.push(newStrategy); io.emit('available_strategies', strategiesDB.map(s => ({ id: s.id, name: s.name }))); } } catch (e) { console.error("Erro ao adicionar script:", e); }
+        try { const exists = strategiesDB.find(s => s.id === newStrategy.id); if (!exists) { await db.collection('scripts').doc(newStrategy.id).set(newStrategy); strategiesDB.push(newStrategy); io.emit('available_strategies', strategiesDB.map(s => ({ id: s.id, name: s.name }))); } } catch (e) { console.error("Erro:", e); }
     });
 
     socket.on('disconnect', () => { if (activeBrokers[socket.id]) delete activeBrokers[socket.id]; });
