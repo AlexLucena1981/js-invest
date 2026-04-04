@@ -41,14 +41,14 @@ let currentEngineStatus = "Aguardando inicialização...";
 
 let currentConnectionId = 0; 
 let lastClosedCandleTime = 0; 
-let lastResolvedCandleTime = 0; // Trava de Respiro (Evita metralhadora de sinais)
+let lastResolvedCandleTime = 0; 
 
 let strategiesDB = [];
 let activeBrokers = {}; 
-let availableCoins = ['btcusdt', 'ethusdt', 'solusdt', 'bnbusdt']; // Fallback seguro
+let availableCoins = ['btcusdt', 'ethusdt', 'solusdt', 'bnbusdt']; 
 
 // ============================================================================
-// 3. CARREGAMENTO DE DADOS E MOEDAS (BINANCE API)
+// 3. CARREGAMENTO DE DADOS (BINANCE E FIREBASE)
 // ============================================================================
 async function loadStrategiesFromDB() {
     try {
@@ -157,43 +157,67 @@ function evaluateStrategy(prices, strategyConfig) {
 }
 
 // ============================================================================
-// 5. MÓDULO DE EXECUÇÃO NA CORRETORA E ATUALIZAÇÃO DE SALDO
+// 5. MÓDULO DE EXECUÇÃO (COM AUTO-CURA PARA CONTAS DEMO 8 e 15)
 // ============================================================================
-async function dispararOrdemVellox(socketId, tokenUsuario, accountId, isDemo, symbol, direction, amount, currentPrice) {
-    try {
+async function dispararOrdemVellox(broker, isDemo, symbol, direction, amount, currentPrice) {
+    // 🎯 A CONSTANTE UNIVERSAL QUE VOCÊ DESCOBRIU
+    let accountId = isDemo ? broker.demoAccountId : broker.realAccountId; 
+
+    const executeTrade = async (accId) => {
         const tradeData = new URLSearchParams();
-        tradeData.append('transaction_account_id', accountId); 
+        tradeData.append('transaction_account_id', accId); 
         tradeData.append('expiration', '1'); 
         tradeData.append('amount', amount); 
         tradeData.append('direction', direction === 'CALL' ? '1' : '0'); 
         tradeData.append('symbol', symbol.toUpperCase()); 
         tradeData.append('symbol_price', currentPrice.toString()); 
 
-        const API_BASE_URL = 'https://velloxbroker.com';
-        
-        const response = await axios.put(`${API_BASE_URL}/api/public/applications/transaction`, tradeData, {
+        return await axios.put(`https://velloxbroker.com/api/public/applications/transaction`, tradeData, {
             headers: {
                 'Accept': 'application/json',
                 'Content-Type': 'application/x-www-form-urlencoded',
-                'Authorization': `Bearer ${tokenUsuario}` 
+                'Authorization': `Bearer ${broker.token}` 
             }
         });
+    };
 
+    try {
+        // Tentativa 1: Vai com o ID que está na memória
+        const response = await executeTrade(accountId);
         console.log(`[✅ DISPARO EXECUTADO] R$ ${amount} | Direção: ${direction} | Conta ID: ${accountId}`);
-
-        let novoSaldo = response.data.user_credit;
-        if (!novoSaldo && response.data.data) novoSaldo = response.data.data.user_credit;
-
+        let novoSaldo = response.data.user_credit || (response.data.data ? response.data.data.user_credit : null);
         return { success: true, balance: novoSaldo };
 
     } catch (error) {
-        console.error(`[❌ ERRO NO DISPARO]`, error.response ? error.response.data : error.message);
-        return { success: false, msg: error.response ? JSON.stringify(error.response.data) : error.message };
+        let errorMsg = error.response ? JSON.stringify(error.response.data) : error.message;
+
+        // 🛡️ O MILAGRE DO SELF-HEALING: Se falhar na Demo por conta do ID, ele troca e tenta de novo!
+        if (isDemo && errorMsg.includes("Conta de operação não encontrada")) {
+            console.log(`♻️ ID Demo [${accountId}] rejeitado pela Corretora. Ativando Auto-Cura...`);
+            
+            // Alterna a memória do robô permanentemente para esta sessão
+            broker.demoAccountId = (broker.demoAccountId === '8') ? '15' : '8';
+            accountId = broker.demoAccountId;
+            
+            try {
+                // Tentativa 2 (Silenciosa): Dispara com a engrenagem nova
+                const retryResponse = await executeTrade(accountId);
+                console.log(`[✅ DISPARO RECUPERADO COM SUCESSO] Conta ID adaptada para: ${accountId}`);
+                let novoSaldo = retryResponse.data.user_credit || (retryResponse.data.data ? retryResponse.data.data.user_credit : null);
+                return { success: true, balance: novoSaldo };
+            } catch (retryError) {
+                // Se a segunda falhar, aí sim entregamos o erro para a tela
+                errorMsg = retryError.response ? JSON.stringify(retryError.response.data) : retryError.message;
+            }
+        }
+
+        console.error(`[❌ ERRO NO DISPARO]`, errorMsg);
+        return { success: false, msg: errorMsg };
     }
 }
 
 // ============================================================================
-// 6. GESTOR DE RISCO E LUCRO (COM STOP WIN E LOSS)
+// 6. GESTOR DE RISCO E LUCRO
 // ============================================================================
 function updateBrokerProfits(step, isWin, isManual = false) {
     Object.values(activeBrokers).forEach(broker => {
@@ -305,11 +329,9 @@ async function startConnection(symbol) {
                 
                 currentGlobalPrice = currentPrice;
 
-                // Envia a telemetria ao vivo para o Gráfico Raio-X
                 let currentActive = activeSignals.length > 0 ? activeSignals[0] : null;
                 io.emit('price_update', { price: currentPrice, secondsLeft: secondsLeft, activeSignal: currentActive });
 
-                // Alerta pré-fechamento (Apenas se a trava de respiro permitir)
                 if (closePrices.length > 50 && !isCandleClosed && candleStartTime !== lastResolvedCandleTime) {
                     if (activeSignals.length === 0) {
                         let tempPrices = [...closePrices, currentPrice];
@@ -362,9 +384,9 @@ async function startConnection(symbol) {
                                     
                                     let valorGale = broker.config.baseAmount * Math.pow(2, sig.step);
                                     let isDemo = broker.config.accountType === 'demo';
-                                    let accId = isDemo ? broker.demoAccountId : broker.realAccountId;
                                     
-                                    const result = await dispararOrdemVellox(broker.socketId, broker.token, accId, isDemo, currentSymbol, sig.type, valorGale.toFixed(2).replace('.', ','), currentPrice);
+                                    // Chama o método blindado passando o broker inteiro
+                                    const result = await dispararOrdemVellox(broker, isDemo, currentSymbol, sig.type, valorGale.toFixed(2).replace('.', ','), currentPrice);
                                     if (result.success && result.balance) io.to(broker.socketId).emit('update_balance', { isDemo: isDemo, balance: result.balance });
                                 });
                                 return true; 
@@ -372,10 +394,9 @@ async function startConnection(symbol) {
                         }
                     });
 
-                    // Registra Respiro: Dá 1 vela de pausa antes de procurar o próximo padrão
                     if (signalResolvedThisCandle) lastResolvedCandleTime = candleStartTime;
 
-                    // Nova Entrada (Apenas se a fila estiver vazia E respeitar o Respiro)
+                    // Nova Entrada
                     if (activeSignals.length === 0 && candleStartTime !== lastResolvedCandleTime) {
                         const newSignalType = evaluateStrategy(closePrices, currentStrategy);
                         
@@ -395,9 +416,9 @@ async function startConnection(symbol) {
                                 if (!broker.autoTradeActive) return;
                                 let valorInicial = parseFloat(broker.config.baseAmount).toFixed(2).replace('.', ',');
                                 let isDemo = broker.config.accountType === 'demo';
-                                let accId = isDemo ? broker.demoAccountId : broker.realAccountId;
                                 
-                                const result = await dispararOrdemVellox(broker.socketId, broker.token, accId, isDemo, currentSymbol, newSignalType, valorInicial, currentPrice);
+                                // Chama o método blindado passando o broker inteiro
+                                const result = await dispararOrdemVellox(broker, isDemo, currentSymbol, newSignalType, valorInicial, currentPrice);
                                 if (result.success && result.balance) io.to(broker.socketId).emit('update_balance', { isDemo: isDemo, balance: result.balance });
                             });
                         }
@@ -426,13 +447,13 @@ async function startConnection(symbol) {
 }
 
 // ============================================================================
-// 8. ROTAS DE COMUNICAÇÃO COM O FRONTEND (SOCKET.IO)
+// 8. ROTAS DE COMUNICAÇÃO COM O FRONTEND
 // ============================================================================
 io.on('connection', (socket) => {
     
     socket.emit('status', { msg: currentEngineStatus });
     socket.emit('available_strategies', strategiesDB.map(s => ({ id: s.id, name: s.name })));
-    socket.emit('available_coins', availableCoins); // 🌐 Lista dinâmica da Binance
+    socket.emit('available_coins', availableCoins); 
     socket.emit('scoreboard', scoreboard);
     socket.emit('history_dump', signalHistory);
     
@@ -450,29 +471,35 @@ io.on('connection', (socket) => {
             const brokerToken = loginResponse.data.token || loginResponse.data.access_token;
             if (!brokerToken) throw new Error("BROKER_FAIL");
 
-            let isSubscribed = false; let uid = ''; let userRole = 'aluno';
+            let uid = brokerUser.replace(/[^a-zA-Z0-9]/g, ''); 
+            if (!uid) uid = 'user_' + Date.now();
+
+            let userRole = 'aluno';
             const userLower = brokerUser.toLowerCase();
             
             if (userLower === MASTER_EMAIL.toLowerCase() || userLower === MASTER_BROKER_LOGIN.toLowerCase()) {
-                isSubscribed = true; uid = 'admin_master'; userRole = 'admin';
+                uid = 'admin_master'; userRole = 'admin';
             } else {
                 const snapshot = await db.collection('users').where('email', '==', brokerUser).get();
-                if (!snapshot.empty) { isSubscribed = true; uid = snapshot.docs[0].id; userRole = snapshot.docs[0].data().role; }
+                if (!snapshot.empty) { uid = snapshot.docs[0].id; userRole = snapshot.docs[0].data().role; }
             }
 
-            if (!isSubscribed) {
-                socket.emit('hybrid_login_result', { success: false, reason: 'subscription', msg: 'Assinatura Inativa. Adquira seu acesso ao JS Invest para continuar.' });
-                return;
-            }
+            const customToken = await admin.auth().createCustomToken(uid);
+            
+            let realBalance = "0,00";
+            try {
+                const balanceResponse = await axios.get(`${API_BASE_URL}/api/public/users/balance`, { headers: { 'Authorization': `Bearer ${brokerToken}` } });
+                realBalance = balanceResponse.data.credit || "0,00";
+            } catch (e) {}
 
-            const customToken = await admin.auth().createCustomToken(uid, { email: brokerUser });
-            
-            const balanceResponse = await axios.get(`${API_BASE_URL}/api/public/users/balance`, { headers: { 'Authorization': `Bearer ${brokerToken}` } });
-            const realBalance = balanceResponse.data.credit || "0,00";
-            
             activeBrokers[socket.id] = { 
-                socketId: socket.id, token: brokerToken, demoAccountId: '8', realAccountId: '0', autoTradeActive: false, 
-                config: { active: false, accountType: 'demo', baseAmount: 5, maxGale: 2, stopWin: 99999, stopLoss: 99999 }, sessionProfit: 0 
+                socketId: socket.id, 
+                token: brokerToken, 
+                demoAccountId: '8', // Começa no padrão Master. Se falhar, troca para o 15!
+                realAccountId: '0', // 🎯 A SUA DESCOBERTA: A CONTA REAL É SEMPRE 0!
+                autoTradeActive: false, 
+                config: { active: false, accountType: 'demo', baseAmount: 5, maxGale: 2, stopWin: 99999, stopLoss: 99999 }, 
+                sessionProfit: 0 
             };
             
             socket.emit('hybrid_login_result', { success: true, firebaseToken: customToken, role: userRole, balance: { demo: "--- (Dê 1 tiro para carregar)", real: realBalance } });
@@ -492,17 +519,16 @@ io.on('connection', (socket) => {
         }
     });
 
-    // 🎯 O MODO SNIPER TOTALMENTE BLINDADO
     socket.on('manual_trade', async (data) => {
-        const direction = data.direction;
-        const frontendConfig = data.config;
+        const direction = typeof data === 'string' ? data : data.direction;
+        const frontendConfig = typeof data === 'string' ? null : data.config;
+        
         const broker = activeBrokers[socket.id];
         
         if (!broker || !broker.token) {
             socket.emit('sniper_error', 'Você precisa conectar na corretora antes de atirar!'); return; 
         }
 
-        // Trava para não atropelar operação real rodando
         const isBotTrading = Object.values(activeBrokers).some(b => b.autoTradeActive);
         const hasRealSignal = activeSignals.some(s => s.isManual || isBotTrading);
 
@@ -510,7 +536,6 @@ io.on('connection', (socket) => {
             socket.emit('sniper_error', 'Aguarde! Já existe uma operação real em andamento.'); return;
         }
 
-        // Se for um sinal apenas visual da tela, o Sniper destrói e assume a prioridade!
         if (activeSignals.length > 0) activeSignals = []; 
 
         if (currentGlobalPrice === 0) {
@@ -525,17 +550,17 @@ io.on('connection', (socket) => {
             broker.config.maxGale = frontendConfig.maxGale;
         }
 
-        let accType = broker.config.accountType;
-        let amount = parseFloat(broker.config.baseAmount).toFixed(2).replace('.', ',');
+        let accType = broker.config ? broker.config.accountType : 'demo';
+        let amount = broker.config ? parseFloat(broker.config.baseAmount).toFixed(2).replace('.', ',') : '5,00';
         let isDemo = accType === 'demo';
-        let accId = isDemo ? broker.demoAccountId : broker.realAccountId;
 
         console.log(`[🎯 MODO SNIPER] Usuário atirando ${direction} R$ ${amount}...`);
         
-        const result = await dispararOrdemVellox(broker.socketId, broker.token, accId, isDemo, currentSymbol, direction, amount, currentGlobalPrice);
+        // Passa o objeto broker inteiro para o Auto-Cura poder atuar
+        const result = await dispararOrdemVellox(broker, isDemo, currentSymbol, direction, amount, currentGlobalPrice);
 
         if (result.success) {
-            socket.emit('sniper_success', `Ordem ${direction} enviada!`);
+            socket.emit('sniper_success', `Ordem ${direction} enviada com sucesso!`);
             if (result.balance) socket.emit('update_balance', { isDemo: isDemo, balance: result.balance });
 
             const manualSig = { 
@@ -581,7 +606,7 @@ io.on('connection', (socket) => {
     socket.on('change_coin', (newSymbol) => { currentSymbol = newSymbol; startConnection(currentSymbol); });
     socket.on('change_strategy', (newStrategyId) => { currentStrategyId = newStrategyId; startConnection(currentSymbol); });
     socket.on('add_new_strategy', async (newStrategy) => {
-        try { const exists = strategiesDB.find(s => s.id === newStrategy.id); if (!exists) { await db.collection('scripts').doc(newStrategy.id).set(newStrategy); strategiesDB.push(newStrategy); io.emit('available_strategies', strategiesDB.map(s => ({ id: s.id, name: s.name }))); } } catch (e) { console.error("Erro:", e); }
+        try { const exists = strategiesDB.find(s => s.id === newStrategy.id); if (!exists) { await db.collection('scripts').doc(newStrategy.id).set(newStrategy); strategiesDB.push(newStrategy); io.emit('available_strategies', strategiesDB.map(s => ({ id: s.id, name: s.name }))); } } catch (e) { console.error("Erro ao adicionar script:", e); }
     });
 
     socket.on('disconnect', () => { if (activeBrokers[socket.id]) delete activeBrokers[socket.id]; });
