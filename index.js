@@ -310,7 +310,6 @@ async function startConnection(symbol) {
                 let currentActive = activeSignals.length > 0 ? activeSignals[0] : null;
                 io.emit('price_update', { price: currentPrice, secondsLeft: secondsLeft, activeSignal: currentActive });
 
-                // Alerta pré-fechamento
                 if (closePrices.length > 50 && !isCandleClosed && candleStartTime !== lastResolvedCandleTime) {
                     if (activeSignals.length === 0) {
                         let tempPrices = [...closePrices, currentPrice];
@@ -375,7 +374,6 @@ async function startConnection(symbol) {
 
                     if (signalResolvedThisCandle) lastResolvedCandleTime = candleStartTime;
 
-                    // Nova Entrada (Apenas se a fila estiver vazia E respeitar o Respiro)
                     if (activeSignals.length === 0 && candleStartTime !== lastResolvedCandleTime) {
                         const newSignalType = evaluateStrategy(closePrices, currentStrategy);
                         
@@ -450,6 +448,11 @@ io.on('connection', (socket) => {
             const brokerToken = loginResponse.data.token || loginResponse.data.access_token;
             if (!brokerToken) throw new Error("BROKER_FAIL");
 
+            // 🎯 ESPIÕES INJETADOS PARA DESCOBRIR OS IDs DAS CONTAS!
+            console.log("\n======================================");
+            console.log("🕵️‍♂️ DADOS DO LOGIN VELLOX:", JSON.stringify(loginResponse.data, null, 2));
+            console.log("======================================\n");
+
             let uid = brokerUser; 
             let userRole = 'aluno';
             const userLower = brokerUser.toLowerCase();
@@ -462,14 +465,20 @@ io.on('connection', (socket) => {
             }
 
             const customToken = await admin.auth().createCustomToken(uid, { email: brokerUser });
+            
             const balanceResponse = await axios.get(`${API_BASE_URL}/api/public/users/balance`, { headers: { 'Authorization': `Bearer ${brokerToken}` } });
+            
+            console.log("\n======================================");
+            console.log("🕵️‍♂️ DADOS DO SALDO VELLOX:", JSON.stringify(balanceResponse.data, null, 2));
+            console.log("======================================\n");
+
             const realBalance = balanceResponse.data.credit || "0,00";
             
             activeBrokers[socket.id] = { 
                 socketId: socket.id, 
                 token: brokerToken, 
-                demoAccountId: '8', 
-                realAccountId: '1', // 🎯 CONTA REAL CORRIGIDA PARA O PADRÃO 1 (ERA 0)
+                demoAccountId: '8', // Nós vamos trocar isto assim que você me passar o log!
+                realAccountId: '1', // Nós vamos trocar isto assim que você me passar o log!
                 autoTradeActive: false, 
                 config: { active: false, accountType: 'demo', baseAmount: 5, maxGale: 2, stopWin: 99999, stopLoss: 99999 }, 
                 sessionProfit: 0 
@@ -492,15 +501,11 @@ io.on('connection', (socket) => {
         }
     });
 
-    // ============================================================================
-    // 🎯 MODO SNIPER COM ESCUDO ANTI-CACHE
-    // ============================================================================
     socket.on('manual_trade', async (data) => {
-        
-        // 🛡️ Se o navegador enviar uma string (Cache Velho), nós adaptamos!
+        // 🛡️ MÁXIMA SEGURANÇA: Se vier String (cache velho da tela), a gente converte!
         const direction = typeof data === 'string' ? data : data.direction;
         const frontendConfig = typeof data === 'string' ? null : data.config;
-        
+
         const broker = activeBrokers[socket.id];
         
         if (!broker || !broker.token) {
@@ -521,6 +526,7 @@ io.on('connection', (socket) => {
             if (currentGlobalPrice === 0) { socket.emit('sniper_error', 'Aguardando sincronização de preço com a Binance...'); return; }
         }
 
+        // Lê os valores da interface no momento do clique (Se existirem!)
         if (frontendConfig) {
             if (!broker.config) broker.config = { active: false, stopWin: 99999, stopLoss: 99999 };
             broker.config.accountType = frontendConfig.accountType;
@@ -528,19 +534,17 @@ io.on('connection', (socket) => {
             broker.config.maxGale = frontendConfig.maxGale;
         }
 
-        let accType = broker.config.accountType;
-        let amount = parseFloat(broker.config.baseAmount).toFixed(2).replace('.', ',');
+        let accType = broker.config ? broker.config.accountType : 'demo';
+        let amount = broker.config ? parseFloat(broker.config.baseAmount).toFixed(2).replace('.', ',') : '5,00';
         let isDemo = accType === 'demo';
-        
-        // 🎯 ESTE FOI O CULPADO DE TUDO! Se for Real, usa '1' (A corretora rejeitava o '0').
-        let accId = isDemo ? broker.demoAccountId : broker.realAccountId; 
+        let accId = isDemo ? broker.demoAccountId : broker.realAccountId;
 
-        console.log(`[🎯 MODO SNIPER] Atirando ${direction} R$ ${amount} | Conta: ${accType.toUpperCase()} (ID: ${accId})`);
+        console.log(`[🎯 MODO SNIPER] Atirando ${direction} R$ ${amount} | Conta ID: ${accId}`);
         
         const result = await dispararOrdemVellox(broker.socketId, broker.token, accId, isDemo, currentSymbol, direction, amount, currentGlobalPrice);
 
         if (result.success) {
-            socket.emit('sniper_success', `Ordem ${direction} enviada com sucesso!`);
+            socket.emit('sniper_success', `Ordem ${direction} de R$ ${amount} enviada!`);
             if (result.balance) socket.emit('update_balance', { isDemo: isDemo, balance: result.balance });
 
             const manualSig = { 
