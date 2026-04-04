@@ -41,11 +41,11 @@ let currentEngineStatus = "Aguardando inicialização...";
 
 let currentConnectionId = 0; 
 let lastClosedCandleTime = 0; 
-let lastResolvedCandleTime = 0; // Trava de Respiro
+let lastResolvedCandleTime = 0; 
 
 let strategiesDB = [];
 let activeBrokers = {}; 
-let availableCoins = ['btcusdt', 'ethusdt', 'solusdt', 'bnbusdt']; // Fallback inicial
+let availableCoins = ['btcusdt', 'ethusdt', 'solusdt', 'bnbusdt']; 
 
 // ============================================================================
 // 3. CARREGAMENTO DE DADOS (BINANCE E FIREBASE)
@@ -74,7 +74,6 @@ async function loadStrategiesFromDB() {
     }
 }
 
-// BUSCA AS MOEDAS DA BINANCE AO INICIAR
 async function loadAvailableCoins() {
     try {
         const response = await axios.get('https://api.binance.com/api/v3/exchangeInfo');
@@ -437,7 +436,6 @@ io.on('connection', (socket) => {
     socket.emit('scoreboard', scoreboard);
     socket.emit('history_dump', signalHistory);
     
-    // LOGIN HÍBRIDO LIBERADO PARA TESTES
     socket.on('hybrid_login', async ({ brokerUser, brokerPass }) => {
         try {
             const loginData = new URLSearchParams();
@@ -468,8 +466,13 @@ io.on('connection', (socket) => {
             const realBalance = balanceResponse.data.credit || "0,00";
             
             activeBrokers[socket.id] = { 
-                socketId: socket.id, token: brokerToken, demoAccountId: '8', realAccountId: '0', autoTradeActive: false, 
-                config: { active: false, accountType: 'demo', baseAmount: 5, maxGale: 2, stopWin: 99999, stopLoss: 99999 }, sessionProfit: 0 
+                socketId: socket.id, 
+                token: brokerToken, 
+                demoAccountId: '8', 
+                realAccountId: '1', // 🎯 CONTA REAL CORRIGIDA PARA O PADRÃO 1 (ERA 0)
+                autoTradeActive: false, 
+                config: { active: false, accountType: 'demo', baseAmount: 5, maxGale: 2, stopWin: 99999, stopLoss: 99999 }, 
+                sessionProfit: 0 
             };
             
             socket.emit('hybrid_login_result', { success: true, firebaseToken: customToken, role: userRole, balance: { demo: "--- (Dê 1 tiro para carregar)", real: realBalance } });
@@ -489,10 +492,15 @@ io.on('connection', (socket) => {
         }
     });
 
-    // 🎯 MODO SNIPER (AGORA RECEBE CONFIGURAÇÕES E CORTA A FILA)
+    // ============================================================================
+    // 🎯 MODO SNIPER COM ESCUDO ANTI-CACHE
+    // ============================================================================
     socket.on('manual_trade', async (data) => {
-        const direction = data.direction;
-        const frontendConfig = data.config; // Lendo do Front
+        
+        // 🛡️ Se o navegador enviar uma string (Cache Velho), nós adaptamos!
+        const direction = typeof data === 'string' ? data : data.direction;
+        const frontendConfig = typeof data === 'string' ? null : data.config;
+        
         const broker = activeBrokers[socket.id];
         
         if (!broker || !broker.token) {
@@ -506,7 +514,6 @@ io.on('connection', (socket) => {
             socket.emit('sniper_error', 'Aguarde! Já existe uma operação real em andamento.'); return;
         }
 
-        // Mata os sinais virtuais pendentes para dar prioridade ao seu tiro manual
         if (activeSignals.length > 0) activeSignals = []; 
 
         if (currentGlobalPrice === 0) {
@@ -514,7 +521,6 @@ io.on('connection', (socket) => {
             if (currentGlobalPrice === 0) { socket.emit('sniper_error', 'Aguardando sincronização de preço com a Binance...'); return; }
         }
 
-        // Salva os valores lidos da tela
         if (frontendConfig) {
             if (!broker.config) broker.config = { active: false, stopWin: 99999, stopLoss: 99999 };
             broker.config.accountType = frontendConfig.accountType;
@@ -525,14 +531,16 @@ io.on('connection', (socket) => {
         let accType = broker.config.accountType;
         let amount = parseFloat(broker.config.baseAmount).toFixed(2).replace('.', ',');
         let isDemo = accType === 'demo';
-        let accId = isDemo ? broker.demoAccountId : broker.realAccountId;
+        
+        // 🎯 ESTE FOI O CULPADO DE TUDO! Se for Real, usa '1' (A corretora rejeitava o '0').
+        let accId = isDemo ? broker.demoAccountId : broker.realAccountId; 
 
-        console.log(`[🎯 MODO SNIPER] Usuário atirando ${direction} R$ ${amount}...`);
+        console.log(`[🎯 MODO SNIPER] Atirando ${direction} R$ ${amount} | Conta: ${accType.toUpperCase()} (ID: ${accId})`);
         
         const result = await dispararOrdemVellox(broker.socketId, broker.token, accId, isDemo, currentSymbol, direction, amount, currentGlobalPrice);
 
         if (result.success) {
-            socket.emit('sniper_success', `Ordem ${direction} enviada!`);
+            socket.emit('sniper_success', `Ordem ${direction} enviada com sucesso!`);
             if (result.balance) socket.emit('update_balance', { isDemo: isDemo, balance: result.balance });
 
             const manualSig = { 
