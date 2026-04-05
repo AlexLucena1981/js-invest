@@ -77,18 +77,23 @@ async function loadStrategiesFromDB() {
 
 async function loadAvailableCoins() {
     try {
-        const response = await axios.get('https://api.binance.com/api/v3/exchangeInfo');
-        const allSymbols = response.data.symbols;
+        // 🎯 Tropa de Elite: Apenas as moedas solicitadas no Mercado Real (Spot Binance)
+        availableCoins = [
+            'btcusdt',  // Bitcoin
+            'ltcusdt',  // Litecoin
+            'adausdt',  // Cardano
+            'bnbusdt',  // BNB
+            'dogeusdt', // Dogecoin
+            'ethusdt',  // Ethereum
+            'solusdt'   // Solana
+        ];
         
-        const usdtPairs = allSymbols.filter(s => s.quoteAsset === 'USDT' && s.status === 'TRADING');
-        usdtPairs.sort((a, b) => a.baseAsset.localeCompare(b.baseAsset));
-
-        availableCoins = usdtPairs.map(s => s.symbol.toLowerCase());
-        console.log(`🌐 ${availableCoins.length} pares de Criptomoedas carregados da Binance!`);
+        console.log(`🌐 ${availableCoins.length} pares de Criptomoedas de Elite (Mercado Real) carregados!`);
         
+        // Dispara a nova lista enxuta para a tela de todos os utilizadores conectados
         io.emit('available_coins', availableCoins);
     } catch (error) {
-        console.error("Erro ao carregar moedas da Binance:", error.message);
+        console.error("Erro ao carregar moedas:", error.message);
     }
 }
 
