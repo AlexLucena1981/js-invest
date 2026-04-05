@@ -28,11 +28,15 @@ const db = admin.firestore();
 const MASTER_EMAIL = 'alexandre.lucena@gmail.com'; 
 const MASTER_BROKER_LOGIN = 'AlexLucena1981';
 
+// 🎯 O COOKIE DE INVASÃO DO OTC
+const OTC_COOKIE_MANUAL = "locale=eyJpdiI6IkgvYk5XeTFiVUhoczRlQmM2RTZJMFE9PSIsInZhbHVlIjoiNktFOUs2T1lHTXhIN2JnSndzUG9leVczeWRmZ1RwMmJGc2tZQTVaaUh0RVJQSTNUOW9TMWFkSFR6SUxFeHVZZCIsIm1hYyI6ImJjMTFhOGUyNzY1NjA3ZDk3ZGJmMjdhZWU1MmI2NzVjNTg5YzIzYjM5ZWM3NDY5OWRjMTJhYmY1YWU0M2Y0Y2UiLCJ0YWciOiIifQ==; XSRF-TOKEN=eyJpdiI6IkJXTkh4d0NXZlFaQzhVZXpQZkZaa2c9PSIsInZhbHVlIjoidkU4cTBHbUVjZHhTeTkvUGh0YTNMZGpoZTRXV0xaU3hxeEdrTmk4TFVpYThWYnlkREFiVnFDNFNTVFJWVHFnTUFUdEZITzJzV3hOMUp3MzVYR0JwbTdHa2NrZ3JOSHM0R3MyVjVxbnFQZkdzTnpkb3pOS0hjWWU2QTlKdHExMGsiLCJtYWMiOiIzODZmM2MyM2IzMzc3ZjUxMWM4NDU0ZTA5YmMyNjZkZWEyMzdkOWFjMTA3OTdmYmFmNzgxZGNmZjI4ZmE1Yzg2IiwidGFnIjoiIn0=; laravel_session=eyJpdiI6Im8wQkZoRm1EaDYrcXhpSDFVRnZnN3c9PSIsInZhbHVlIjoic2JIb2tDMWhON0pBc3FoYjZpajhaTitweDdRQUs5TUVqamdNdXZBMytQTXFNaHNuSTYvTnpXUjJ4bzBhSEhseHZ0aWFRN0lkSWd1aTBJamZQMEs2YnJ4aFBZTmNxZGpzdkZ3b2VtL3JyS042eEZlWStzemxmNEpDVjlPN1FyemkiLCJtYWMiOiIwMmEwN2VlN2QyYzVjYmFkNGU0YzRlNzgxZTg2NzFiYjY3NmIwNjEyODE2MWU2Y2JlOWFlY2YzOGY1M2U1MzZhIiwidGFnIjoiIn0=";
+
 let closePrices = [];
 let ws = null;
+let otcInterval = null; 
 let currentSymbol = 'btcusdt';
 let currentStrategyId = ''; 
-let currentTimeframe = '1m'; // 🎯 A NOVA VARIÁVEL GLOBAL DE MILHÕES!
+let currentTimeframe = '1m'; 
 let currentGlobalPrice = 0; 
 
 let activeSignals = []; 
@@ -46,10 +50,10 @@ let lastResolvedCandleTime = 0;
 
 let strategiesDB = [];
 let activeBrokers = {}; 
-let availableCoins = ['btcusdt', 'ethusdt', 'solusdt', 'bnbusdt']; 
+let availableCoins = []; 
 
 // ============================================================================
-// 3. CARREGAMENTO DE DADOS E MOEDAS (BINANCE API)
+// 3. CARREGAMENTO DE DADOS E MOEDAS (Tropa de Elite: Real + OTC)
 // ============================================================================
 async function loadStrategiesFromDB() {
     try {
@@ -75,30 +79,17 @@ async function loadStrategiesFromDB() {
     }
 }
 
-async function loadAvailableCoins() {
-    try {
-        // 🎯 Tropa de Elite: Apenas as moedas solicitadas no Mercado Real (Spot Binance)
-        availableCoins = [
-            'btcusdt',  // Bitcoin
-            'ltcusdt',  // Litecoin
-            'adausdt',  // Cardano
-            'bnbusdt',  // BNB
-            'dogeusdt', // Dogecoin
-            'ethusdt',  // Ethereum
-            'solusdt'   // Solana
-        ];
-        
-        console.log(`🌐 ${availableCoins.length} pares de Criptomoedas de Elite (Mercado Real) carregados!`);
-        
-        // Dispara a nova lista enxuta para a tela de todos os utilizadores conectados
-        io.emit('available_coins', availableCoins);
-    } catch (error) {
-        console.error("Erro ao carregar moedas:", error.message);
-    }
+function loadAvailableCoins() {
+    availableCoins = [
+        'btcusdt', 'ethusdt', 'ltcusdt', 'adausdt', 'bnbusdt', 'dogeusdt', 'solusdt',
+        'EURUSDOTC', 'GBPUSDOTC', 'USDJPYOTC', 'BTCUSDTOTC', 'ETHUSDTOTC'
+    ];
+    console.log(`🌐 ${availableCoins.length} pares Híbridos (Real + OTC) ativados!`);
+    io.emit('available_coins', availableCoins);
 }
 
 // ============================================================================
-// 4. MÓDULO MATEMÁTICO QUANTITATIVO (SMA, WMA, RSI, BOLLINGER)
+// 4. MÓDULO MATEMÁTICO QUANTITATIVO
 // ============================================================================
 function calculateSMA(data, period) {
     if (data.length < period) return null;
@@ -126,12 +117,10 @@ function calculateRSI(data, period) {
         if (diff > 0) gains += diff;
         else losses -= diff;
     }
-    let avgGain = gains / period;
-    let avgLoss = losses / period;
+    let avgGain = gains / period; let avgLoss = losses / period;
     for (let i = period + 1; i < data.length; i++) {
         let diff = data[i] - data[i - 1];
-        let gain = diff > 0 ? diff : 0;
-        let loss = diff < 0 ? -diff : 0;
+        let gain = diff > 0 ? diff : 0; let loss = diff < 0 ? -diff : 0;
         avgGain = ((avgGain * (period - 1)) + gain) / period;
         avgLoss = ((avgLoss * (period - 1)) + loss) / period;
     }
@@ -161,8 +150,7 @@ function evaluateStrategy(prices, strategyConfig) {
         let buf1 = [];
         for (let i = 10; i >= 0; i--) {
             let slice = prices.slice(0, prices.length - i);
-            let sma1 = calculateSMA(slice, 1);
-            let sma34 = calculateSMA(slice, 34);
+            let sma1 = calculateSMA(slice, 1); let sma34 = calculateSMA(slice, 34);
             if (sma1 === null || sma34 === null) return null;
             buf1.push(sma1 - sma34);
         }
@@ -179,14 +167,11 @@ function evaluateStrategy(prices, strategyConfig) {
     
     for (const [key, config] of Object.entries(strategyConfig.indicators)) {
         if (config.type === 'SMA') {
-            current[key] = calculateSMA(prices, config.period);
-            prev[key] = calculateSMA(prices.slice(0, -1), config.period);
+            current[key] = calculateSMA(prices, config.period); prev[key] = calculateSMA(prices.slice(0, -1), config.period);
         } else if (config.type === 'RSI') { 
-            current[key] = calculateRSI(prices, config.period);
-            prev[key] = calculateRSI(prices.slice(0, -1), config.period);
+            current[key] = calculateRSI(prices, config.period); prev[key] = calculateRSI(prices.slice(0, -1), config.period);
         } else if (config.type === 'BB') { 
-            current[key] = calculateBollingerBands(prices, config.period, config.stdDev);
-            prev[key] = calculateBollingerBands(prices.slice(0, -1), config.period, config.stdDev);
+            current[key] = calculateBollingerBands(prices, config.period, config.stdDev); prev[key] = calculateBollingerBands(prices.slice(0, -1), config.period, config.stdDev);
         }
     }
     
@@ -201,27 +186,23 @@ function evaluateStrategy(prices, strategyConfig) {
 }
 
 // ============================================================================
-// 5. MÓDULO DE EXECUÇÃO NA CORRETORA (COM EXPIRAÇÃO DINÂMICA)
+// 5. MÓDULO DE EXECUÇÃO E GESTÃO
 // ============================================================================
 async function dispararOrdemVellox(broker, isDemo, symbol, direction, amount, currentPrice) {
     let accountId = isDemo ? broker.demoAccountId : broker.realAccountId; 
-    const expirationValue = currentTimeframe.replace('m', ''); // 🎯 Dinâmico: 1, 5, 15
+    const expirationValue = currentTimeframe.replace('m', ''); 
 
     const executeTrade = async (accId) => {
         const tradeData = new URLSearchParams();
         tradeData.append('transaction_account_id', accId); 
-        tradeData.append('expiration', expirationValue); // 🎯 APLICA O TEMPO CORRETO!
+        tradeData.append('expiration', expirationValue); 
         tradeData.append('amount', amount); 
         tradeData.append('direction', direction === 'CALL' ? '1' : '0'); 
         tradeData.append('symbol', symbol.toUpperCase()); 
         tradeData.append('symbol_price', currentPrice.toString()); 
 
         return await axios.put(`https://velloxbroker.com/api/public/applications/transaction`, tradeData, {
-            headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'Authorization': `Bearer ${broker.token}` 
-            }
+            headers: { 'Accept': 'application/json', 'Content-Type': 'application/x-www-form-urlencoded', 'Authorization': `Bearer ${broker.token}` }
         });
     };
 
@@ -241,41 +222,26 @@ async function dispararOrdemVellox(broker, isDemo, symbol, direction, amount, cu
             
             try {
                 const retryResponse = await executeTrade(accountId);
-                console.log(`[✅ DISPARO RECUPERADO COM SUCESSO] Conta ID adaptada para: ${accountId}`);
                 let novoSaldo = retryResponse.data.user_credit || (retryResponse.data.data ? retryResponse.data.data.user_credit : null);
                 return { success: true, balance: novoSaldo };
-            } catch (retryError) {
-                errorMsg = retryError.response ? JSON.stringify(retryError.response.data) : retryError.message;
-            }
+            } catch (retryError) { errorMsg = retryError.response ? JSON.stringify(retryError.response.data) : retryError.message; }
         }
-
         console.error(`[❌ ERRO NO DISPARO]`, errorMsg);
         return { success: false, msg: errorMsg };
     }
 }
 
-// ============================================================================
-// 6. GESTOR DE RISCO E LUCRO
-// ============================================================================
 function updateBrokerProfits(step, isWin, isManual = false) {
     Object.values(activeBrokers).forEach(broker => {
         if (!isManual && !broker.autoTradeActive) return; 
         if (step > broker.config.maxGale) return; 
 
         let amountBet = broker.config.baseAmount * Math.pow(2, step);
-        
         if (isWin) {
             let lucroLiquido = (amountBet * 0.85); 
-            let retornoTotal = amountBet + lucroLiquido;
             broker.sessionProfit += lucroLiquido;
-
-            io.to(broker.socketId).emit('win_balance_update', {
-                isDemo: broker.config.accountType === 'demo',
-                prize: retornoTotal
-            });
-        } else {
-            broker.sessionProfit -= amountBet; 
-        }
+            io.to(broker.socketId).emit('win_balance_update', { isDemo: broker.config.accountType === 'demo', prize: (amountBet + lucroLiquido) });
+        } else { broker.sessionProfit -= amountBet; }
 
         let stopReason = null;
         if (broker.sessionProfit <= -broker.config.stopLoss) stopReason = `🛑 STOP LOSS ATINGIDO! (Perda: R$ ${broker.sessionProfit.toFixed(2)})`;
@@ -292,197 +258,280 @@ function updateBrokerProfits(step, isWin, isManual = false) {
 }
 
 // ============================================================================
-// 7. MOTOR CENTRAL DE WEBSOCKET (BINANCE) MULTI-TIMEFRAME
+// 6. MOTOR DE VELAS E MÁQUINA DO TEMPO (HISTÓRICO)
+// ============================================================================
+
+// 🎯 A MÁQUINA DO TEMPO (Simula as vitórias do passado ao ligar)
+function processHistoricalCandle(k_time, k_o, k_c, currentStrategy) {
+    activeSignals = activeSignals.filter(sig => {
+        const isGreen = k_c > k_o; const isRed = k_c < k_o;
+        const won = (sig.type === 'CALL' && isGreen) || (sig.type === 'PUT' && isRed);
+
+        if (won) {
+            if (sig.step === 0) { sig.status = 'WIN 1ª 🎯'; scoreboard.win1++; }
+            else if (sig.step === 1) { sig.status = 'WIN G1 🎯'; scoreboard.winG1++; }
+            else if (sig.step === 2) { sig.status = 'WIN G2 🎯'; scoreboard.winG2++; }
+            return false;
+        } else {
+            sig.step++;
+            if (sig.step > 2) { sig.status = 'LOSS 🔴'; scoreboard.loss++; return false; }
+            else { sig.status = `Gale ${sig.step}...`; return true; }
+        }
+    });
+
+    closePrices.push(k_c);
+
+    if (activeSignals.length === 0) {
+        const newSigType = evaluateStrategy(closePrices, currentStrategy);
+        if (newSigType) {
+            const newSig = {
+                id: k_time, type: newSigType, symbol: currentSymbol.toUpperCase(),
+                time: new Date(k_time).toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' }),
+                step: 0, status: 'Aguardando...', entryPrice: k_o, isManual: false
+            };
+            activeSignals.push(newSig); signalHistory.unshift(newSig);
+            if (signalHistory.length > 20) signalHistory.pop();
+        }
+    }
+}
+
+async function handleCandleClose(closedPrice, candleStartTime) {
+    if (candleStartTime === lastClosedCandleTime) return;
+    lastClosedCandleTime = candleStartTime;
+    
+    closePrices.push(closedPrice);
+    if (closePrices.length > 150) closePrices.shift();
+
+    let signalResolvedThisCandle = false;
+
+    activeSignals = activeSignals.filter(sig => {
+        const won = (sig.type === 'CALL' && closedPrice > sig.entryPrice) || (sig.type === 'PUT' && closedPrice < sig.entryPrice);
+        const prefix = sig.isManual ? '⚡ Sniper: ' : '';
+
+        if (won) {
+            if (sig.step === 0) { sig.status = prefix + 'WIN 1ª 🎯'; scoreboard.win1++; }
+            else if (sig.step === 1) { sig.status = prefix + 'WIN G1 🎯'; scoreboard.winG1++; }
+            else if (sig.step === 2) { sig.status = prefix + 'WIN G2 🎯'; scoreboard.winG2++; }
+            
+            updateBrokerProfits(sig.step, true, sig.isManual);
+            io.emit('signal_result', sig); io.emit('scoreboard', scoreboard); 
+            signalResolvedThisCandle = true; return false; 
+        } else {
+            updateBrokerProfits(sig.step, false, sig.isManual); 
+            sig.step++; 
+            
+            if (sig.step > 2) {
+                sig.status = prefix + 'LOSS 🔴'; scoreboard.loss++;
+                io.emit('signal_result', sig); io.emit('scoreboard', scoreboard); 
+                signalResolvedThisCandle = true; return false; 
+            } else {
+                sig.status = prefix + `Gale ${sig.step}...`; io.emit('signal_result', sig);
+                
+                Object.values(activeBrokers).forEach(async (broker) => {
+                    if (!sig.isManual && !broker.autoTradeActive) return;
+                    if (sig.step > broker.config.maxGale) return; 
+                    
+                    let valorGale = broker.config.baseAmount * Math.pow(2, sig.step);
+                    let isDemo = broker.config.accountType === 'demo';
+                    
+                    const result = await dispararOrdemVellox(broker, isDemo, currentSymbol, sig.type, valorGale.toFixed(2).replace('.', ','), closedPrice);
+                    if (result.success && result.balance) io.to(broker.socketId).emit('update_balance', { isDemo: isDemo, balance: result.balance });
+                });
+                return true; 
+            }
+        }
+    });
+
+    if (signalResolvedThisCandle) lastResolvedCandleTime = candleStartTime;
+
+    if (activeSignals.length === 0 && candleStartTime !== lastResolvedCandleTime) {
+        const currentStrategy = strategiesDB.find(s => s.id === currentStrategyId);
+        const newSignalType = evaluateStrategy(closePrices, currentStrategy);
+        
+        if (newSignalType) {
+            const newSig = { 
+                id: Date.now(), type: newSignalType, symbol: currentSymbol.toUpperCase(),
+                time: new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' }), 
+                step: 0, status: 'Aguardando Vela...', entryPrice: closedPrice, isManual: false
+            };
+            
+            activeSignals.push(newSig); signalHistory.unshift(newSig); 
+            if (signalHistory.length > 20) signalHistory.pop();
+            
+            io.emit('new_signal_history', newSig); io.emit('signal', { type: newSignalType, time: newSig.time }); 
+            
+            Object.values(activeBrokers).forEach(async (broker) => {
+                if (!broker.autoTradeActive) return;
+                let valorInicial = parseFloat(broker.config.baseAmount).toFixed(2).replace('.', ',');
+                let isDemo = broker.config.accountType === 'demo';
+                
+                const result = await dispararOrdemVellox(broker, isDemo, currentSymbol, newSignalType, valorInicial, closedPrice);
+                if (result.success && result.balance) io.to(broker.socketId).emit('update_balance', { isDemo: isDemo, balance: result.balance });
+            });
+        }
+    }
+}
+
+function handleCandleTick(currentPrice, isCandleClosed, candleStartTime) {
+    currentGlobalPrice = currentPrice;
+    
+    const tfMinutes = parseInt(currentTimeframe.replace('m', ''));
+    const now = new Date();
+    const secondsLeft = (tfMinutes * 60) - ((now.getMinutes() % tfMinutes) * 60 + now.getSeconds());
+
+    let currentActive = activeSignals.length > 0 ? activeSignals[0] : null;
+    io.emit('price_update', { price: currentPrice, secondsLeft: secondsLeft, activeSignal: currentActive });
+
+    if (closePrices.length > 50 && !isCandleClosed && candleStartTime !== lastResolvedCandleTime) {
+        if (activeSignals.length === 0) {
+            let tempPrices = [...closePrices, currentPrice];
+            if (tempPrices.length > 150) tempPrices.shift();
+            
+            const currentStrategy = strategiesDB.find(s => s.id === currentStrategyId);
+            const tempSignal = evaluateStrategy(tempPrices, currentStrategy);
+            
+            if (tempSignal === 'CALL') io.emit('pre_alert', { call: true, put: false });
+            else if (tempSignal === 'PUT') io.emit('pre_alert', { call: false, put: true });
+            else io.emit('pre_alert', { call: false, put: false }); 
+        } else {
+            io.emit('pre_alert', { call: false, put: false });
+        }
+    }
+
+    if (isCandleClosed) {
+        handleCandleClose(currentPrice, candleStartTime);
+    }
+}
+
+// ============================================================================
+// 7. MOTOR CENTRAL DE CONEXÃO (ROTEADOR BINANCE vs UDF OTC)
 // ============================================================================
 async function startConnection(symbol) {
     currentConnectionId++;
     const myConnectionId = currentConnectionId;
 
     if (ws) { ws.terminate(); ws = null; }
+    if (otcInterval) { clearInterval(otcInterval); otcInterval = null; }
     
     closePrices = []; activeSignals = []; signalHistory = []; 
     scoreboard = { win1: 0, winG1: 0, winG2: 0, loss: 0 };
     lastClosedCandleTime = 0; lastResolvedCandleTime = 0; 
     
+    const isOTC = symbol.toUpperCase().includes('OTC');
+    const tfMinutes = parseInt(currentTimeframe.replace('m', ''));
+    
     const currentStrategy = strategiesDB.find(s => s.id === currentStrategyId);
     if (!currentStrategy) return;
 
-    updateStatus(`Carregando histórico de ${symbol.toUpperCase()} (${currentTimeframe.toUpperCase()})...`);
+    if (isOTC) {
+        // 🎯 LÓGICA DO MERCADO OTC (VIA UDF VELLOX)
+        updateStatus(`Carregando histórico OTC de ${symbol.toUpperCase()} (${currentTimeframe.toUpperCase()})...`);
+        
+        try {
+            const resolution = tfMinutes.toString();
+            const to = Math.floor(Date.now() / 1000);
+            const from = to - (150 * tfMinutes * 60); 
 
-    try {
-        // 🎯 1. Histórico adaptado para o Timeframe atual!
-        const response = await axios.get(`https://data-api.binance.vision/api/v3/klines?symbol=${symbol.toUpperCase()}&interval=${currentTimeframe}&limit=100`);
-        if (myConnectionId !== currentConnectionId) return; 
+            const otcHeaders = {
+                'accept': '*/*',
+                'Cookie': OTC_COOKIE_MANUAL, 
+                'X-Requested-With': 'XMLHttpRequest',
+                'referer': 'https://velloxbroker.com/traderoom',
+                'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36'
+            };
 
-        const klines = response.data;
-        for (let i = 0; i < klines.length - 1; i++) {
-            const k_time = klines[i][0]; const k_o = parseFloat(klines[i][1]); const k_c = parseFloat(klines[i][4]); 
-            
-            activeSignals = activeSignals.filter(sig => {
-                const isGreen = k_c > k_o; const isRed = k_c < k_o;
-                const won = (sig.type === 'CALL' && isGreen) || (sig.type === 'PUT' && isRed);
+            const url = `https://velloxbroker.com/publicapi/tradingview/udf-history?symbol=${symbol.toUpperCase()}&resolution=${resolution}&from=${from}&to=${to}&countback=150&site=velloxbroker.com`;
+            const response = await axios.get(url, { headers: otcHeaders });
 
-                if (won) {
-                    if (sig.step === 0) { sig.status = 'WIN 1ª 🎯'; scoreboard.win1++; }
-                    else if (sig.step === 1) { sig.status = 'WIN G1 🎯'; scoreboard.winG1++; }
-                    else if (sig.step === 2) { sig.status = 'WIN G2 🎯'; scoreboard.winG2++; }
-                    return false; 
-                } else {
-                    sig.step++;
-                    if (sig.step > 2) { sig.status = 'LOSS 🔴'; scoreboard.loss++; return false; } 
-                    else { sig.status = `Gale ${sig.step}...`; return true; }
+            if (myConnectionId !== currentConnectionId) return;
+
+            if (response.data && response.data.s === 'ok') {
+                const opens = response.data.o;
+                const closes = response.data.c;
+                const times = response.data.t;
+
+                // A Máquina do Tempo processa as 150 velas do OTC!
+                for (let i = 0; i < closes.length - 1; i++) {
+                    processHistoricalCandle(times[i] * 1000, opens[i], closes[i], currentStrategy);
                 }
+                
+                lastClosedCandleTime = times[times.length - 2]; 
+                updateStatus(`Operando OTC (${symbol.toUpperCase()}) em ${currentTimeframe.toUpperCase()}...`);
+                
+                io.emit('scoreboard', scoreboard);
+                io.emit('history_dump', signalHistory);
+            } else {
+                updateStatus(`Aguardando dados OTC de ${symbol.toUpperCase()}...`);
+            }
+
+            otcInterval = setInterval(async () => {
+                if (myConnectionId !== currentConnectionId) return;
+                try {
+                    const pollTo = Math.floor(Date.now() / 1000);
+                    const pollFrom = pollTo - (5 * tfMinutes * 60); 
+                    const pollUrl = `https://velloxbroker.com/publicapi/tradingview/udf-history?symbol=${symbol.toUpperCase()}&resolution=${resolution}&from=${pollFrom}&to=${pollTo}&countback=3&site=velloxbroker.com`;
+
+                    const pollRes = await axios.get(pollUrl, { headers: otcHeaders });
+                    if (pollRes.data && pollRes.data.s === 'ok') {
+                        const times = pollRes.data.t;
+                        const closes = pollRes.data.c;
+                        const latestTime = times[times.length - 1];
+                        const latestClose = closes[closes.length - 1];
+
+                        if (lastClosedCandleTime > 0 && latestTime > lastClosedCandleTime) {
+                            const closedTime = times[times.length - 2];
+                            const closedPrice = closes[closes.length - 2];
+                            if (closedTime === lastClosedCandleTime) { handleCandleClose(closedPrice, closedTime); } 
+                            else { lastClosedCandleTime = latestTime; }
+                        }
+                        if (lastClosedCandleTime === 0) lastClosedCandleTime = latestTime; 
+                        handleCandleTick(latestClose, false, latestTime);
+                    }
+                } catch (e) {} 
+            }, 1500);
+
+        } catch (error) {
+            console.error("Erro na ignição do OTC. A corretora pode estar a bloquear o IP:", error.message);
+            setTimeout(() => startConnection(currentSymbol), 5000); 
+        }
+
+    } else {
+        // 🎯 LÓGICA DO MERCADO REAL (VIA BINANCE API)
+        updateStatus(`Carregando histórico Real de ${symbol.toUpperCase()} (${currentTimeframe.toUpperCase()})...`);
+
+        try {
+            const response = await axios.get(`https://api.binance.com/api/v3/klines?symbol=${symbol.toUpperCase()}&interval=${currentTimeframe}&limit=150`);
+            if (myConnectionId !== currentConnectionId) return; 
+
+            const klines = response.data;
+            
+            // A Máquina do Tempo processa as 150 velas da Binance!
+            for (let i = 0; i < klines.length - 1; i++) {
+                processHistoricalCandle(klines[i][0], parseFloat(klines[i][1]), parseFloat(klines[i][4]), currentStrategy);
+            }
+            
+            updateStatus(`Operando Mercado Real (${symbol.toUpperCase()}) em ${currentTimeframe.toUpperCase()}...`);
+            
+            io.emit('scoreboard', scoreboard);
+            io.emit('history_dump', signalHistory);
+            
+            ws = new WebSocket(`wss://stream.binance.com:9443/ws/${symbol.toLowerCase()}@kline_${currentTimeframe}`);
+            
+            ws.on('message', (data) => {
+                if (myConnectionId !== currentConnectionId) return;
+                try {
+                    const kline = JSON.parse(data).k;
+                    handleCandleTick(parseFloat(kline.c), kline.x, kline.t);
+                } catch (e) { console.error("Erro no WebSocket Binance:", e); }
             });
 
-            closePrices.push(k_c);
-            if (activeSignals.length === 0) {
-                const newSigType = evaluateStrategy(closePrices, currentStrategy);
-                if (newSigType) {
-                    const newSig = { 
-                        id: k_time, type: newSigType, symbol: currentSymbol.toUpperCase(),
-                        time: new Date(k_time).toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' }), 
-                        step: 0, status: 'Aguardando...', entryPrice: k_o, isManual: false
-                    };
-                    activeSignals.push(newSig); signalHistory.unshift(newSig); 
-                    if (signalHistory.length > 20) signalHistory.pop(); 
-                }
-            }
+            ws.on('error', (err) => { setTimeout(() => startConnection(currentSymbol), 5000); });
+            ws.on('close', () => { setTimeout(() => startConnection(currentSymbol), 5000); });
+
+        } catch (error) { 
+            console.error("Falha ao buscar Klines Binance:", error.message);
+            setTimeout(() => startConnection(currentSymbol), 5000); 
         }
-        
-        io.emit('scoreboard', scoreboard);
-        io.emit('history_dump', signalHistory);
-        updateStatus(`Analisando o mercado (${symbol.toUpperCase()}) em ${currentTimeframe.toUpperCase()}...`);
-        
-        // 🎯 2. Socket adaptado para o Timeframe atual!
-        ws = new WebSocket(`wss://stream.binance.com:9443/ws/${symbol.toLowerCase()}@kline_${currentTimeframe}`);
-        
-        ws.on('message', (data) => {
-            if (myConnectionId !== currentConnectionId) return;
-            
-            try {
-                const kline = JSON.parse(data).k;
-                const currentPrice = parseFloat(kline.c); 
-                const isCandleClosed = kline.x; 
-                const candleStartTime = kline.t;
-                
-                // 🎯 Matemática inteligente para o Relógio do Front-End (Serve para M1, M5, M15)
-                const tfMinutes = parseInt(currentTimeframe.replace('m', ''));
-                const now = new Date();
-                const secondsLeft = (tfMinutes * 60) - ((now.getMinutes() % tfMinutes) * 60 + now.getSeconds());
-                
-                currentGlobalPrice = currentPrice;
-
-                let currentActive = activeSignals.length > 0 ? activeSignals[0] : null;
-                io.emit('price_update', { price: currentPrice, secondsLeft: secondsLeft, activeSignal: currentActive });
-
-                if (closePrices.length > 50 && !isCandleClosed && candleStartTime !== lastResolvedCandleTime) {
-                    if (activeSignals.length === 0) {
-                        let tempPrices = [...closePrices, currentPrice];
-                        if (tempPrices.length > 150) tempPrices.shift();
-                        const tempSignal = evaluateStrategy(tempPrices, currentStrategy);
-                        
-                        if (tempSignal === 'CALL') io.emit('pre_alert', { call: true, put: false });
-                        else if (tempSignal === 'PUT') io.emit('pre_alert', { call: false, put: true });
-                        else io.emit('pre_alert', { call: false, put: false }); 
-                    } else {
-                        io.emit('pre_alert', { call: false, put: false });
-                    }
-                }
-
-                if (isCandleClosed) { 
-                    if (candleStartTime === lastClosedCandleTime) return; 
-                    lastClosedCandleTime = candleStartTime;
-                    
-                    closePrices.push(currentPrice);
-                    if (closePrices.length > 150) closePrices.shift();
-
-                    let signalResolvedThisCandle = false;
-
-                    activeSignals = activeSignals.filter(sig => {
-                        const won = (sig.type === 'CALL' && currentPrice > sig.entryPrice) || (sig.type === 'PUT' && currentPrice < sig.entryPrice);
-                        const prefix = sig.isManual ? '⚡ Sniper: ' : '';
-
-                        if (won) {
-                            if (sig.step === 0) { sig.status = prefix + 'WIN 1ª 🎯'; scoreboard.win1++; }
-                            else if (sig.step === 1) { sig.status = prefix + 'WIN G1 🎯'; scoreboard.winG1++; }
-                            else if (sig.step === 2) { sig.status = prefix + 'WIN G2 🎯'; scoreboard.winG2++; }
-                            
-                            updateBrokerProfits(sig.step, true, sig.isManual);
-                            io.emit('signal_result', sig); io.emit('scoreboard', scoreboard); 
-                            signalResolvedThisCandle = true; return false; 
-                        } else {
-                            updateBrokerProfits(sig.step, false, sig.isManual); 
-                            sig.step++; 
-                            
-                            if (sig.step > 2) {
-                                sig.status = prefix + 'LOSS 🔴'; scoreboard.loss++;
-                                io.emit('signal_result', sig); io.emit('scoreboard', scoreboard); 
-                                signalResolvedThisCandle = true; return false; 
-                            } else {
-                                sig.status = prefix + `Gale ${sig.step}...`; io.emit('signal_result', sig);
-                                
-                                Object.values(activeBrokers).forEach(async (broker) => {
-                                    if (!sig.isManual && !broker.autoTradeActive) return;
-                                    if (sig.step > broker.config.maxGale) return; 
-                                    
-                                    let valorGale = broker.config.baseAmount * Math.pow(2, sig.step);
-                                    let isDemo = broker.config.accountType === 'demo';
-                                    
-                                    const result = await dispararOrdemVellox(broker, isDemo, currentSymbol, sig.type, valorGale.toFixed(2).replace('.', ','), currentPrice);
-                                    if (result.success && result.balance) io.to(broker.socketId).emit('update_balance', { isDemo: isDemo, balance: result.balance });
-                                });
-                                return true; 
-                            }
-                        }
-                    });
-
-                    if (signalResolvedThisCandle) lastResolvedCandleTime = candleStartTime;
-
-                    if (activeSignals.length === 0 && candleStartTime !== lastResolvedCandleTime) {
-                        const newSignalType = evaluateStrategy(closePrices, currentStrategy);
-                        
-                        if (newSignalType) {
-                            const newSig = { 
-                                id: Date.now(), type: newSignalType, symbol: currentSymbol.toUpperCase(),
-                                time: new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' }), 
-                                step: 0, status: 'Aguardando Vela...', entryPrice: currentPrice, isManual: false
-                            };
-                            
-                            activeSignals.push(newSig); signalHistory.unshift(newSig); 
-                            if (signalHistory.length > 20) signalHistory.pop();
-                            
-                            io.emit('new_signal_history', newSig); io.emit('signal', { type: newSignalType, time: newSig.time }); 
-                            
-                            Object.values(activeBrokers).forEach(async (broker) => {
-                                if (!broker.autoTradeActive) return;
-                                let valorInicial = parseFloat(broker.config.baseAmount).toFixed(2).replace('.', ',');
-                                let isDemo = broker.config.accountType === 'demo';
-                                
-                                const result = await dispararOrdemVellox(broker, isDemo, currentSymbol, newSignalType, valorInicial, currentPrice);
-                                if (result.success && result.balance) io.to(broker.socketId).emit('update_balance', { isDemo: isDemo, balance: result.balance });
-                            });
-                        }
-                    }
-                }
-            } catch (e) { console.error("Erro no processamento do WebSocket:", e); }
-        });
-
-        ws.on('error', (err) => { 
-            if (myConnectionId !== currentConnectionId) return; 
-            console.error("Erro na conexão com a Binance:", err);
-            setTimeout(() => startConnection(currentSymbol), 5000); 
-        });
-        
-        ws.on('close', () => { 
-            if (myConnectionId !== currentConnectionId) return; 
-            console.log("Conexão WebSocket fechada. Reconectando...");
-            setTimeout(() => startConnection(currentSymbol), 5000); 
-        });
-
-    } catch (error) { 
-        if (myConnectionId !== currentConnectionId) return; 
-        console.error("Falha ao buscar Klines iniciais:", error);
-        setTimeout(() => startConnection(currentSymbol), 5000); 
     }
 }
 
@@ -500,62 +549,39 @@ io.on('connection', (socket) => {
     socket.on('hybrid_login', async ({ brokerUser, brokerPass }) => {
         try {
             const loginData = new URLSearchParams();
-            loginData.append('user', brokerUser); 
-            loginData.append('pass', brokerPass);
-            const API_BASE_URL = 'https://velloxbroker.com'; 
-            
-            const loginResponse = await axios.post(`${API_BASE_URL}/api/login`, loginData, { 
+            loginData.append('user', brokerUser); loginData.append('pass', brokerPass);
+            const loginResponse = await axios.post(`https://velloxbroker.com/api/login`, loginData, { 
                 headers: { 'Accept': 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' } 
             });
             
             const brokerToken = loginResponse.data.token || loginResponse.data.access_token;
             if (!brokerToken) throw new Error("BROKER_FAIL");
 
-            let uid = brokerUser.replace(/[^a-zA-Z0-9]/g, ''); 
-            if (!uid) uid = 'user_' + Date.now();
-
-            let userRole = 'aluno';
-            const userLower = brokerUser.toLowerCase();
+            let uid = brokerUser.replace(/[^a-zA-Z0-9]/g, ''); if (!uid) uid = 'user_' + Date.now();
+            let userRole = 'aluno'; const userLower = brokerUser.toLowerCase();
             
-            if (userLower === MASTER_EMAIL.toLowerCase() || userLower === MASTER_BROKER_LOGIN.toLowerCase()) {
-                uid = 'admin_master'; userRole = 'admin';
-            } else {
-                const snapshot = await db.collection('users').where('email', '==', brokerUser).get();
-                if (!snapshot.empty) { uid = snapshot.docs[0].id; userRole = snapshot.docs[0].data().role; }
-            }
+            if (userLower === MASTER_EMAIL.toLowerCase() || userLower === MASTER_BROKER_LOGIN.toLowerCase()) { uid = 'admin_master'; userRole = 'admin'; } 
+            else { const snapshot = await db.collection('users').where('email', '==', brokerUser).get(); if (!snapshot.empty) { uid = snapshot.docs[0].id; userRole = snapshot.docs[0].data().role; } }
 
             const customToken = await admin.auth().createCustomToken(uid);
             let realBalance = "0,00";
             try {
-                const balanceResponse = await axios.get(`${API_BASE_URL}/api/public/users/balance`, { headers: { 'Authorization': `Bearer ${brokerToken}` } });
+                const balanceResponse = await axios.get(`https://velloxbroker.com/api/public/users/balance`, { headers: { 'Authorization': `Bearer ${brokerToken}` } });
                 realBalance = balanceResponse.data.credit || "0,00";
             } catch (e) {}
 
-            let realId = '0'; 
-            let demoId = '8'; 
-
             activeBrokers[socket.id] = { 
-                socketId: socket.id, 
-                token: brokerToken, 
-                demoAccountId: demoId, 
-                realAccountId: realId, 
-                autoTradeActive: false, 
-                config: { active: false, accountType: 'demo', baseAmount: 5, maxGale: 2, stopWin: 99999, stopLoss: 99999 }, 
-                sessionProfit: 0 
+                socketId: socket.id, token: brokerToken, demoAccountId: '8', realAccountId: '0', autoTradeActive: false, 
+                config: { active: false, accountType: 'demo', baseAmount: 5, maxGale: 2, stopWin: 99999, stopLoss: 99999 }, sessionProfit: 0 
             };
-            
             socket.emit('hybrid_login_result', { success: true, firebaseToken: customToken, role: userRole, balance: { demo: "--- (Dê 1 tiro para carregar)", real: realBalance } });
 
-        } catch (error) {
-            console.error("Erro no login híbrido:", error);
-            socket.emit('hybrid_login_result', { success: false, reason: 'broker', msg: 'Credenciais da Corretora inválidas ou conta inexistente.' });
-        }
+        } catch (error) { socket.emit('hybrid_login_result', { success: false, reason: 'broker', msg: 'Credenciais da Corretora inválidas ou conta inexistente.' }); }
     });
 
     socket.on('setup_auto_trade', (config) => {
         if (activeBrokers[socket.id]) {
-            activeBrokers[socket.id].config = config;
-            activeBrokers[socket.id].autoTradeActive = config.active;
+            activeBrokers[socket.id].config = config; activeBrokers[socket.id].autoTradeActive = config.active;
             if (config.active) activeBrokers[socket.id].sessionProfit = 0; 
             socket.emit('auto_trade_status', { active: config.active, msg: config.active ? "Robô Armado e Analisando..." : "Robô Pausado.", profit: activeBrokers[socket.id].sessionProfit });
         }
@@ -571,57 +597,50 @@ io.on('connection', (socket) => {
         const isBotTrading = Object.values(activeBrokers).some(b => b.autoTradeActive);
         const hasRealSignal = activeSignals.some(s => s.isManual || isBotTrading);
 
-        if (activeSignals.length > 0 && hasRealSignal) { socket.emit('sniper_error', 'Aguarde! Já existe uma operação real em andamento.'); return; }
+        if (activeSignals.length > 0 && hasRealSignal) { socket.emit('sniper_error', 'Aguarde! Já existe uma operação em andamento.'); return; }
         if (activeSignals.length > 0) activeSignals = []; 
 
         if (currentGlobalPrice === 0) {
             currentGlobalPrice = closePrices.length > 0 ? closePrices[closePrices.length - 1] : 0;
-            if (currentGlobalPrice === 0) { socket.emit('sniper_error', 'Aguardando sincronização de preço com a Binance...'); return; }
+            if (currentGlobalPrice === 0) { socket.emit('sniper_error', 'Aguardando sincronização de preço...'); return; }
         }
 
         if (frontendConfig) {
             if (!broker.config) broker.config = { active: false, stopWin: 99999, stopLoss: 99999 };
-            broker.config.accountType = frontendConfig.accountType;
-            broker.config.baseAmount = frontendConfig.baseAmount;
-            broker.config.maxGale = frontendConfig.maxGale;
+            broker.config.accountType = frontendConfig.accountType; broker.config.baseAmount = frontendConfig.baseAmount; broker.config.maxGale = frontendConfig.maxGale;
         }
 
         let accType = broker.config ? broker.config.accountType : 'demo';
         let amount = broker.config ? parseFloat(broker.config.baseAmount).toFixed(2).replace('.', ',') : '5,00';
         let isDemo = accType === 'demo';
 
-        console.log(`[🎯 MODO SNIPER] Usuário atirando ${direction} R$ ${amount}...`);
-        
-        const result = await dispararOrdemVellox(broker, isDemo, currentSymbol, direction, amount, currentGlobalPrice);
+        const result = await dispararOrdemVellox(broker, isDemo, currentSymbol.toUpperCase(), direction, amount, currentGlobalPrice);
 
         if (result.success) {
             socket.emit('sniper_success', `Ordem ${direction} enviada com sucesso!`);
             if (result.balance) socket.emit('update_balance', { isDemo: isDemo, balance: result.balance });
 
             const manualSig = { 
-                id: Date.now(), type: direction, symbol: currentSymbol.toUpperCase(),
-                time: new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' }), 
+                id: Date.now(), type: direction, symbol: currentSymbol.toUpperCase(), time: new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' }), 
                 step: 0, status: '⚡ Sniper (Aguardando...)', entryPrice: currentGlobalPrice, isManual: true 
             };
             
             activeSignals.push(manualSig); signalHistory.unshift(manualSig);
             if (signalHistory.length > 20) signalHistory.pop();
             io.emit('new_signal_history', manualSig);
-        } else {
-            socket.emit('sniper_error', result.msg);
-        }
+        } else { socket.emit('sniper_error', result.msg); }
     });
 
     socket.on('admin_create_user', async (data) => {
         try {
             const decodedToken = await admin.auth().verifyIdToken(data.token);
-            const reqEmail = decodedToken.email || '';
+            const reqUid = decodedToken.uid; 
             let isAdmin = false;
             
-            if (reqEmail.toLowerCase() === MASTER_EMAIL.toLowerCase() || reqEmail.toLowerCase() === MASTER_BROKER_LOGIN.toLowerCase()) isAdmin = true;
-            else { const snap = await db.collection('users').where('email', '==', reqEmail).get(); if (!snap.empty && snap.docs[0].data().role === 'admin') isAdmin = true; }
+            if (reqUid === 'admin_master') isAdmin = true;
+            else { const snap = await db.collection('users').doc(reqUid).get(); if (snap.exists && snap.data().role === 'admin') isAdmin = true; }
 
-            if (!isAdmin) { socket.emit('user_creation_result', { success: false, msg: 'Operação Negada.' }); return; }
+            if (!isAdmin) { socket.emit('user_creation_result', { success: false, msg: 'Operação Negada. Você não tem privilégios de Admin.' }); return; }
 
             const userRecord = await admin.auth().createUser({ email: data.newEmail, password: data.newPassword });
             await db.collection('users').doc(userRecord.uid).set({ email: data.newEmail, role: data.newRole, createdAt: admin.firestore.FieldValue.serverTimestamp() });
@@ -640,38 +659,23 @@ io.on('connection', (socket) => {
 
     socket.on('change_coin', (newSymbol) => { currentSymbol = newSymbol; startConnection(currentSymbol); });
     socket.on('change_strategy', (newStrategyId) => { currentStrategyId = newStrategyId; startConnection(currentSymbol); });
-    
-    // 🎯 O NOVO OUVINTE DO TIMEFRAME
     socket.on('change_timeframe', (newTf) => { currentTimeframe = newTf; startConnection(currentSymbol); });
 
     socket.on('add_new_strategy', async (newStrategy) => {
         try {
-            if (!newStrategy || !newStrategy.id) {
-                socket.emit('script_injection_result', { success: false, msg: 'O JSON precisa de um "id" válido.' });
-                return;
-            }
-
+            if (!newStrategy || !newStrategy.id) { socket.emit('script_injection_result', { success: false, msg: 'O JSON precisa de um "id" válido.' }); return; }
             const exists = strategiesDB.find(s => s.id === newStrategy.id);
-            if (exists) { 
-                socket.emit('script_injection_result', { success: false, msg: 'Já existe um script com este ID!' });
-                return;
-            }
+            if (exists) { socket.emit('script_injection_result', { success: false, msg: 'Já existe um script com este ID!' }); return; }
 
             await db.collection('scripts').doc(newStrategy.id).set(newStrategy); 
-            strategiesDB.push(newStrategy); 
-            io.emit('available_strategies', strategiesDB.map(s => ({ id: s.id, name: s.name }))); 
-            
+            strategiesDB.push(newStrategy); io.emit('available_strategies', strategiesDB.map(s => ({ id: s.id, name: s.name }))); 
             socket.emit('script_injection_result', { success: true, msg: 'Script gravado no Firebase com sucesso!', id: newStrategy.id });
-        } catch (e) {
-            console.error("Erro ao adicionar script:", e);
-            socket.emit('script_injection_result', { success: false, msg: 'Erro do Firebase: ' + e.message });
-        }
+        } catch (e) { socket.emit('script_injection_result', { success: false, msg: 'Erro do Firebase: ' + e.message }); }
     });
 
     socket.on('disconnect', () => { if (activeBrokers[socket.id]) delete activeBrokers[socket.id]; });
 });
 
-// Inicializa a aplicação
 loadStrategiesFromDB();
 loadAvailableCoins();
 
