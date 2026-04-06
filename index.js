@@ -29,7 +29,7 @@ const MASTER_EMAIL = 'alexandre.lucena@gmail.com';
 const MASTER_BROKER_LOGIN = 'AlexLucena1981';
 
 // 🎯 COOKIE DINÂMICO
-let globalDynamicCookie = "locale=eyJpdiI6IkgvYk5XeTFiVUhoczRlQmM2RTZJMFE9PSIsInZhbHVlIjoiNktFOUs2T1lHTXhIN2JnSndzUG9leVczeWRmZ1RwMmJGc2tZQTVaaUh0RVJQSTNUOW9TMWFkSFR6SUxFeHVZZCIsIm1hYyI6ImJjMTFhOGUyNzY1NjA3ZDk3ZGJmMjdhZWU1MmI2NzVjNTg5YzIzYjM5ZWM3NDY5OWRjMTJhYmY1YWU0M2Y0Y2UiLCJ0YWciOiIifQ==; XSRF-TOKEN=eyJpdiI6ImVwUHYrRjZ4NU5CRCtiRklBOHpBY3c9PSIsInZhbHVlIjoiWW44emlWK01sRFE3dGlKaDFnY2R2YW1JN3hVaHRQa0tsUk5xQ25WSVFWVlRzVkw2bUZFamxYV0xLdlFkMFA1UXl5aTdWSTNTU1BpeEtPeHJINVN5R2svWHBnMWZ2V2hVeXMyOXdsNVlLZ0M1a1BtT1QzK1dxbjlzdGU1VWZJaWMiLCJtYWMiOiIxNmFiMmEyYTRjYTZmMzBjNGExNzI5OGQ2Yjk3MTNkYmJhNWJmN2I5NTUxODVhYjJmNTE1ODA4MjUxMGEzMzk3IiwidGFnIjoiIn0=; laravel_session=eyJpdiI6Imtvc0ZJWU1TcHNTR2FYWDV2RG0wTVE9PSIsInZhbHVlIjoiOWV0QXNSYjRubkRRZ0RUd2k2WGM0bDhXbDJ6OE8vNHBNSDhjZzQ0K3graHBIYlRlMkpHdTlVejF5SW1NNVhCQmFzK3BmR1hKVkwxb0xpMlVlbnBGZllZMGZYTXgrQXdnblF0V0l0S1k1bmlyT3QwaVArWnUzU3dLbjVHT3JYVDkiLCJtYWMiOiI3YjZhODVlNTM3OTE3MzQ0OTA2ZTAyZTM1MDk3OGYwNmY2MzA1MTQxZWU5YTU0YzAwNWE0MmI0OTAxZTgyZmVlIiwidGFnIjoiIn0=";
+let globalDynamicCookie = "locale=eyJpdiI6IkgvYk5XeTFiVUhoczRlQmM2RTZJMFE9PSIsInZhbHVlIjoiNktFOUs2T1lHTXhIN2JnSndzUG9leVczeWRmZ1RwMmJGc2tZQTVaaUh0RVJQSTNUOW9TMWFkSFR6SUxFeHVZZCIsIm1hYyI6ImJjMTFhOGUyNzY1NjA3ZDk3ZGJmMjdhZWU1MmI2NzVjNTg5YzIzYjM5ZWM3NDY5OWRjMTJhYmY1YWU0M2Y0Y2UiLCJ0YWciOiIifQ==; XSRF-TOKEN=eyJpdiI6IkJXTkh4d0NXZlFaQzhVZXpQZkZaa2c9PSIsInZhbHVlIjoidkU4cTBHbUVjZHhTeTkvUGh0YTNMZGpoZTRXV0xaU3hxeEdrTmk4TFVpYThWYnlkREFiVnFDNFNTVFJWVHFnTUFUdEZITzJzV3hOMUp3MzVYR0JwbTdHa2NrZ3JOSHM0R3MyVjVxbnFQZkdzTnpkb3pOS0hjWWU2QTlKdHExMGsiLCJtYWMiOiIzODZmM2MyM2IzMzc3ZjUxMWM4NDU0ZTA5YmMyNjZkZWEyMzdkOWFjMTA3OTdmYmFmNzgxZGNmZjI4ZmE1Yzg2IiwidGFnIjoiIn0=; laravel_session=eyJpdiI6Im8wQkZoRm1EaDYrcXhpSDFVRnZnN3c9PSIsInZhbHVlIjoic2JIb2tDMWhON0pBc3FoYjZpajhaTitweDdRQUs5TUVqamdNdXZBMytQTXFNaHNuSTYvTnpXUjJ4bzBhSEhseHZ0aWFRN0lkSWd1aTBJamZQMEs2YnJ4aFBZTmNxZGpzdkZ3b2VtL3JyS042eEZlWStzemxmNEpDVjlPN1FyemkiLCJtYWMiOiIwMmEwN2VlN2QyYzVjYmFkNGU0YzRlNzgxZTg2NzFiYjY3NmIwNjEyODE2MWU2Y2JlOWFlY2YzOGY1M2U1MzZhIiwidGFnIjoiIn0=";
 
 let closePrices = [];
 let ws = null;
@@ -275,7 +275,11 @@ function processHistoricalCandle(k_time, k_o, k_c, currentStrategy) {
         } else {
             sig.step++;
             if (sig.step > 2) { sig.status = 'LOSS 🔴'; scoreboard.loss++; return false; }
-            else { sig.status = `Gale ${sig.step}...`; return true; }
+            else { 
+                sig.status = `Gale ${sig.step}...`; 
+                sig.entryPrice = k_c; 
+                return true; 
+            }
         }
     });
 
@@ -341,7 +345,12 @@ async function handleCandleClose(closedPrice, candleStartTime) {
                 io.emit('signal_result', sig); io.emit('scoreboard', scoreboard); 
                 signalResolvedThisCandle = true; return false; 
             } else {
-                sig.status = prefix + `Gale ${sig.step}...`; io.emit('signal_result', sig);
+                sig.status = prefix + `Gale ${sig.step}...`; 
+                
+                // 🎯 O FIX DA SLIPPAGE: Gravamos o preço exato do SEGUNDO do disparo real, 
+                // e não o preço teórico da vela antiga. Assim a conta bate com a corretora!
+                sig.entryPrice = currentGlobalPrice || closedPrice; 
+                io.emit('signal_result', sig);
                 
                 Object.values(activeBrokers).forEach(async (broker) => {
                     if (!sig.isManual && !broker.autoTradeActive) return;
@@ -350,7 +359,7 @@ async function handleCandleClose(closedPrice, candleStartTime) {
                     let valorGale = broker.config.baseAmount * Math.pow(2, sig.step);
                     let isDemo = broker.config.accountType === 'demo';
                     
-                    const result = await dispararOrdemVellox(broker, isDemo, currentSymbol, sig.type, valorGale.toFixed(2).replace('.', ','), closedPrice);
+                    const result = await dispararOrdemVellox(broker, isDemo, currentSymbol, sig.type, valorGale.toFixed(2).replace('.', ','), currentGlobalPrice || closedPrice);
                     if (result.success && result.balance) io.to(broker.socketId).emit('update_balance', { isDemo: isDemo, balance: result.balance });
                 });
                 return true; 
@@ -368,7 +377,9 @@ async function handleCandleClose(closedPrice, candleStartTime) {
             const newSig = { 
                 id: Date.now(), type: newSignalType, symbol: currentSymbol.toUpperCase(),
                 time: new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' }), 
-                step: 0, status: 'Aguardando Vela...', entryPrice: closedPrice, isManual: false
+                step: 0, status: 'Aguardando Vela...', 
+                entryPrice: currentGlobalPrice || closedPrice, // 🎯 FIX DA SLIPPAGE AQUI TAMBÉM
+                isManual: false
             };
             
             activeSignals.push(newSig); signalHistory.unshift(newSig); 
@@ -381,7 +392,7 @@ async function handleCandleClose(closedPrice, candleStartTime) {
                 let valorInicial = parseFloat(broker.config.baseAmount).toFixed(2).replace('.', ',');
                 let isDemo = broker.config.accountType === 'demo';
                 
-                const result = await dispararOrdemVellox(broker, isDemo, currentSymbol, newSignalType, valorInicial, closedPrice);
+                const result = await dispararOrdemVellox(broker, isDemo, currentSymbol, newSignalType, valorInicial, currentGlobalPrice || closedPrice);
                 if (result.success && result.balance) io.to(broker.socketId).emit('update_balance', { isDemo: isDemo, balance: result.balance });
             });
         }
@@ -441,7 +452,6 @@ async function startConnection(symbol) {
     io.emit('history_dump', []);
     io.emit('pre_alert', { call: false, put: false });
     
-    // 🎯 A MÁGICA: Informa o front-end IMEDIATAMENTE sobre os selects corretos!
     io.emit('engine_state', { symbol: currentSymbol, timeframe: currentTimeframe, strategy: currentStrategyId });
     
     const tfMinutes = parseInt(currentTimeframe.replace('m', ''));
@@ -564,8 +574,6 @@ io.on('connection', (socket) => {
     socket.emit('available_coins', availableCoins); 
     socket.emit('scoreboard', scoreboard);
     socket.emit('history_dump', signalHistory);
-    
-    // 🎯 A MÁGICA: Informa o utilizador recém-chegado qual é a moeda que estamos a operar!
     socket.emit('engine_state', { symbol: currentSymbol, timeframe: currentTimeframe, strategy: currentStrategyId });
     
     socket.on('inject_cookie', (newCookie) => {
@@ -650,7 +658,9 @@ io.on('connection', (socket) => {
 
             const manualSig = { 
                 id: Date.now(), type: direction, symbol: currentSymbol.toUpperCase(), time: new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' }), 
-                step: 0, status: '⚡ Sniper (Aguardando...)', entryPrice: currentGlobalPrice, isManual: true 
+                step: 0, status: '⚡ Sniper (Aguardando...)', 
+                entryPrice: currentGlobalPrice, // 🎯 FIX DA SLIPPAGE MANUAL
+                isManual: true 
             };
             
             activeSignals.push(manualSig); signalHistory.unshift(manualSig);
