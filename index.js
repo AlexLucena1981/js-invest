@@ -346,9 +346,6 @@ async function handleCandleClose(closedPrice, candleStartTime) {
                 signalResolvedThisCandle = true; return false; 
             } else {
                 sig.status = prefix + `Gale ${sig.step}...`; 
-                
-                // 🎯 O FIX DA SLIPPAGE: Gravamos o preço exato do SEGUNDO do disparo real, 
-                // e não o preço teórico da vela antiga. Assim a conta bate com a corretora!
                 sig.entryPrice = currentGlobalPrice || closedPrice; 
                 io.emit('signal_result', sig);
                 
@@ -377,9 +374,7 @@ async function handleCandleClose(closedPrice, candleStartTime) {
             const newSig = { 
                 id: Date.now(), type: newSignalType, symbol: currentSymbol.toUpperCase(),
                 time: new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' }), 
-                step: 0, status: 'Aguardando Vela...', 
-                entryPrice: currentGlobalPrice || closedPrice, // 🎯 FIX DA SLIPPAGE AQUI TAMBÉM
-                isManual: false
+                step: 0, status: 'Aguardando Vela...', entryPrice: currentGlobalPrice || closedPrice, isManual: false
             };
             
             activeSignals.push(newSig); signalHistory.unshift(newSig); 
@@ -426,7 +421,7 @@ function handleCandleTick(currentPrice, isCandleClosed, candleStartTime) {
 }
 
 // ============================================================================
-// 7. MOTOR CENTRAL DE CONEXÃO (ROTEADOR BINANCE vs UDF OTC/AÇÕES)
+// 7. MOTOR CENTRAL DE CONEXÃO 
 // ============================================================================
 async function startConnection(symbol) {
     currentConnectionId++;
@@ -567,6 +562,23 @@ async function startConnection(symbol) {
 // ============================================================================
 // 8. ROTAS DE COMUNICAÇÃO COM O FRONTEND E ADMINISTRAÇÃO
 // ============================================================================
+
+// 🔒 O CADEADO DO MOTOR: Função auxiliar que impede a troca de moeda durante as operações
+function blockIfTrading(socket, msg) {
+    const isBotTrading = Object.values(activeBrokers).some(b => b.autoTradeActive);
+    const hasRealTrade = activeSignals.some(s => s.isManual || (isBotTrading && s.step >= 0)); 
+    
+    if (hasRealTrade) {
+        socket.emit('sniper_error', `🔒 MOTOR TRAVADO: ${msg}`);
+        // Devolve a tela para o estado atual real, limpando o efeito visual da troca
+        socket.emit('engine_state', { symbol: currentSymbol, timeframe: currentTimeframe, strategy: currentStrategyId });
+        socket.emit('scoreboard', scoreboard);
+        socket.emit('history_dump', signalHistory);
+        return true;
+    }
+    return false;
+}
+
 io.on('connection', (socket) => {
     
     socket.emit('status', { msg: currentEngineStatus });
@@ -610,7 +622,7 @@ io.on('connection', (socket) => {
                 socketId: socket.id, token: brokerToken, demoAccountId: '8', realAccountId: '0', autoTradeActive: false, 
                 config: { active: false, accountType: 'demo', baseAmount: 5, maxGale: 2, stopWin: 99999, stopLoss: 99999 }, sessionProfit: 0 
             };
-            socket.emit('hybrid_login_result', { success: true, firebaseToken: customToken, role: userRole, balance: { demo: "--- (Dê 1 tiro para carregar)", real: realBalance } });
+            socket.emit('hybrid_login_result', { success: true, firebaseToken: customToken, role: userRole, balance: { demo: "---", real: realBalance } });
 
         } catch (error) { socket.emit('hybrid_login_result', { success: false, reason: 'broker', msg: 'Credenciais da Corretora inválidas ou conta inexistente.' }); }
     });
@@ -624,22 +636,28 @@ io.on('connection', (socket) => {
     });
 
     socket.on('manual_trade', async (data) => {
-        const direction = typeof data === 'string' ? data : data.direction;
-        const frontendConfig = typeof data === 'string' ? null : data.config;
+        const direction = data.direction;
+        const frontendConfig = data.config;
+        const reqSymbol = data.symbol;
+        const reqTf = data.timeframe;
         
         const broker = activeBrokers[socket.id];
         if (!broker || !broker.token) { socket.emit('sniper_error', 'Você precisa conectar na corretora antes de atirar!'); return; }
 
-        const hasManualSignal = activeSignals.some(s => s.isManual);
-        if (hasManualSignal) { 
-            socket.emit('sniper_error', 'Aguarde! Já existe um tiro Sniper em andamento.'); 
-            return; 
+        if (reqSymbol && reqSymbol.toLowerCase() !== currentSymbol.toLowerCase()) {
+            socket.emit('sniper_error', `Aba desatualizada! O motor está no ${currentSymbol.toUpperCase()}. Atualize a aba!`);
+            socket.emit('engine_state', { symbol: currentSymbol, timeframe: currentTimeframe, strategy: currentStrategyId });
+            return;
+        }
+        if (reqTf && reqTf !== currentTimeframe) {
+            socket.emit('sniper_error', `Aba desatualizada! O motor está no tempo ${currentTimeframe.toUpperCase()}. Atualize a aba!`);
+            socket.emit('engine_state', { symbol: currentSymbol, timeframe: currentTimeframe, strategy: currentStrategyId });
+            return;
         }
 
-        if (currentGlobalPrice === 0) {
-            currentGlobalPrice = closePrices.length > 0 ? closePrices[closePrices.length - 1] : 0;
-            if (currentGlobalPrice === 0) { socket.emit('sniper_error', 'Aguardando sincronização de preço...'); return; }
-        }
+        const hasManualSignal = activeSignals.some(s => s.isManual);
+        if (hasManualSignal) { socket.emit('sniper_error', 'Aguarde! Já existe um tiro Sniper em andamento.'); return; }
+        if (currentGlobalPrice === 0) { socket.emit('sniper_error', 'Aguardando sincronização de preço...'); return; }
 
         if (frontendConfig) {
             if (!broker.config) broker.config = { active: false, stopWin: 99999, stopLoss: 99999 };
@@ -656,15 +674,8 @@ io.on('connection', (socket) => {
             socket.emit('sniper_success', `Ordem ${direction} enviada com sucesso!`);
             if (result.balance) socket.emit('update_balance', { isDemo: isDemo, balance: result.balance });
 
-            const manualSig = { 
-                id: Date.now(), type: direction, symbol: currentSymbol.toUpperCase(), time: new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' }), 
-                step: 0, status: '⚡ Sniper (Aguardando...)', 
-                entryPrice: currentGlobalPrice, // 🎯 FIX DA SLIPPAGE MANUAL
-                isManual: true 
-            };
-            
-            activeSignals.push(manualSig); signalHistory.unshift(manualSig);
-            if (signalHistory.length > 20) signalHistory.pop();
+            const manualSig = { id: Date.now(), type: direction, symbol: currentSymbol.toUpperCase(), time: new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' }), step: 0, status: '⚡ Sniper (Aguardando...)', entryPrice: currentGlobalPrice, isManual: true };
+            activeSignals.push(manualSig); signalHistory.unshift(manualSig); if (signalHistory.length > 20) signalHistory.pop();
             io.emit('new_signal_history', manualSig);
         } else { socket.emit('sniper_error', result.msg); }
     });
@@ -674,10 +685,8 @@ io.on('connection', (socket) => {
             const decodedToken = await admin.auth().verifyIdToken(data.token);
             const reqUid = decodedToken.uid; 
             let isAdmin = false;
-            
             if (reqUid === 'admin_master') isAdmin = true;
             else { const snap = await db.collection('users').doc(reqUid).get(); if (snap.exists && snap.data().role === 'admin') isAdmin = true; }
-
             if (!isAdmin) { socket.emit('user_creation_result', { success: false, msg: 'Operação Negada.' }); return; }
 
             const userRecord = await admin.auth().createUser({ email: data.newEmail, password: data.newPassword });
@@ -695,9 +704,21 @@ io.on('connection', (socket) => {
         } catch (error) { socket.emit('admin_users_list', { success: false, msg: error.message }); }
     });
 
-    socket.on('change_coin', (newSymbol) => { currentSymbol = newSymbol; startConnection(currentSymbol); });
-    socket.on('change_strategy', (newStrategyId) => { currentStrategyId = newStrategyId; startConnection(currentSymbol); });
-    socket.on('change_timeframe', (newTf) => { currentTimeframe = newTf; startConnection(currentSymbol); });
+    // 🔒 AS ROTAS AGORA ESTÃO PROTEGIDAS PELO CADEADO DO MOTOR
+    socket.on('change_coin', (newSymbol) => { 
+        if (blockIfTrading(socket, 'Aguarde a operação finalizar para trocar de Ativo!')) return;
+        currentSymbol = newSymbol; startConnection(currentSymbol); 
+    });
+    
+    socket.on('change_strategy', (newStrategyId) => { 
+        if (blockIfTrading(socket, 'Aguarde a operação finalizar para trocar de Estratégia!')) return;
+        currentStrategyId = newStrategyId; startConnection(currentSymbol); 
+    });
+    
+    socket.on('change_timeframe', (newTf) => { 
+        if (blockIfTrading(socket, 'Aguarde a operação finalizar para trocar o Tempo Gráfico!')) return;
+        currentTimeframe = newTf; startConnection(currentSymbol); 
+    });
 
     socket.on('add_new_strategy', async (newStrategy) => {
         try {
@@ -716,5 +737,4 @@ io.on('connection', (socket) => {
 
 loadStrategiesFromDB();
 loadAvailableCoins();
-
 server.listen(3000, () => { console.log('🚀 Motor JS Invest operando na porta 3000!'); });
