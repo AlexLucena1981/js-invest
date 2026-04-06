@@ -81,10 +81,25 @@ async function loadStrategiesFromDB() {
 
 function loadAvailableCoins() {
     availableCoins = [
-        'btcusdt', 'ethusdt', 'ltcusdt', 'adausdt', 'bnbusdt', 'dogeusdt', 'solusdt',
-        'EURUSDOTC', 'GBPUSDOTC', 'USDJPYOTC', 'BTCUSDTOTC', 'ETHUSDTOTC'
+        // 🟠 CRIPTOMOEDAS REAIS (Via Binance API)
+        'btcusdt', 'ethusdt', 'ltcusdt', 'adausdt', 'bnbusdt', 'dogeusdt', 'solusdt', 'xrpusdt',
+        
+        // 🔵 FOREX MERCADO ABERTO (Via Vellox UDF)
+        'EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'USDCAD', 'USDCHF', 'EURGBP', 'EURAUD',
+        
+        // 🟣 AÇÕES DE EMPRESAS (Via Vellox UDF)
+        'AAPL', 'TSLA', 'MSFT', 'AMZN', 'META', 'GOOGL', 'NFLX',
+        
+        // 🟡 COMMODITIES (Via Vellox UDF)
+        'XAUUSD', // Ouro
+        'XAGUSD', // Prata
+        'USOIL',  // Petróleo
+        
+        // 🔴 MERCADO OTC VELLOX (Para Fim de Semana)
+        'EURUSDOTC', 'GBPUSDOTC', 'USDJPYOTC', 'AUDUSDOTC', 'BTCUSDTOTC', 'ETHUSDTOTC', 'AAPLOTC', 'XAUUSDOTC'
     ];
-    console.log(`🌐 ${availableCoins.length} pares Híbridos (Real + OTC) ativados!`);
+    
+    console.log(`🌐 ${availableCoins.length} ativos carregados no portfólio (Cripto, Forex, Ações, Commodities e OTC)!`);
     io.emit('available_coins', availableCoins);
 }
 
@@ -417,13 +432,18 @@ async function startConnection(symbol) {
     scoreboard = { win1: 0, winG1: 0, winG2: 0, loss: 0 };
     lastClosedCandleTime = 0; lastResolvedCandleTime = 0; 
     
-    const isOTC = symbol.toUpperCase().includes('OTC');
     const tfMinutes = parseInt(currentTimeframe.replace('m', ''));
-    
     const currentStrategy = strategiesDB.find(s => s.id === currentStrategyId);
     if (!currentStrategy) return;
 
-    if (isOTC) {
+    // 🧠 ROTEADOR INTELIGENTE: Só usamos a Binance para esta lista VIP de Criptos.
+    const cryptoBinance = ['btcusdt', 'ethusdt', 'ltcusdt', 'adausdt', 'bnbusdt', 'dogeusdt', 'solusdt', 'xrpusdt'];
+    const useBinance = cryptoBinance.includes(symbol.toLowerCase());
+    
+    const isOTC = symbol.toUpperCase().includes('OTC');
+    const marketLabel = isOTC ? 'OTC' : (useBinance ? 'Cripto' : 'Mercado Real');
+
+    if (!useBinance) { // 🎯 SE NÃO FOR CRIPTO, VAI AO COFRE DA VELLOX (Forex, Ações, Commodities e OTC)
         // 🎯 LÓGICA DO MERCADO OTC (VIA UDF VELLOX)
         updateStatus(`Carregando histórico OTC de ${symbol.toUpperCase()} (${currentTimeframe.toUpperCase()})...`);
         
