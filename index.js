@@ -28,7 +28,7 @@ const db = admin.firestore();
 const MASTER_EMAIL = 'alexandre.lucena@gmail.com'; 
 const MASTER_BROKER_LOGIN = 'AlexLucena1981';
 
-// 🎯 COOKIE DINÂMICO: Agora ele pode ser alterado pelo Painel Admin em tempo real!
+// 🎯 COOKIE DINÂMICO
 let globalDynamicCookie = "locale=eyJpdiI6IkgvYk5XeTFiVUhoczRlQmM2RTZJMFE9PSIsInZhbHVlIjoiNktFOUs2T1lHTXhIN2JnSndzUG9leVczeWRmZ1RwMmJGc2tZQTVaaUh0RVJQSTNUOW9TMWFkSFR6SUxFeHVZZCIsIm1hYyI6ImJjMTFhOGUyNzY1NjA3ZDk3ZGJmMjdhZWU1MmI2NzVjNTg5YzIzYjM5ZWM3NDY5OWRjMTJhYmY1YWU0M2Y0Y2UiLCJ0YWciOiIifQ==; XSRF-TOKEN=eyJpdiI6ImVwUHYrRjZ4NU5CRCtiRklBOHpBY3c9PSIsInZhbHVlIjoiWW44emlWK01sRFE3dGlKaDFnY2R2YW1JN3hVaHRQa0tsUk5xQ25WSVFWVlRzVkw2bUZFamxYV0xLdlFkMFA1UXl5aTdWSTNTU1BpeEtPeHJINVN5R2svWHBnMWZ2V2hVeXMyOXdsNVlLZ0M1a1BtT1QzK1dxbjlzdGU1VWZJaWMiLCJtYWMiOiIxNmFiMmEyYTRjYTZmMzBjNGExNzI5OGQ2Yjk3MTNkYmJhNWJmN2I5NTUxODVhYjJmNTE1ODA4MjUxMGEzMzk3IiwidGFnIjoiIn0=; laravel_session=eyJpdiI6Imtvc0ZJWU1TcHNTR2FYWDV2RG0wTVE9PSIsInZhbHVlIjoiOWV0QXNSYjRubkRRZ0RUd2k2WGM0bDhXbDJ6OE8vNHBNSDhjZzQ0K3graHBIYlRlMkpHdTlVejF5SW1NNVhCQmFzK3BmR1hKVkwxb0xpMlVlbnBGZllZMGZYTXgrQXdnblF0V0l0S1k1bmlyT3QwaVArWnUzU3dLbjVHT3JYVDkiLCJtYWMiOiI3YjZhODVlNTM3OTE3MzQ0OTA2ZTAyZTM1MDk3OGYwNmY2MzA1MTQxZWU5YTU0YzAwNWE0MmI0OTAxZTgyZmVlIiwidGFnIjoiIn0=";
 
 let closePrices = [];
@@ -59,10 +59,7 @@ async function loadStrategiesFromDB() {
     try {
         const snapshot = await db.collection('scripts').get();
         strategiesDB = [];
-        
-        snapshot.forEach(doc => {
-            strategiesDB.push(doc.data());
-        });
+        snapshot.forEach(doc => { strategiesDB.push(doc.data()); });
 
         if (strategiesDB.length > 0) {
             console.log(`🔥 ${strategiesDB.length} scripts carregados do Firebase!`);
@@ -72,11 +69,8 @@ async function loadStrategiesFromDB() {
             console.log("⚠️ Nenhum script encontrado no banco de dados.");
             updateStatus("Aguardando injeção de scripts no banco...");
         }
-        
         io.emit('available_strategies', strategiesDB.map(s => ({ id: s.id, name: s.name })));
-    } catch (error) {
-        console.error("Erro ao ler do Firebase:", error);
-    }
+    } catch (error) { console.error("Erro ao ler do Firebase:", error); }
 }
 
 function loadAvailableCoins() {
@@ -87,8 +81,6 @@ function loadAvailableCoins() {
         "🟡 Commodities": ['XAUUSD', 'XAGUSD', 'USOIL'],
         "🔴 Fim de Semana (OTC)": ['EURUSDOTC', 'GBPUSDOTC', 'USDJPYOTC', 'BTCUSDTOTC']
     };
-    
-    console.log(`🌐 Categorias de ativos carregadas com sucesso no Portfólio!`);
     io.emit('available_coins', availableCoins);
 }
 
@@ -169,13 +161,16 @@ function evaluateStrategy(prices, strategyConfig) {
     let current = { price: prices[prices.length - 1] }; 
     let prev = { price: prices[prices.length - 2] };
     
-    for (const [key, config] of Object.entries(strategyConfig.indicators)) {
-        if (config.type === 'SMA') {
-            current[key] = calculateSMA(prices, config.period); prev[key] = calculateSMA(prices.slice(0, -1), config.period);
-        } else if (config.type === 'RSI') { 
-            current[key] = calculateRSI(prices, config.period); prev[key] = calculateRSI(prices.slice(0, -1), config.period);
-        } else if (config.type === 'BB') { 
-            current[key] = calculateBollingerBands(prices, config.period, config.stdDev); prev[key] = calculateBollingerBands(prices.slice(0, -1), config.period, config.stdDev);
+    if (strategyConfig.indicators) {
+        for (const [key, config] of Object.entries(strategyConfig.indicators)) {
+            const type = config.type ? config.type.toUpperCase() : '';
+            if (type === 'SMA') {
+                current[key] = calculateSMA(prices, config.period); prev[key] = calculateSMA(prices.slice(0, -1), config.period);
+            } else if (type === 'RSI') { 
+                current[key] = calculateRSI(prices, config.period); prev[key] = calculateRSI(prices.slice(0, -1), config.period);
+            } else if (type === 'BB') { 
+                current[key] = calculateBollingerBands(prices, config.period, config.stdDev); prev[key] = calculateBollingerBands(prices.slice(0, -1), config.period, config.stdDev);
+            }
         }
     }
     
@@ -185,7 +180,12 @@ function evaluateStrategy(prices, strategyConfig) {
         const isCall = new Function('current', 'prev', `return ${strategyConfig.conditions.call};`)(current, prev);
         const isPut = new Function('current', 'prev', `return ${strategyConfig.conditions.put};`)(current, prev);
         if (isCall) return 'CALL'; if (isPut) return 'PUT';
-    } catch (e) { console.error("Erro na regra da estratégia:", e); }
+    } catch (e) { 
+        if (!strategyConfig.errorLogged) {
+            console.error(`⚠️ Erro na regra da estratégia: ${e.message}`);
+            strategyConfig.errorLogged = true; 
+        }
+    }
     return null;
 }
 
@@ -212,7 +212,7 @@ async function dispararOrdemVellox(broker, isDemo, symbol, direction, amount, cu
 
     try {
         const response = await executeTrade(accountId);
-        console.log(`[✅ DISPARO M${expirationValue} EXECUTADO] R$ ${amount} | Direção: ${direction} | Conta ID: ${accountId}`);
+        console.log(`[✅ DISPARO EXECUTADO] R$ ${amount} | Direção: ${direction} | Conta: ${accountId}`);
         let novoSaldo = response.data.user_credit || (response.data.data ? response.data.data.user_credit : null);
         return { success: true, balance: novoSaldo };
 
@@ -222,7 +222,6 @@ async function dispararOrdemVellox(broker, isDemo, symbol, direction, amount, cu
         if (isDemo && errorMsg.includes("Conta de operação não encontrada")) {
             broker.demoAccountId = (broker.demoAccountId === '8') ? '15' : '8';
             accountId = broker.demoAccountId;
-            
             try {
                 const retryResponse = await executeTrade(accountId);
                 let novoSaldo = retryResponse.data.user_credit || (retryResponse.data.data ? retryResponse.data.data.user_credit : null);
@@ -247,8 +246,8 @@ function updateBrokerProfits(step, isWin, isManual = false) {
         } else { broker.sessionProfit -= amountBet; }
 
         let stopReason = null;
-        if (broker.sessionProfit <= -broker.config.stopLoss) stopReason = `🛑 STOP LOSS ATINGIDO! (Perda: R$ ${broker.sessionProfit.toFixed(2)})`;
-        if (broker.sessionProfit >= broker.config.stopWin) stopReason = `🏆 META BATIDA! (Lucro: R$ ${broker.sessionProfit.toFixed(2)})`;
+        if (broker.sessionProfit <= -broker.config.stopLoss) stopReason = `🛑 STOP LOSS ATINGIDO!`;
+        if (broker.sessionProfit >= broker.config.stopWin) stopReason = `🏆 META BATIDA!`;
 
         if (stopReason) {
             broker.autoTradeActive = false; 
@@ -263,7 +262,6 @@ function updateBrokerProfits(step, isWin, isManual = false) {
 // ============================================================================
 // 6. MOTOR DE VELAS E MÁQUINA DO TEMPO (HISTÓRICO)
 // ============================================================================
-
 function processHistoricalCandle(k_time, k_o, k_c, currentStrategy) {
     activeSignals = activeSignals.filter(sig => {
         const isGreen = k_c > k_o; const isRed = k_c < k_o;
@@ -310,10 +308,25 @@ async function handleCandleClose(closedPrice, candleStartTime) {
         const won = (sig.type === 'CALL' && closedPrice > sig.entryPrice) || (sig.type === 'PUT' && closedPrice < sig.entryPrice);
         const prefix = sig.isManual ? '⚡ Sniper: ' : '';
 
+        let currentMaxGale = 2;
+        const bKeys = Object.keys(activeBrokers);
+        if(bKeys.length > 0 && activeBrokers[bKeys[0]].config) {
+            currentMaxGale = parseInt(activeBrokers[bKeys[0]].config.maxGale);
+        }
+
         if (won) {
-            if (sig.step === 0) { sig.status = prefix + 'WIN 1ª 🎯'; scoreboard.win1++; }
-            else if (sig.step === 1) { sig.status = prefix + 'WIN G1 🎯'; scoreboard.winG1++; }
-            else if (sig.step === 2) { sig.status = prefix + 'WIN G2 🎯'; scoreboard.winG2++; }
+            if (sig.step === 0) { 
+                sig.status = prefix + 'WIN 1ª 🎯'; 
+                if (!sig.isManual) scoreboard.win1++; 
+            }
+            else if (sig.step === 1) { 
+                sig.status = prefix + 'WIN G1 🎯'; 
+                if (!sig.isManual) scoreboard.winG1++; 
+            }
+            else if (sig.step === 2) { 
+                sig.status = prefix + 'WIN G2 🎯'; 
+                if (!sig.isManual) scoreboard.winG2++; 
+            }
             
             updateBrokerProfits(sig.step, true, sig.isManual);
             io.emit('signal_result', sig); io.emit('scoreboard', scoreboard); 
@@ -322,8 +335,9 @@ async function handleCandleClose(closedPrice, candleStartTime) {
             updateBrokerProfits(sig.step, false, sig.isManual); 
             sig.step++; 
             
-            if (sig.step > 2) {
-                sig.status = prefix + 'LOSS 🔴'; scoreboard.loss++;
+            if (sig.step > currentMaxGale) {
+                sig.status = prefix + 'LOSS 🔴'; 
+                if (!sig.isManual) scoreboard.loss++; 
                 io.emit('signal_result', sig); io.emit('scoreboard', scoreboard); 
                 signalResolvedThisCandle = true; return false; 
             } else {
@@ -376,7 +390,6 @@ async function handleCandleClose(closedPrice, candleStartTime) {
 
 function handleCandleTick(currentPrice, isCandleClosed, candleStartTime) {
     currentGlobalPrice = currentPrice;
-    
     const tfMinutes = parseInt(currentTimeframe.replace('m', ''));
     const now = new Date();
     const secondsLeft = (tfMinutes * 60) - ((now.getMinutes() % tfMinutes) * 60 + now.getSeconds());
@@ -395,14 +408,10 @@ function handleCandleTick(currentPrice, isCandleClosed, candleStartTime) {
             if (tempSignal === 'CALL') io.emit('pre_alert', { call: true, put: false });
             else if (tempSignal === 'PUT') io.emit('pre_alert', { call: false, put: true });
             else io.emit('pre_alert', { call: false, put: false }); 
-        } else {
-            io.emit('pre_alert', { call: false, put: false });
-        }
+        } else { io.emit('pre_alert', { call: false, put: false }); }
     }
 
-    if (isCandleClosed) {
-        handleCandleClose(currentPrice, candleStartTime);
-    }
+    if (isCandleClosed) handleCandleClose(currentPrice, candleStartTime);
 }
 
 // ============================================================================
@@ -412,41 +421,46 @@ async function startConnection(symbol) {
     currentConnectionId++;
     const myConnectionId = currentConnectionId;
 
-    if (ws) { ws.terminate(); ws = null; }
+    // 🛡️ O ANTÍDOTO CONTRA O LOOP INFINITO: Removemos os "ouvintes" antes de matar a conexão
+    if (ws) { 
+        ws.removeAllListeners(); 
+        ws.terminate(); 
+        ws = null; 
+    }
     if (otcInterval) { clearInterval(otcInterval); otcInterval = null; }
     
     closePrices = []; activeSignals = []; signalHistory = []; 
     scoreboard = { win1: 0, winG1: 0, winG2: 0, loss: 0 };
     lastClosedCandleTime = 0; lastResolvedCandleTime = 0; 
+    currentGlobalPrice = 0; 
+
+    io.emit('price_update', { price: 0, secondsLeft: 0, activeSignal: null });
+    io.emit('scoreboard', scoreboard);
+    io.emit('history_dump', []);
+    io.emit('pre_alert', { call: false, put: false });
     
     const tfMinutes = parseInt(currentTimeframe.replace('m', ''));
-    
     const currentStrategy = strategiesDB.find(s => s.id === currentStrategyId);
     if (!currentStrategy) return;
 
-    // 🧠 ROTEADOR INTELIGENTE: Só usamos a Binance para esta lista VIP de Criptos.
     const cryptoBinance = ['btcusdt', 'ethusdt', 'ltcusdt', 'adausdt', 'bnbusdt', 'dogeusdt', 'solusdt', 'xrpusdt'];
     const useBinance = cryptoBinance.includes(symbol.toLowerCase());
-    
     const isOTC = symbol.toUpperCase().includes('OTC');
     const marketLabel = isOTC ? 'OTC' : (useBinance ? 'Cripto' : 'Mercado Tradicional');
 
     if (!useBinance) { 
-        // 🎯 LÓGICA DA VELLOX (Ações, Forex, Commodities e OTC)
         updateStatus(`Carregando histórico de ${symbol.toUpperCase()} (${currentTimeframe.toUpperCase()})...`);
-        
         try {
             const resolution = tfMinutes.toString();
             const to = Math.floor(Date.now() / 1000);
             const from = to - (150 * tfMinutes * 60); 
 
-            // 🎯 Usando a variável global de Cookie que pode ser injetada!
             const otcHeaders = {
                 'accept': '*/*',
                 'Cookie': globalDynamicCookie, 
                 'X-Requested-With': 'XMLHttpRequest',
                 'referer': 'https://velloxbroker.com/traderoom',
-                'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36'
+                'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
             };
 
             const url = `https://velloxbroker.com/publicapi/tradingview/udf-history?symbol=${symbol.toUpperCase()}&resolution=${resolution}&from=${from}&to=${to}&countback=150&site=velloxbroker.com`;
@@ -465,12 +479,9 @@ async function startConnection(symbol) {
                 
                 lastClosedCandleTime = times[times.length - 2]; 
                 updateStatus(`Operando ${marketLabel} (${symbol.toUpperCase()}) em ${currentTimeframe.toUpperCase()}...`);
-                
                 io.emit('scoreboard', scoreboard);
                 io.emit('history_dump', signalHistory);
-            } else {
-                updateStatus(`Aguardando dados de ${symbol.toUpperCase()}...`);
-            }
+            } else { updateStatus(`Aguardando dados de ${symbol.toUpperCase()}...`); }
 
             otcInterval = setInterval(async () => {
                 if (myConnectionId !== currentConnectionId) return;
@@ -499,26 +510,22 @@ async function startConnection(symbol) {
             }, 1500);
 
         } catch (error) {
-            console.error(`Erro na ignição de ${symbol}. A corretora bloqueou o IP/Sessão (Possível Erro 401).`, error.message);
-            setTimeout(() => startConnection(currentSymbol), 5000); 
+            console.error(`Erro na ignição de ${symbol}.`, error.message);
+            if (myConnectionId === currentConnectionId) setTimeout(() => startConnection(currentSymbol), 5000); 
         }
 
     } else {
-        // 🎯 LÓGICA DO MERCADO REAL (VIA BINANCE API)
         updateStatus(`Carregando histórico Real de ${symbol.toUpperCase()} (${currentTimeframe.toUpperCase()})...`);
-
         try {
             const response = await axios.get(`https://api.binance.com/api/v3/klines?symbol=${symbol.toUpperCase()}&interval=${currentTimeframe}&limit=150`);
             if (myConnectionId !== currentConnectionId) return; 
 
             const klines = response.data;
-            
             for (let i = 0; i < klines.length - 1; i++) {
                 processHistoricalCandle(klines[i][0], parseFloat(klines[i][1]), parseFloat(klines[i][4]), currentStrategy);
             }
             
             updateStatus(`Operando Cripto Binance (${symbol.toUpperCase()}) em ${currentTimeframe.toUpperCase()}...`);
-            
             io.emit('scoreboard', scoreboard);
             io.emit('history_dump', signalHistory);
             
@@ -529,15 +536,16 @@ async function startConnection(symbol) {
                 try {
                     const kline = JSON.parse(data).k;
                     handleCandleTick(parseFloat(kline.c), kline.x, kline.t);
-                } catch (e) { console.error("Erro no WebSocket Binance:", e); }
+                } catch (e) { }
             });
 
-            ws.on('error', (err) => { setTimeout(() => startConnection(currentSymbol), 5000); });
-            ws.on('close', () => { setTimeout(() => startConnection(currentSymbol), 5000); });
+            // 🛡️ A TRAVA CONTRA LOOPS: O WebSocket antigo não pode reconectar o servidor
+            ws.on('error', () => { if (myConnectionId === currentConnectionId) setTimeout(() => startConnection(currentSymbol), 5000); });
+            ws.on('close', () => { if (myConnectionId === currentConnectionId) setTimeout(() => startConnection(currentSymbol), 5000); });
 
         } catch (error) { 
-            console.error("Falha ao buscar Klines Binance:", error.message);
-            setTimeout(() => startConnection(currentSymbol), 5000); 
+            console.error("Falha ao buscar Klines:", error.message);
+            if (myConnectionId === currentConnectionId) setTimeout(() => startConnection(currentSymbol), 5000); 
         }
     }
 }
@@ -553,12 +561,10 @@ io.on('connection', (socket) => {
     socket.emit('scoreboard', scoreboard);
     socket.emit('history_dump', signalHistory);
     
-    // 🎯 RECEBENDO O NOVO COOKIE EM TEMPO REAL
     socket.on('inject_cookie', (newCookie) => {
         globalDynamicCookie = newCookie;
-        console.log("🍪 Novo Cookie VIP Injetado pelo Painel Admin!");
         io.emit('status', { msg: 'Sessão VIP renovada! Recarregando Gráficos...' });
-        startConnection(currentSymbol); // Reinicia a leitura instantaneamente!
+        startConnection(currentSymbol); 
     });
 
     socket.on('hybrid_login', async ({ brokerUser, brokerPass }) => {
@@ -609,17 +615,11 @@ io.on('connection', (socket) => {
         const broker = activeBrokers[socket.id];
         if (!broker || !broker.token) { socket.emit('sniper_error', 'Você precisa conectar na corretora antes de atirar!'); return; }
 
-        // 🎯 O NOVO DESTRAVADOR DO SNIPER (Poder Supremo)
-        // Só bloqueamos se você JÁ TIVER disparado um tiro Sniper e a vela ainda não tiver fechado.
         const hasManualSignal = activeSignals.some(s => s.isManual);
-
         if (hasManualSignal) { 
             socket.emit('sniper_error', 'Aguarde! Já existe um tiro Sniper em andamento.'); 
             return; 
         }
-        
-        // Se houver apenas um sinal visual do bot na fila, o Sniper toma o controlo e limpa-o!
-        activeSignals = []; 
 
         if (currentGlobalPrice === 0) {
             currentGlobalPrice = closePrices.length > 0 ? closePrices[closePrices.length - 1] : 0;
@@ -661,7 +661,7 @@ io.on('connection', (socket) => {
             if (reqUid === 'admin_master') isAdmin = true;
             else { const snap = await db.collection('users').doc(reqUid).get(); if (snap.exists && snap.data().role === 'admin') isAdmin = true; }
 
-            if (!isAdmin) { socket.emit('user_creation_result', { success: false, msg: 'Operação Negada. Você não tem privilégios de Admin.' }); return; }
+            if (!isAdmin) { socket.emit('user_creation_result', { success: false, msg: 'Operação Negada.' }); return; }
 
             const userRecord = await admin.auth().createUser({ email: data.newEmail, password: data.newPassword });
             await db.collection('users').doc(userRecord.uid).set({ email: data.newEmail, role: data.newRole, createdAt: admin.firestore.FieldValue.serverTimestamp() });
@@ -690,8 +690,8 @@ io.on('connection', (socket) => {
 
             await db.collection('scripts').doc(newStrategy.id).set(newStrategy); 
             strategiesDB.push(newStrategy); io.emit('available_strategies', strategiesDB.map(s => ({ id: s.id, name: s.name }))); 
-            socket.emit('script_injection_result', { success: true, msg: 'Script gravado no Firebase com sucesso!', id: newStrategy.id });
-        } catch (e) { socket.emit('script_injection_result', { success: false, msg: 'Erro do Firebase: ' + e.message }); }
+            socket.emit('script_injection_result', { success: true, msg: 'Script gravado!' });
+        } catch (e) { socket.emit('script_injection_result', { success: false, msg: 'Erro: ' + e.message }); }
     });
 
     socket.on('disconnect', () => { if (activeBrokers[socket.id]) delete activeBrokers[socket.id]; });

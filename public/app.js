@@ -77,16 +77,12 @@ socket.on('available_strategies', (strats) => {
     strats.forEach(s => { const opt = document.createElement('option'); opt.value = s.id; opt.innerText = s.name; sel.appendChild(opt); });
 });
 
-// 🖥️ NO SEU FRONTEND (ONDE CRIA O DROPDOWN DE MOEDAS)
 socket.on('available_coins', (groupedCoins) => {
-    
-    // 🎯 ID CORRIGIDO AQUI PARA 'coinSelector'
     const selectBox = document.getElementById('coinSelector'); 
     
-    if(!selectBox) return; // Trava de segurança
-    selectBox.innerHTML = ''; // Esvazia a salada mista
+    if(!selectBox) return; 
+    selectBox.innerHTML = ''; 
     
-    // Varre as gavetas e cria divisórias profissionais no select
     for (const [categoryName, symbolsArray] of Object.entries(groupedCoins)) {
         let optgroup = document.createElement('optgroup');
         optgroup.label = categoryName; 
@@ -102,13 +98,47 @@ socket.on('available_coins', (groupedCoins) => {
     }
 });
 
-document.getElementById('coinSelector').addEventListener('change', (e) => socket.emit('change_coin', e.target.value));
-document.getElementById('strategySelector').addEventListener('change', (e) => socket.emit('change_strategy', e.target.value));
-document.getElementById('timeframeSelector').addEventListener('change', (e) => socket.emit('change_timeframe', e.target.value));
+// ==========================================
+// 🧹 LIMPANDO A TELA AO TROCAR DE CONFIGURAÇÃO
+// ==========================================
+function clearUIForLoading(message) {
+    document.getElementById('priceValue').innerText = 'Sincronizando...';
+    document.getElementById('priceValue').style.color = '#8b949e';
+    document.getElementById('liveTradeCard').style.display = 'none';
+    document.getElementById('historyTableBody').innerHTML = `<tr><td colspan="3" style="text-align:center; color:#8b949e; padding: 20px;">${message}</td></tr>`;
+    
+    document.getElementById('scoreWin1').innerText = '-';
+    document.getElementById('scoreWinG1').innerText = '-';
+    document.getElementById('scoreWinG2').innerText = '-';
+    document.getElementById('scoreLoss').innerText = '-';
+    document.getElementById('totalAccuracy').innerText = '0.0%';
+    
+    const alertBox = document.getElementById('alertBox');
+    alertBox.innerHTML = "Analisando Mercado...";
+    alertBox.className = "alert-box";
+}
+
+document.getElementById('coinSelector').addEventListener('change', (e) => {
+    clearUIForLoading("Baixando novo ativo...");
+    socket.emit('change_coin', e.target.value);
+});
+
+document.getElementById('strategySelector').addEventListener('change', (e) => {
+    clearUIForLoading("Recalculando estratégia...");
+    socket.emit('change_strategy', e.target.value);
+});
+
+document.getElementById('timeframeSelector').addEventListener('change', (e) => {
+    clearUIForLoading("Ajustando tempo de vela...");
+    socket.emit('change_timeframe', e.target.value);
+});
 
 // 🎯 RECEÇÃO DO PREÇO (LIVRE DO RELÓGIO)
 socket.on('price_update', (data) => {
+    if (data.price === 0) return; // 🛡️ Ignora preços zerados durante o loading
+    
     document.getElementById('priceValue').innerText = '$ ' + data.price.toFixed(2);
+    document.getElementById('priceValue').style.color = '#c9d1d9'; // Volta à cor branca
     
     const liveCard = document.getElementById('liveTradeCard');
     
@@ -284,19 +314,24 @@ socket.on('signal_result', (sig) => {
 });
 
 const scriptModal = document.getElementById('scriptModal');
-document.getElementById('btnOpenModal').addEventListener('click', () => { scriptModal.style.display = 'flex'; });
-document.getElementById('btnCancelScript').addEventListener('click', () => { scriptModal.style.display = 'none'; });
-
-document.getElementById('btnSaveScript').addEventListener('click', () => {
-    try {
-        const newStrategyJSON = JSON.parse(document.getElementById('jsonInput').value);
-        document.getElementById('btnSaveScript').innerText = 'Gravando...'; 
-        socket.emit('add_new_strategy', newStrategyJSON);
-    } catch (error) { 
-        alert("❌ Erro: Formato JSON inválido!"); 
-        document.getElementById('btnSaveScript').innerText = 'Salvar & Injetar';
-    }
-});
+if(document.getElementById('btnOpenModal')) {
+    document.getElementById('btnOpenModal').addEventListener('click', () => { scriptModal.style.display = 'flex'; });
+}
+if(document.getElementById('btnCancelScript')) {
+    document.getElementById('btnCancelScript').addEventListener('click', () => { scriptModal.style.display = 'none'; });
+}
+if(document.getElementById('btnSaveScript')) {
+    document.getElementById('btnSaveScript').addEventListener('click', () => {
+        try {
+            const newStrategyJSON = JSON.parse(document.getElementById('jsonInput').value);
+            document.getElementById('btnSaveScript').innerText = 'Gravando...'; 
+            socket.emit('add_new_strategy', newStrategyJSON);
+        } catch (error) { 
+            alert("❌ Erro: Formato JSON inválido!"); 
+            document.getElementById('btnSaveScript').innerText = 'Salvar & Injetar';
+        }
+    });
+}
 
 socket.on('script_injection_result', (res) => {
     document.getElementById('btnSaveScript').innerText = 'Salvar & Injetar'; 
@@ -307,8 +342,12 @@ socket.on('script_injection_result', (res) => {
 });
 
 const adminModal = document.getElementById('adminModal');
-document.getElementById('btnAdminPanel').addEventListener('click', () => { adminModal.style.display = 'flex'; auth.currentUser.getIdToken().then(token => socket.emit('admin_get_users', token)); });
-document.getElementById('btnCancelAdmin').addEventListener('click', () => { adminModal.style.display = 'none'; });
+if(document.getElementById('btnAdminPanel')){
+    document.getElementById('btnAdminPanel').addEventListener('click', () => { adminModal.style.display = 'flex'; auth.currentUser.getIdToken().then(token => socket.emit('admin_get_users', token)); });
+}
+if(document.getElementById('btnCancelAdmin')){
+    document.getElementById('btnCancelAdmin').addEventListener('click', () => { adminModal.style.display = 'none'; });
+}
 
 socket.on('admin_users_list', (res) => {
     const tbody = document.getElementById('usersListBody'); tbody.innerHTML = '';
@@ -325,11 +364,30 @@ socket.on('admin_users_list', (res) => {
     }
 });
 
-document.getElementById('btnCreateUser').addEventListener('click', () => {
-    const newEmail = document.getElementById('newUserEmail').value; const newPassword = document.getElementById('newUserPassword').value; const newRole = document.getElementById('newUserRole').value;
-    document.getElementById('btnCreateUser').innerText = '...';
-    auth.currentUser.getIdToken().then(token => socket.emit('admin_create_user', { token, newEmail, newPassword, newRole }));
-});
+if(document.getElementById('btnCreateUser')){
+    document.getElementById('btnCreateUser').addEventListener('click', () => {
+        const newEmail = document.getElementById('newUserEmail').value; const newPassword = document.getElementById('newUserPassword').value; const newRole = document.getElementById('newUserRole').value;
+        document.getElementById('btnCreateUser').innerText = '...';
+        auth.currentUser.getIdToken().then(token => socket.emit('admin_create_user', { token, newEmail, newPassword, newRole }));
+    });
+}
+
+// 🎯 O BOTÃO QUE RENOVA A SESSÃO AUTOMATICAMENTE
+if(document.getElementById('btnInjectCookie')) {
+    document.getElementById('btnInjectCookie').addEventListener('click', () => {
+        const cookieVal = document.getElementById('adminCookieInput').value;
+        
+        if(cookieVal.length > 20) {
+            socket.emit('inject_cookie', cookieVal);
+            document.getElementById('adminCookieInput').value = ''; 
+            document.getElementById('btnInjectCookie').innerText = 'Injetado! ✅';
+            
+            setTimeout(() => { document.getElementById('btnInjectCookie').innerText = 'Injetar'; }, 3000);
+        } else {
+            alert('❌ O Cookie parece estar inválido ou é muito curto!');
+        }
+    });
+}
 
 socket.on('user_creation_result', (res) => {
     alert(res.msg); document.getElementById('btnCreateUser').innerText = 'Cadastrar';
@@ -362,18 +420,3 @@ setInterval(() => {
         document.getElementById('liveTime').innerText = displayTime + (sec < 60 ? 's' : '');
     }
 }, 1000);
-
-// 🎯 O BOTÃO QUE RENOVA A SESSÃO AUTOMATICAMENTE
-document.getElementById('btnInjectCookie').addEventListener('click', () => {
-    const cookieVal = document.getElementById('adminCookieInput').value;
-    
-    if(cookieVal.length > 20) {
-        socket.emit('inject_cookie', cookieVal); // Manda o cookie novo para o servidor
-        document.getElementById('adminCookieInput').value = ''; // Limpa a caixa
-        document.getElementById('btnInjectCookie').innerText = 'Injetado! ✅';
-        
-        setTimeout(() => { document.getElementById('btnInjectCookie').innerText = 'Injetar'; }, 3000);
-    } else {
-        alert('❌ O Cookie parece estar inválido ou é muito curto!');
-    }
-});
