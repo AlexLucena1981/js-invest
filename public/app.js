@@ -77,18 +77,29 @@ socket.on('available_strategies', (strats) => {
     strats.forEach(s => { const opt = document.createElement('option'); opt.value = s.id; opt.innerText = s.name; sel.appendChild(opt); });
 });
 
-socket.on('available_coins', (coins) => {
-    const coinSel = document.getElementById('coinSelector');
-    const currentVal = coinSel.value; 
-    coinSel.innerHTML = ''; 
-    coins.forEach(coin => {
-        const opt = document.createElement('option');
-        opt.value = coin;
-        opt.innerText = coin.replace('usdt', '').toUpperCase() + '/USDT';
-        coinSel.appendChild(opt);
-    });
-    if (coins.includes(currentVal)) coinSel.value = currentVal;
-    else if (coins.includes('btcusdt')) coinSel.value = 'btcusdt'; 
+// 🖥️ NO SEU FRONTEND (ONDE CRIA O DROPDOWN DE MOEDAS)
+socket.on('available_coins', (groupedCoins) => {
+    
+    // 🎯 ID CORRIGIDO AQUI PARA 'coinSelector'
+    const selectBox = document.getElementById('coinSelector'); 
+    
+    if(!selectBox) return; // Trava de segurança
+    selectBox.innerHTML = ''; // Esvazia a salada mista
+    
+    // Varre as gavetas e cria divisórias profissionais no select
+    for (const [categoryName, symbolsArray] of Object.entries(groupedCoins)) {
+        let optgroup = document.createElement('optgroup');
+        optgroup.label = categoryName; 
+        
+        symbolsArray.forEach(sym => {
+            let option = document.createElement('option');
+            option.value = sym;
+            option.textContent = sym.toUpperCase();
+            optgroup.appendChild(option);
+        });
+        
+        selectBox.appendChild(optgroup);
+    }
 });
 
 document.getElementById('coinSelector').addEventListener('change', (e) => socket.emit('change_coin', e.target.value));
@@ -351,3 +362,18 @@ setInterval(() => {
         document.getElementById('liveTime').innerText = displayTime + (sec < 60 ? 's' : '');
     }
 }, 1000);
+
+// 🎯 O BOTÃO QUE RENOVA A SESSÃO AUTOMATICAMENTE
+document.getElementById('btnInjectCookie').addEventListener('click', () => {
+    const cookieVal = document.getElementById('adminCookieInput').value;
+    
+    if(cookieVal.length > 20) {
+        socket.emit('inject_cookie', cookieVal); // Manda o cookie novo para o servidor
+        document.getElementById('adminCookieInput').value = ''; // Limpa a caixa
+        document.getElementById('btnInjectCookie').innerText = 'Injetado! ✅';
+        
+        setTimeout(() => { document.getElementById('btnInjectCookie').innerText = 'Injetar'; }, 3000);
+    } else {
+        alert('❌ O Cookie parece estar inválido ou é muito curto!');
+    }
+});

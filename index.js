@@ -28,8 +28,8 @@ const db = admin.firestore();
 const MASTER_EMAIL = 'alexandre.lucena@gmail.com'; 
 const MASTER_BROKER_LOGIN = 'AlexLucena1981';
 
-// 🎯 O COOKIE DE INVASÃO DO OTC
-const OTC_COOKIE_MANUAL = "locale=eyJpdiI6IkgvYk5XeTFiVUhoczRlQmM2RTZJMFE9PSIsInZhbHVlIjoiNktFOUs2T1lHTXhIN2JnSndzUG9leVczeWRmZ1RwMmJGc2tZQTVaaUh0RVJQSTNUOW9TMWFkSFR6SUxFeHVZZCIsIm1hYyI6ImJjMTFhOGUyNzY1NjA3ZDk3ZGJmMjdhZWU1MmI2NzVjNTg5YzIzYjM5ZWM3NDY5OWRjMTJhYmY1YWU0M2Y0Y2UiLCJ0YWciOiIifQ==; XSRF-TOKEN=eyJpdiI6IkJXTkh4d0NXZlFaQzhVZXpQZkZaa2c9PSIsInZhbHVlIjoidkU4cTBHbUVjZHhTeTkvUGh0YTNMZGpoZTRXV0xaU3hxeEdrTmk4TFVpYThWYnlkREFiVnFDNFNTVFJWVHFnTUFUdEZITzJzV3hOMUp3MzVYR0JwbTdHa2NrZ3JOSHM0R3MyVjVxbnFQZkdzTnpkb3pOS0hjWWU2QTlKdHExMGsiLCJtYWMiOiIzODZmM2MyM2IzMzc3ZjUxMWM4NDU0ZTA5YmMyNjZkZWEyMzdkOWFjMTA3OTdmYmFmNzgxZGNmZjI4ZmE1Yzg2IiwidGFnIjoiIn0=; laravel_session=eyJpdiI6Im8wQkZoRm1EaDYrcXhpSDFVRnZnN3c9PSIsInZhbHVlIjoic2JIb2tDMWhON0pBc3FoYjZpajhaTitweDdRQUs5TUVqamdNdXZBMytQTXFNaHNuSTYvTnpXUjJ4bzBhSEhseHZ0aWFRN0lkSWd1aTBJamZQMEs2YnJ4aFBZTmNxZGpzdkZ3b2VtL3JyS042eEZlWStzemxmNEpDVjlPN1FyemkiLCJtYWMiOiIwMmEwN2VlN2QyYzVjYmFkNGU0YzRlNzgxZTg2NzFiYjY3NmIwNjEyODE2MWU2Y2JlOWFlY2YzOGY1M2U1MzZhIiwidGFnIjoiIn0=";
+// 🎯 COOKIE DINÂMICO: Agora ele pode ser alterado pelo Painel Admin em tempo real!
+let globalDynamicCookie = "locale=eyJpdiI6IkgvYk5XeTFiVUhoczRlQmM2RTZJMFE9PSIsInZhbHVlIjoiNktFOUs2T1lHTXhIN2JnSndzUG9leVczeWRmZ1RwMmJGc2tZQTVaaUh0RVJQSTNUOW9TMWFkSFR6SUxFeHVZZCIsIm1hYyI6ImJjMTFhOGUyNzY1NjA3ZDk3ZGJmMjdhZWU1MmI2NzVjNTg5YzIzYjM5ZWM3NDY5OWRjMTJhYmY1YWU0M2Y0Y2UiLCJ0YWciOiIifQ==; XSRF-TOKEN=eyJpdiI6ImVwUHYrRjZ4NU5CRCtiRklBOHpBY3c9PSIsInZhbHVlIjoiWW44emlWK01sRFE3dGlKaDFnY2R2YW1JN3hVaHRQa0tsUk5xQ25WSVFWVlRzVkw2bUZFamxYV0xLdlFkMFA1UXl5aTdWSTNTU1BpeEtPeHJINVN5R2svWHBnMWZ2V2hVeXMyOXdsNVlLZ0M1a1BtT1QzK1dxbjlzdGU1VWZJaWMiLCJtYWMiOiIxNmFiMmEyYTRjYTZmMzBjNGExNzI5OGQ2Yjk3MTNkYmJhNWJmN2I5NTUxODVhYjJmNTE1ODA4MjUxMGEzMzk3IiwidGFnIjoiIn0=; laravel_session=eyJpdiI6Imtvc0ZJWU1TcHNTR2FYWDV2RG0wTVE9PSIsInZhbHVlIjoiOWV0QXNSYjRubkRRZ0RUd2k2WGM0bDhXbDJ6OE8vNHBNSDhjZzQ0K3graHBIYlRlMkpHdTlVejF5SW1NNVhCQmFzK3BmR1hKVkwxb0xpMlVlbnBGZllZMGZYTXgrQXdnblF0V0l0S1k1bmlyT3QwaVArWnUzU3dLbjVHT3JYVDkiLCJtYWMiOiI3YjZhODVlNTM3OTE3MzQ0OTA2ZTAyZTM1MDk3OGYwNmY2MzA1MTQxZWU5YTU0YzAwNWE0MmI0OTAxZTgyZmVlIiwidGFnIjoiIn0=";
 
 let closePrices = [];
 let ws = null;
@@ -50,10 +50,10 @@ let lastResolvedCandleTime = 0;
 
 let strategiesDB = [];
 let activeBrokers = {}; 
-let availableCoins = []; 
+let availableCoins = {}; 
 
 // ============================================================================
-// 3. CARREGAMENTO DE DADOS E MOEDAS (Tropa de Elite: Real + OTC)
+// 3. CARREGAMENTO DE DADOS E MOEDAS 
 // ============================================================================
 async function loadStrategiesFromDB() {
     try {
@@ -80,26 +80,15 @@ async function loadStrategiesFromDB() {
 }
 
 function loadAvailableCoins() {
-    availableCoins = [
-        // 🟠 CRIPTOMOEDAS REAIS (Via Binance API)
-        'btcusdt', 'ethusdt', 'ltcusdt', 'adausdt', 'bnbusdt', 'dogeusdt', 'solusdt', 'xrpusdt',
-        
-        // 🔵 FOREX MERCADO ABERTO (Via Vellox UDF)
-        'EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'USDCAD', 'USDCHF', 'EURGBP', 'EURAUD',
-        
-        // 🟣 AÇÕES DE EMPRESAS (Via Vellox UDF)
-        'AAPL', 'TSLA', 'MSFT', 'AMZN', 'META', 'GOOGL', 'NFLX',
-        
-        // 🟡 COMMODITIES (Via Vellox UDF)
-        'XAUUSD', // Ouro
-        'XAGUSD', // Prata
-        'USOIL',  // Petróleo
-        
-        // 🔴 MERCADO OTC VELLOX (Para Fim de Semana)
-        'EURUSDOTC', 'GBPUSDOTC', 'USDJPYOTC', 'AUDUSDOTC', 'BTCUSDTOTC', 'ETHUSDTOTC', 'AAPLOTC', 'XAUUSDOTC'
-    ];
+    availableCoins = {
+        "🟠 Criptomoedas (Binance)": ['btcusdt', 'ethusdt', 'ltcusdt', 'adausdt', 'bnbusdt', 'dogeusdt', 'solusdt', 'xrpusdt'],
+        "🔵 Forex (Mercado Aberto)": ['EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'USDCAD'],
+        "🟣 Wall Street (Ações)": ['AAPL', 'TSLA', 'MSFT', 'AMZN', 'META', 'GOOGL', 'NFLX'],
+        "🟡 Commodities": ['XAUUSD', 'XAGUSD', 'USOIL'],
+        "🔴 Fim de Semana (OTC)": ['EURUSDOTC', 'GBPUSDOTC', 'USDJPYOTC', 'BTCUSDTOTC']
+    };
     
-    console.log(`🌐 ${availableCoins.length} ativos carregados no portfólio (Cripto, Forex, Ações, Commodities e OTC)!`);
+    console.log(`🌐 Categorias de ativos carregadas com sucesso no Portfólio!`);
     io.emit('available_coins', availableCoins);
 }
 
@@ -231,7 +220,6 @@ async function dispararOrdemVellox(broker, isDemo, symbol, direction, amount, cu
         let errorMsg = error.response ? JSON.stringify(error.response.data) : error.message;
 
         if (isDemo && errorMsg.includes("Conta de operação não encontrada")) {
-            console.log(`♻️ ID Demo [${accountId}] rejeitado. Ativando Auto-Cura...`);
             broker.demoAccountId = (broker.demoAccountId === '8') ? '15' : '8';
             accountId = broker.demoAccountId;
             
@@ -276,7 +264,6 @@ function updateBrokerProfits(step, isWin, isManual = false) {
 // 6. MOTOR DE VELAS E MÁQUINA DO TEMPO (HISTÓRICO)
 // ============================================================================
 
-// 🎯 A MÁQUINA DO TEMPO (Simula as vitórias do passado ao ligar)
 function processHistoricalCandle(k_time, k_o, k_c, currentStrategy) {
     activeSignals = activeSignals.filter(sig => {
         const isGreen = k_c > k_o; const isRed = k_c < k_o;
@@ -419,7 +406,7 @@ function handleCandleTick(currentPrice, isCandleClosed, candleStartTime) {
 }
 
 // ============================================================================
-// 7. MOTOR CENTRAL DE CONEXÃO (ROTEADOR BINANCE vs UDF OTC)
+// 7. MOTOR CENTRAL DE CONEXÃO (ROTEADOR BINANCE vs UDF OTC/AÇÕES)
 // ============================================================================
 async function startConnection(symbol) {
     currentConnectionId++;
@@ -433,6 +420,7 @@ async function startConnection(symbol) {
     lastClosedCandleTime = 0; lastResolvedCandleTime = 0; 
     
     const tfMinutes = parseInt(currentTimeframe.replace('m', ''));
+    
     const currentStrategy = strategiesDB.find(s => s.id === currentStrategyId);
     if (!currentStrategy) return;
 
@@ -441,20 +429,21 @@ async function startConnection(symbol) {
     const useBinance = cryptoBinance.includes(symbol.toLowerCase());
     
     const isOTC = symbol.toUpperCase().includes('OTC');
-    const marketLabel = isOTC ? 'OTC' : (useBinance ? 'Cripto' : 'Mercado Real');
+    const marketLabel = isOTC ? 'OTC' : (useBinance ? 'Cripto' : 'Mercado Tradicional');
 
-    if (!useBinance) { // 🎯 SE NÃO FOR CRIPTO, VAI AO COFRE DA VELLOX (Forex, Ações, Commodities e OTC)
-        // 🎯 LÓGICA DO MERCADO OTC (VIA UDF VELLOX)
-        updateStatus(`Carregando histórico OTC de ${symbol.toUpperCase()} (${currentTimeframe.toUpperCase()})...`);
+    if (!useBinance) { 
+        // 🎯 LÓGICA DA VELLOX (Ações, Forex, Commodities e OTC)
+        updateStatus(`Carregando histórico de ${symbol.toUpperCase()} (${currentTimeframe.toUpperCase()})...`);
         
         try {
             const resolution = tfMinutes.toString();
             const to = Math.floor(Date.now() / 1000);
             const from = to - (150 * tfMinutes * 60); 
 
+            // 🎯 Usando a variável global de Cookie que pode ser injetada!
             const otcHeaders = {
                 'accept': '*/*',
-                'Cookie': OTC_COOKIE_MANUAL, 
+                'Cookie': globalDynamicCookie, 
                 'X-Requested-With': 'XMLHttpRequest',
                 'referer': 'https://velloxbroker.com/traderoom',
                 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36'
@@ -470,18 +459,17 @@ async function startConnection(symbol) {
                 const closes = response.data.c;
                 const times = response.data.t;
 
-                // A Máquina do Tempo processa as 150 velas do OTC!
                 for (let i = 0; i < closes.length - 1; i++) {
                     processHistoricalCandle(times[i] * 1000, opens[i], closes[i], currentStrategy);
                 }
                 
                 lastClosedCandleTime = times[times.length - 2]; 
-                updateStatus(`Operando OTC (${symbol.toUpperCase()}) em ${currentTimeframe.toUpperCase()}...`);
+                updateStatus(`Operando ${marketLabel} (${symbol.toUpperCase()}) em ${currentTimeframe.toUpperCase()}...`);
                 
                 io.emit('scoreboard', scoreboard);
                 io.emit('history_dump', signalHistory);
             } else {
-                updateStatus(`Aguardando dados OTC de ${symbol.toUpperCase()}...`);
+                updateStatus(`Aguardando dados de ${symbol.toUpperCase()}...`);
             }
 
             otcInterval = setInterval(async () => {
@@ -511,7 +499,7 @@ async function startConnection(symbol) {
             }, 1500);
 
         } catch (error) {
-            console.error("Erro na ignição do OTC. A corretora pode estar a bloquear o IP:", error.message);
+            console.error(`Erro na ignição de ${symbol}. A corretora bloqueou o IP/Sessão (Possível Erro 401).`, error.message);
             setTimeout(() => startConnection(currentSymbol), 5000); 
         }
 
@@ -525,12 +513,11 @@ async function startConnection(symbol) {
 
             const klines = response.data;
             
-            // A Máquina do Tempo processa as 150 velas da Binance!
             for (let i = 0; i < klines.length - 1; i++) {
                 processHistoricalCandle(klines[i][0], parseFloat(klines[i][1]), parseFloat(klines[i][4]), currentStrategy);
             }
             
-            updateStatus(`Operando Mercado Real (${symbol.toUpperCase()}) em ${currentTimeframe.toUpperCase()}...`);
+            updateStatus(`Operando Cripto Binance (${symbol.toUpperCase()}) em ${currentTimeframe.toUpperCase()}...`);
             
             io.emit('scoreboard', scoreboard);
             io.emit('history_dump', signalHistory);
@@ -566,6 +553,14 @@ io.on('connection', (socket) => {
     socket.emit('scoreboard', scoreboard);
     socket.emit('history_dump', signalHistory);
     
+    // 🎯 RECEBENDO O NOVO COOKIE EM TEMPO REAL
+    socket.on('inject_cookie', (newCookie) => {
+        globalDynamicCookie = newCookie;
+        console.log("🍪 Novo Cookie VIP Injetado pelo Painel Admin!");
+        io.emit('status', { msg: 'Sessão VIP renovada! Recarregando Gráficos...' });
+        startConnection(currentSymbol); // Reinicia a leitura instantaneamente!
+    });
+
     socket.on('hybrid_login', async ({ brokerUser, brokerPass }) => {
         try {
             const loginData = new URLSearchParams();
