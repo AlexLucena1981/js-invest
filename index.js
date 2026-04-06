@@ -609,11 +609,17 @@ io.on('connection', (socket) => {
         const broker = activeBrokers[socket.id];
         if (!broker || !broker.token) { socket.emit('sniper_error', 'Você precisa conectar na corretora antes de atirar!'); return; }
 
-        const isBotTrading = Object.values(activeBrokers).some(b => b.autoTradeActive);
-        const hasRealSignal = activeSignals.some(s => s.isManual || isBotTrading);
+        // 🎯 O NOVO DESTRAVADOR DO SNIPER (Poder Supremo)
+        // Só bloqueamos se você JÁ TIVER disparado um tiro Sniper e a vela ainda não tiver fechado.
+        const hasManualSignal = activeSignals.some(s => s.isManual);
 
-        if (activeSignals.length > 0 && hasRealSignal) { socket.emit('sniper_error', 'Aguarde! Já existe uma operação em andamento.'); return; }
-        if (activeSignals.length > 0) activeSignals = []; 
+        if (hasManualSignal) { 
+            socket.emit('sniper_error', 'Aguarde! Já existe um tiro Sniper em andamento.'); 
+            return; 
+        }
+        
+        // Se houver apenas um sinal visual do bot na fila, o Sniper toma o controlo e limpa-o!
+        activeSignals = []; 
 
         if (currentGlobalPrice === 0) {
             currentGlobalPrice = closePrices.length > 0 ? closePrices[closePrices.length - 1] : 0;
