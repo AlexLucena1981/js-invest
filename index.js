@@ -421,10 +421,9 @@ async function startConnection(symbol) {
     currentConnectionId++;
     const myConnectionId = currentConnectionId;
 
-    // 🛡️ A VACINA CONTRA O CRASH: Adicionamos um ouvinte "mudo" antes de matar a conexão
     if (ws) { 
         ws.removeAllListeners(); 
-        ws.on('error', () => {}); // A MÁGICA: Absorve o erro silenciosamente
+        ws.on('error', () => {}); 
         if (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN) {
             ws.terminate(); 
         }
@@ -441,6 +440,9 @@ async function startConnection(symbol) {
     io.emit('scoreboard', scoreboard);
     io.emit('history_dump', []);
     io.emit('pre_alert', { call: false, put: false });
+    
+    // 🎯 A MÁGICA: Informa o front-end IMEDIATAMENTE sobre os selects corretos!
+    io.emit('engine_state', { symbol: currentSymbol, timeframe: currentTimeframe, strategy: currentStrategyId });
     
     const tfMinutes = parseInt(currentTimeframe.replace('m', ''));
     const currentStrategy = strategiesDB.find(s => s.id === currentStrategyId);
@@ -562,6 +564,9 @@ io.on('connection', (socket) => {
     socket.emit('available_coins', availableCoins); 
     socket.emit('scoreboard', scoreboard);
     socket.emit('history_dump', signalHistory);
+    
+    // 🎯 A MÁGICA: Informa o utilizador recém-chegado qual é a moeda que estamos a operar!
+    socket.emit('engine_state', { symbol: currentSymbol, timeframe: currentTimeframe, strategy: currentStrategyId });
     
     socket.on('inject_cookie', (newCookie) => {
         globalDynamicCookie = newCookie;
