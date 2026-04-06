@@ -421,10 +421,13 @@ async function startConnection(symbol) {
     currentConnectionId++;
     const myConnectionId = currentConnectionId;
 
-    // 🛡️ O ANTÍDOTO CONTRA O LOOP INFINITO: Removemos os "ouvintes" antes de matar a conexão
+    // 🛡️ A VACINA CONTRA O CRASH: Adicionamos um ouvinte "mudo" antes de matar a conexão
     if (ws) { 
         ws.removeAllListeners(); 
-        ws.terminate(); 
+        ws.on('error', () => {}); // A MÁGICA: Absorve o erro silenciosamente
+        if (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN) {
+            ws.terminate(); 
+        }
         ws = null; 
     }
     if (otcInterval) { clearInterval(otcInterval); otcInterval = null; }
@@ -539,7 +542,6 @@ async function startConnection(symbol) {
                 } catch (e) { }
             });
 
-            // 🛡️ A TRAVA CONTRA LOOPS: O WebSocket antigo não pode reconectar o servidor
             ws.on('error', () => { if (myConnectionId === currentConnectionId) setTimeout(() => startConnection(currentSymbol), 5000); });
             ws.on('close', () => { if (myConnectionId === currentConnectionId) setTimeout(() => startConnection(currentSymbol), 5000); });
 
