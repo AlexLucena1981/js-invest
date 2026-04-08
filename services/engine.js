@@ -9,6 +9,19 @@ let state;
 function initEngine(_io, _state) {
     io = _io;
     state = _state;
+
+    // 🧹 O LIXEIRO DE MOTORES: Agora também mata Zumbis esquecidos em background
+    setInterval(() => {
+        for (let key in state.activeEngines) {
+            let eng = state.activeEngines[key];
+            if (key !== state.currentEngineKey && eng.activeSignals.length === 0) {
+                console.log(`♻️ Limpando motor em background: ${key}`);
+                if (eng.ws) { eng.ws.removeAllListeners(); eng.ws.on('error', () => {}); eng.ws.terminate(); eng.ws = null; }
+                if (eng.otcInterval) { clearInterval(eng.otcInterval); eng.otcInterval = null; }
+                delete state.activeEngines[key];
+            }
+        }
+    }, 5000);
 }
 
 function getEngine(sym, tf, stratId) {
@@ -28,6 +41,7 @@ function getEngine(sym, tf, stratId) {
             currentGlobalPrice: 0, 
             lastClosedCandleTime: 0, 
             lastResolvedCandleTime: 0,
+            lastTickTime: Date.now(), // 🎯 O CORAÇÃO DO MOTOR (Para detectar Zumbis)
             connectionId: 0
         };
     }
@@ -82,7 +96,6 @@ function processHistoricalCandle(eng, k_time, k_o, k_c, currentStrategy) {
     });
 
     eng.closePrices.push(k_c);
-    // Impede que a RAM estoure mantendo apenas 150 velas de contexto para os cálculos
     if (eng.closePrices.length > 150) eng.closePrices.shift();
 
     if (eng.activeSignals.length === 0) {
@@ -174,6 +187,7 @@ async function handleCandleClose(eng, closedPrice, candleStartTime) {
 
 function handleCandleTick(eng, currentPrice, isCandleClosed, candleStartTime) {
     eng.currentGlobalPrice = currentPrice;
+    eng.lastTickTime = Date.now(); // 🎯 BATE O CORAÇÃO DO MOTOR
     
     if (eng.key === state.currentEngineKey) {
         const tfMinutes = parseInt(eng.timeframe.replace('m', '')); const now = new Date();
@@ -198,7 +212,18 @@ function handleCandleTick(eng, currentPrice, isCandleClosed, candleStartTime) {
 async function startConnection(symbol, tf) {
     let eng = getEngine(symbol, tf, state.currentStrategyId);
     
-    if ((eng.ws || eng.otcInterval) && eng.closePrices.length > 0) {
+    // ⚡ DESFIBRILADOR (ANTI-ZUMBI): Se o motor está há mais de 2 minutos sem piscar, ele morreu!
+    const isStale = eng.lastTickTime > 0 && (Date.now() - eng.lastTickTime > 120000);
+
+    if (isStale && eng.closePrices.length > 0) {
+        console.log(`🧟 Motor Zumbi detectado em ${eng.key} (Sem pulso há 2 min). Destruindo e recarregando...`);
+        if (eng.ws) { eng.ws.removeAllListeners(); eng.ws.on('error', () => {}); eng.ws.terminate(); eng.ws = null; }
+        if (eng.otcInterval) { clearInterval(eng.otcInterval); eng.otcInterval = null; }
+        eng.closePrices = []; // Força recarregar histórico
+    }
+
+    // Se não é Zumbi e já tem dados, só devolve a tela!
+    if (!isStale && (eng.ws || eng.otcInterval) && eng.closePrices.length > 0) {
         if (eng.key === state.currentEngineKey) {
             io.emit('price_update', { price: eng.currentGlobalPrice, secondsLeft: 0, activeSignal: eng.activeSignals.length > 0 ? eng.activeSignals[0] : null });
             io.emit('history_dump', eng.signalHistory);
@@ -213,6 +238,7 @@ async function startConnection(symbol, tf) {
     
     eng.closePrices = []; eng.activeSignals = []; eng.currentGlobalPrice = 0; 
     eng.signalHistory = []; eng.scoreboard = { win1: 0, winG1: 0, winG2: 0, loss: 0 };
+    eng.lastTickTime = Date.now(); // Inicia o coração
 
     if (eng.key === state.currentEngineKey) {
         io.emit('price_update', { price: 0, secondsLeft: 0, activeSignal: null });
@@ -232,7 +258,6 @@ async function startConnection(symbol, tf) {
         try {
             const resolution = tfMinutes.toString();
             const to = Math.floor(Date.now() / 1000); 
-            // 🎯 AQUI: 500 velas (aprox. 8h no M1) em vez de 1000!
             const from = to - (500 * tfMinutes * 60); 
             
             const otcHeaders = { 'accept': '*/*', 'Cookie': state.globalDynamicCookie, 'X-Requested-With': 'XMLHttpRequest', 'referer': 'https://velloxbroker.com/traderoom', 'user-agent': 'Mozilla/5.0' };
@@ -268,7 +293,6 @@ async function startConnection(symbol, tf) {
     } else {
         if (eng.key === state.currentEngineKey) updateStatus(`Carregando histórico Binance (500 velas)...`);
         try {
-            // 🎯 AQUI: limit=500 em vez de 1000!
             const response = await axios.get(`https://api.binance.com/api/v3/klines?symbol=${symbol.toUpperCase()}&interval=${tf}&limit=500`);
             if (myConnectionId !== eng.connectionId) return; 
 
