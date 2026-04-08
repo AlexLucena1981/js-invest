@@ -29,15 +29,12 @@ const state = {
     currentStrategyId: '', 
     currentEngineStatus: "Aguardando inicialização...", 
     strategiesDB: [],
-    activeBrokers: {}, // Corre de forma independente do F5, usando o UID
+    activeBrokers: {}, 
     availableCoins: {}
 };
 
 initEngine(io, state);
 
-// ============================================================================
-// CARREGAMENTO INICIAL
-// ============================================================================
 async function loadStrategiesFromDB() {
     try {
         const snapshot = await db.collection('scripts').get();
@@ -53,7 +50,6 @@ async function loadStrategiesFromDB() {
             state.currentEngineKey = `${state.currentSymbol.toLowerCase()}_${state.currentTimeframe}_${state.currentStrategyId}`;
             startConnection(state.currentSymbol, state.currentTimeframe); 
         } else {
-            console.log("⚠️ Nenhum script encontrado.");
             state.currentEngineStatus = "Aguardando injeção de scripts...";
             io.emit('status', { msg: state.currentEngineStatus });
         }
@@ -94,9 +90,6 @@ function getBrokerBySocket(socketId) {
     return Object.values(state.activeBrokers).find(b => b.socketId === socketId);
 }
 
-// ============================================================================
-// COMUNICAÇÃO FRONT-END (SOCKETS)
-// ============================================================================
 io.on('connection', (socket) => {
     
     socket.emit('status', { msg: state.currentEngineStatus });
@@ -158,7 +151,7 @@ io.on('connection', (socket) => {
                 token: brokerToken, 
                 demoAccountId: '8', 
                 realAccountId: '0', 
-                autoTradeActive: false, 
+                autoTradeActive: false, // Forçado a false
                 config: { active: false, accountType: 'demo', baseAmount: 5, maxGale: 2, stopWin: 99999, stopLoss: 99999 }, 
                 sessionProfit: 0 
             };
@@ -206,83 +199,17 @@ io.on('connection', (socket) => {
         }
     });
 
+    // 🛑 BLOQUEIO CIRÚRGICO: Auto-Trade e Manual Trade desativados
     socket.on('setup_auto_trade', (config) => {
-        const broker = getBrokerBySocket(socket.id);
-        if (broker) {
-            broker.config = config; 
-            broker.autoTradeActive = config.active;
-            
-            if (config.active) broker.sessionProfit = 0; 
-            
-            socket.emit('auto_trade_status', { 
-                active: config.active, 
-                msg: config.active ? "Robô Armado..." : "Robô Pausado.", 
-                profit: broker.sessionProfit 
-            });
-        }
+        socket.emit('auto_trade_status', { 
+            active: false, 
+            msg: "Modo de Análise (Auto-Trade Desativado).", 
+            profit: 0 
+        });
     });
 
     socket.on('manual_trade', async (data) => {
-        const direction = data.direction;
-        const frontendConfig = data.config;
-        const reqSymbol = data.symbol;
-        const reqTf = data.timeframe;
-        
-        const broker = getBrokerBySocket(socket.id);
-        if (!broker || !broker.token) { 
-            socket.emit('sniper_error', 'Você precisa conectar na corretora antes de atirar!'); 
-            return; 
-        }
-
-        let targetEng = getEngine(reqSymbol, reqTf, state.currentStrategyId);
-
-        const hasManualSignal = targetEng.activeSignals.some(s => s.isManual);
-        if (hasManualSignal) { 
-            socket.emit('sniper_error', 'Aguarde! Já existe um tiro Sniper em andamento.'); 
-            return; 
-        }
-
-        if (targetEng.currentGlobalPrice === 0) { 
-            socket.emit('sniper_error', 'Aguardando sincronização de preço da corretora...'); 
-            return; 
-        }
-
-        if (frontendConfig) {
-            if (!broker.config) broker.config = { active: false, stopWin: 99999, stopLoss: 99999 };
-            broker.config.accountType = frontendConfig.accountType; 
-            broker.config.baseAmount = frontendConfig.baseAmount; 
-            broker.config.maxGale = frontendConfig.maxGale;
-        }
-
-        let isDemo = broker.config ? broker.config.accountType === 'demo' : true;
-        let amount = broker.config ? parseFloat(broker.config.baseAmount).toFixed(2).replace('.', ',') : '5,00';
-
-        const result = await dispararOrdemVellox(broker, isDemo, reqSymbol.toUpperCase(), direction, amount, targetEng.currentGlobalPrice, reqTf);
-
-        if (result.success) {
-            socket.emit('sniper_success', `Ordem enviada com sucesso!`);
-            if (result.balance) socket.emit('update_balance', { isDemo: isDemo, balance: result.balance });
-
-            const manualSig = { 
-                id: Date.now(), 
-                type: direction, 
-                symbol: reqSymbol.toUpperCase(), 
-                timeframe: reqTf, 
-                time: new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' }), 
-                step: 0, 
-                status: '⚡ Sniper...', 
-                entryPrice: targetEng.currentGlobalPrice, 
-                isManual: true 
-            };
-            
-            targetEng.activeSignals.push(manualSig); 
-            targetEng.signalHistory.unshift(manualSig); 
-            if (targetEng.signalHistory.length > 20) targetEng.signalHistory.pop();
-            
-            io.emit('new_signal_history', manualSig);
-        } else { 
-            socket.emit('sniper_error', result.msg); 
-        }
+        socket.emit('sniper_error', 'Modo de Análise Ativo! As entradas devem ser feitas manualmente na corretora.'); 
     });
 
     socket.on('admin_create_user', async (data) => {
@@ -385,4 +312,4 @@ io.on('connection', (socket) => {
 loadStrategiesFromDB();
 loadAvailableCoins();
 
-server.listen(3000, () => { console.log('🚀 Terminal HFT JS Invest operando na porta 3000!'); });
+server.listen(3000, () => { console.log('🚀 Terminal HFT JS Invest operando na porta 3000! (Modo Análise)'); });
