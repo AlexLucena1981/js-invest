@@ -7,7 +7,6 @@ firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth(); 
 const socket = io();
 
-let isBotActive = false;
 let currentEntryPrice = 0; 
 
 const ctx = document.getElementById('liveChart').getContext('2d');
@@ -40,10 +39,19 @@ function saveRiskConfig() {
     localStorage.setItem('jsInvestConfig', JSON.stringify(config));
 }
 
-// ==========================================
-// 🎯 A MÁGICA DA SESSÃO (F5) E CONFIGS
-// ==========================================
 window.addEventListener('DOMContentLoaded', () => {
+    // 🛑 ESCONDER OS BOTÕES DE OPERAÇÃO E CONFIG DE RISCO (Modo Análise)
+    if(document.getElementById('btnToggleBot')) document.getElementById('btnToggleBot').style.display = 'none';
+    if(document.getElementById('btnManualCall')) document.getElementById('btnManualCall').style.display = 'none';
+    if(document.getElementById('btnManualPut')) document.getElementById('btnManualPut').style.display = 'none';
+    
+    // Altera o texto de status do robô para informar o modo
+    const statusBot = document.getElementById('statusBot');
+    if(statusBot) {
+        statusBot.innerText = "Modo de Análise: Operações Automáticas e Manuais Desativadas.";
+        statusBot.style.color = "#d29922"; // Amarelo aviso
+    }
+
     const savedConfig = JSON.parse(localStorage.getItem('jsInvestConfig'));
     if (savedConfig) {
         document.getElementById('riskAccount').value = savedConfig.accountType || 'demo';
@@ -273,95 +281,13 @@ socket.on('signal', (data) => {
     setTimeout(() => { alertBox.className = "alert-box"; }, 4000); 
 });
 
-document.getElementById('btnToggleBot').addEventListener('click', () => {
-    isBotActive = !isBotActive;
-    saveRiskConfig(); 
-    const config = { 
-        active: isBotActive, 
-        accountType: document.getElementById('riskAccount').value, 
-        baseAmount: parseFloat(document.getElementById('riskAmount').value), 
-        maxGale: parseInt(document.getElementById('riskGale').value), 
-        stopWin: parseFloat(document.getElementById('riskWin').value), 
-        stopLoss: parseFloat(document.getElementById('riskLoss').value) 
-    };
-    socket.emit('setup_auto_trade', config);
-});
+// Atualizações de saldo silenciadas no modo análise para evitar confusões visuais caso haja resíduos
+socket.on('auto_trade_status', (res) => {});
+socket.on('update_balance', (data) => {});
+socket.on('win_balance_update', (data) => {});
 
-socket.on('auto_trade_status', (res) => {
-    isBotActive = res.active;
-    const btn = document.getElementById('btnToggleBot'); 
-    const status = document.getElementById('statusBot');
-    
-    if(isBotActive) { 
-        btn.className = "btn-toggle-bot bot-on"; 
-        btn.innerText = "PARAR AUTO-TRADE"; 
-        status.innerText = res.msg; 
-        status.style.color = "#58a6ff"; 
-    } else { 
-        btn.className = "btn-toggle-bot bot-off"; 
-        btn.innerText = "ATIVAR AUTO-TRADE"; 
-        status.innerText = res.msg; 
-        status.style.color = res.msg.includes("STOP") ? "#f85149" : "#8b949e"; 
-    }
-    
-    if (res.profit !== undefined) { 
-        const pVal = document.getElementById('profitVal'); 
-        pVal.innerText = `R$ ${res.profit.toFixed(2)}`; 
-        pVal.style.color = res.profit >= 0 ? "#3fb950" : "#f85149"; 
-    }
-});
-
-socket.on('update_balance', (data) => {
-    const el = document.getElementById(data.isDemo ? 'valDemo' : 'valReal'); 
-    el.innerText = `R$ ${data.balance}`; 
-    el.style.color = data.isDemo ? '#3fb950' : '#58a6ff'; 
-    setTimeout(() => { el.style.color = data.isDemo ? '#d29922' : '#3fb950'; }, 1000);
-});
-
-socket.on('win_balance_update', (data) => {
-    const el = document.getElementById(data.isDemo ? 'valDemo' : 'valReal');
-    let currentVal = parseFloat(el.innerText.replace('R$ ', '').replace(/\./g, '').replace(',', '.'));
-    
-    if (!isNaN(currentVal)) {
-        el.innerText = `R$ ${(currentVal + data.prize).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-        el.style.color = '#3fb950'; 
-        el.style.textShadow = '0 0 15px rgba(63, 185, 80, 0.8)';
-        setTimeout(() => { el.style.color = data.isDemo ? '#d29922' : '#3fb950'; el.style.textShadow = 'none'; }, 2000);
-    }
-});
-
-socket.on('sniper_success', (msg) => { alert("✅ " + msg); });
-socket.on('sniper_error', (msg) => { alert("❌ Erro: " + msg); });
-
-// ==========================================
-// 🎯 GATILHOS SNIPER (1-CLICK TRADING DEFINITIVO)
-// ==========================================
-
-document.getElementById('btnManualCall').addEventListener('click', () => { 
-    saveRiskConfig(); 
-    const config = { 
-        accountType: document.getElementById('riskAccount').value, 
-        baseAmount: parseFloat(document.getElementById('riskAmount').value), 
-        maxGale: parseInt(document.getElementById('riskGale').value) 
-    };
-    const telaMoeda = document.getElementById('coinSelector').value; 
-    const telaTempo = document.getElementById('timeframeSelector').value;
-    
-    socket.emit('manual_trade', { direction: 'CALL', config: config, symbol: telaMoeda, timeframe: telaTempo }); 
-});
-
-document.getElementById('btnManualPut').addEventListener('click', () => { 
-    saveRiskConfig(); 
-    const config = { 
-        accountType: document.getElementById('riskAccount').value, 
-        baseAmount: parseFloat(document.getElementById('riskAmount').value), 
-        maxGale: parseInt(document.getElementById('riskGale').value) 
-    };
-    const telaMoeda = document.getElementById('coinSelector').value; 
-    const telaTempo = document.getElementById('timeframeSelector').value;
-    
-    socket.emit('manual_trade', { direction: 'PUT', config: config, symbol: telaMoeda, timeframe: telaTempo }); 
-});
+socket.on('sniper_success', (msg) => { console.log("✅ " + msg); }); 
+socket.on('sniper_error', (msg) => { alert("❌ " + msg); });
 
 const historyTableBody = document.getElementById('historyTableBody');
 
