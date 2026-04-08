@@ -40,6 +40,9 @@ function saveRiskConfig() {
     localStorage.setItem('jsInvestConfig', JSON.stringify(config));
 }
 
+// ==========================================
+// 🎯 A MÁGICA DA SESSÃO (F5) E CONFIGS
+// ==========================================
 window.addEventListener('DOMContentLoaded', () => {
     const savedConfig = JSON.parse(localStorage.getItem('jsInvestConfig'));
     if (savedConfig) {
@@ -327,7 +330,7 @@ socket.on('win_balance_update', (data) => {
     }
 });
 
-socket.on('sniper_success', (msg) => { console.log("✅ " + msg); }); // Trocado alert por console.log para não travar a tela
+socket.on('sniper_success', (msg) => { alert("✅ " + msg); });
 socket.on('sniper_error', (msg) => { alert("❌ Erro: " + msg); });
 
 // ==========================================
@@ -450,7 +453,7 @@ if(document.getElementById('btnSaveScript')) {
 socket.on('script_injection_result', (res) => {
     if(document.getElementById('btnSaveScript')) document.getElementById('btnSaveScript').innerText = 'Salvar & Injetar'; 
     if (res.success) { 
-        console.log("✅ " + res.msg); 
+        alert("✅ " + res.msg); 
         scriptModal.style.display = 'none'; 
         setTimeout(() => { document.getElementById('strategySelector').value = res.id; socket.emit('change_strategy', res.id); }, 500); 
     } 
