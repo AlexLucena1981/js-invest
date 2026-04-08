@@ -9,7 +9,6 @@ function initEngine(_io, _state) {
     io = _io;
     state = _state;
 
-    // 🧹 LIXEIRO DE MOTORES: Zumbis eliminados automaticamente
     setInterval(() => {
         const now = Date.now();
         for (let key in state.activeEngines) {
@@ -89,7 +88,7 @@ async function handleCandleClose(eng, closedPrice, candleStartTime) {
     if (eng.closePrices.length > 150) eng.closePrices.shift();
 
     let signalResolvedThisCandle = false;
-    const MAX_GALE = 2; // Fixo no Modo Análise
+    const MAX_GALE = 2; 
 
     eng.activeSignals = eng.activeSignals.filter(sig => {
         const won = (sig.type === 'CALL' && closedPrice > sig.entryPrice) || (sig.type === 'PUT' && closedPrice < sig.entryPrice);
@@ -119,7 +118,6 @@ async function handleCandleClose(eng, closedPrice, candleStartTime) {
 
     if (signalResolvedThisCandle) eng.lastResolvedCandleTime = candleStartTime;
 
-    // Apenas gera novo sinal se a aba principal estiver a olhar para ele
     if (eng.activeSignals.length === 0 && candleStartTime !== eng.lastResolvedCandleTime && eng.key === state.currentEngineKey) {
         const currentStrategy = state.strategiesDB.find(s => s.id === state.currentStrategyId);
         const newSignalType = evaluateStrategy(eng.closePrices, currentStrategy);
@@ -217,7 +215,10 @@ async function startConnection(symbol, tf) {
                 for (let i = 0; i < closes.length - 1; i++) { processHistoricalCandle(eng, times[i] * 1000, opens[i], closes[i], currentStrategy); }
                 eng.lastClosedCandleTime = times[times.length - 2]; 
                 if (eng.key === state.currentEngineKey) { updateStatus(`Analisando Mercado Vivo...`); io.emit('scoreboard', eng.scoreboard); io.emit('history_dump', eng.signalHistory); }
-            } 
+            } else if (response.data && response.data.s === 'no_data') {
+                // ALERTA DE MERCADO FECHADO
+                if (eng.key === state.currentEngineKey) updateStatus(`⚠️ Mercado Fechado ou Sem Dados para ${symbol.toUpperCase()}.`);
+            }
 
             eng.otcInterval = setInterval(async () => {
                 if (myConnectionId !== eng.connectionId) return;
@@ -235,7 +236,14 @@ async function startConnection(symbol, tf) {
                 } catch (e) {} 
             }, 1500);
 
-        } catch (error) { if (myConnectionId === eng.connectionId) setTimeout(() => startConnection(symbol, tf), 5000); }
+        } catch (error) { 
+            // 📢 ALTO-FALANTE DE ERROS (Cookie Expirado)
+            const isAuthError = error.response && (error.response.status === 401 || error.response.status === 403);
+            if (eng.key === state.currentEngineKey) {
+                updateStatus(isAuthError ? `⚠️ Cookie Expirado! Injete um novo Cookie VIP no Painel.` : `⚠️ Falha na rede Vellox. Tentando novamente...`);
+            }
+            if (myConnectionId === eng.connectionId) setTimeout(() => startConnection(symbol, tf), 5000); 
+        }
 
     } else {
         if (eng.key === state.currentEngineKey) updateStatus(`Carregando análise Binance (500 velas)...`);
