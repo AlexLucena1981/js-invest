@@ -9,7 +9,14 @@ const { initEngine, startConnection, getEngine } = require('./services/engine');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+
+// 🚀 A BLINDAGEM DO RENDER: Libertar CORS e preparar para WebSocket puro
+const io = new Server(server, {
+    cors: {
+        origin: "*",
+        methods: ["GET", "POST"]
+    }
+});
 
 app.use(express.static('public'));
 

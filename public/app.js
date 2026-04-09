@@ -5,7 +5,12 @@ const firebaseConfig = {
 };
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth(); 
-const socket = io();
+
+// 🚀 CORREÇÃO APLICADA: Forçar conexão pura e direta via WebSocket
+const socket = io({
+    transports: ['websocket'],
+    upgrade: false
+});
 
 let currentEntryPrice = 0; 
 
@@ -21,11 +26,10 @@ const liveChart = new Chart(ctx, {
 // ==========================================
 window.addEventListener('DOMContentLoaded', () => {
     // Esconder botões de ação e painel de corretora
-    const elsToHide = ['riskAccount', 'btnToggleBot', 'btnManualCall', 'valDemo'];
+    const elsToHide = ['riskAccount', 'btnToggleBot', 'btnManualCall', 'btnManualPut', 'valDemo'];
     elsToHide.forEach(id => {
         const el = document.getElementById(id);
         if (el) {
-            // Sobe nas divs para esconder o bloco inteiro
             let parent = el.closest('.card');
             if (parent) parent.style.display = 'none'; 
             else el.parentElement.style.display = 'none';
@@ -62,7 +66,7 @@ socket.on('hybrid_login_result', (res) => {
 
         auth.signInWithCustomToken(res.firebaseToken).then(() => {
             document.getElementById('loginScreen').style.display = 'none';
-            document.getElementById('manualTradePanel').style.display = 'none'; // Escondido no Modo Análise
+            document.getElementById('manualTradePanel').style.display = 'none'; 
             
             if (res.role === 'admin') { 
                 document.getElementById('btnAdminPanel').style.display = 'inline-block'; 
@@ -75,7 +79,7 @@ socket.on('hybrid_login_result', (res) => {
 socket.on('auto_reconnect_result', (res) => {
     if(res.success) {
         document.getElementById('loginScreen').style.display = 'none';
-        document.getElementById('manualTradePanel').style.display = 'none'; // Escondido
+        document.getElementById('manualTradePanel').style.display = 'none'; 
         
         if (res.role === 'admin') { document.getElementById('btnAdminPanel').style.display = 'inline-block'; document.getElementById('btnOpenModal').style.display = 'inline-block'; }
     } else {
