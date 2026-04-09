@@ -10,12 +10,9 @@ const { initEngine, startConnection, getEngine } = require('./services/engine');
 const app = express();
 const server = http.createServer(app);
 
-// 🚀 A BLINDAGEM DO RENDER: Libertar CORS e preparar para WebSocket puro
+// 🚀 Forçar CORS aberto para aceitar WebSockets do Render
 const io = new Server(server, {
-    cors: {
-        origin: "*",
-        methods: ["GET", "POST"]
-    }
+    cors: { origin: "*", methods: ["GET", "POST"] }
 });
 
 app.use(express.static('public'));
@@ -40,17 +37,11 @@ const state = {
 
 initEngine(io, state);
 
-// ============================================================================
-// CARREGAMENTO INICIAL
-// ============================================================================
 async function loadStrategiesFromDB() {
     try {
         const snapshot = await db.collection('scripts').get();
         state.strategiesDB = [];
-        
-        snapshot.forEach(doc => { 
-            state.strategiesDB.push(doc.data()); 
-        });
+        snapshot.forEach(doc => { state.strategiesDB.push(doc.data()); });
 
         if (state.strategiesDB.length > 0) {
             console.log(`🔥 ${state.strategiesDB.length} scripts carregados do Firebase!`);
@@ -58,15 +49,11 @@ async function loadStrategiesFromDB() {
             state.currentEngineKey = `${state.currentSymbol.toLowerCase()}_${state.currentTimeframe}_${state.currentStrategyId}`;
             startConnection(state.currentSymbol, state.currentTimeframe); 
         } else {
-            console.log("⚠️ Nenhum script encontrado.");
             state.currentEngineStatus = "Aguardando injeção de scripts...";
             io.emit('status', { msg: state.currentEngineStatus });
         }
-        
         io.emit('available_strategies', state.strategiesDB.map(s => ({ id: s.id, name: s.name })));
-    } catch (error) { 
-        console.error("Erro ao ler do Firebase:", error); 
-    }
+    } catch (error) { console.error("Erro ao ler do Firebase:", error); }
 }
 
 function loadAvailableCoins() {
@@ -80,9 +67,6 @@ function loadAvailableCoins() {
     io.emit('available_coins', state.availableCoins);
 }
 
-// ============================================================================
-// COMUNICAÇÃO FRONT-END (SOCKETS)
-// ============================================================================
 io.on('connection', (socket) => {
     
     socket.emit('status', { msg: state.currentEngineStatus });
@@ -100,7 +84,6 @@ io.on('connection', (socket) => {
         startConnection(state.currentSymbol, state.currentTimeframe); 
     });
 
-    // Mantemos o login APENAS para validar o Painel de Admin
     socket.on('hybrid_login', async ({ brokerUser, brokerPass }) => {
         try {
             const loginData = new URLSearchParams();
@@ -116,19 +99,36 @@ io.on('connection', (socket) => {
 
             let uid = brokerUser.replace(/[^a-zA-Z0-9]/g, ''); 
             if (!uid) uid = 'user_' + Date.now();
-            let userRole = 'aluno'; 
-            const userLower = brokerUser.toLowerCase();
+            let userRole = 'aluno'; const userLower = brokerUser.toLowerCase();
             
             if (userLower === MASTER_EMAIL.toLowerCase() || userLower === MASTER_BROKER_LOGIN.toLowerCase()) { 
-                uid = 'admin_master'; 
-                userRole = 'admin'; 
+                uid = 'admin_master'; userRole = 'admin'; 
             } else { 
                 const snapshot = await db.collection('users').where('email', '==', brokerUser).get(); 
                 if (!snapshot.empty) { uid = snapshot.docs[0].id; userRole = snapshot.docs[0].data().role; } 
             }
 
             const customToken = await admin.auth().createCustomToken(uid);
-            socket.emit('hybrid_login_result', { success: true, firebaseToken: customToken, role: userRole, brokerToken: brokerToken, uid: uid });
+            
+            // 🎯 REDE DE CAPTURA DE SALDO ROBUSTA
+            let realBalance = "0,00";
+            try {
+                const balanceResponse = await axios.get(`https://velloxbroker.com/api/public/users/balance`, { 
+                    headers: { 
+                        'Authorization': `Bearer ${brokerToken}`,
+                        'Accept': 'application/json' // Força a corretora a responder certo
+                    } 
+                });
+                
+                const resData = balanceResponse.data;
+                // Vasculha todos os lugares onde a Vellox costuma esconder o dinheiro
+                realBalance = resData.user_credit || resData.credit || (resData.data ? resData.data.user_credit : null) || (resData.data ? resData.data.credit : null) || "0,00";
+                
+            } catch (e) {
+                console.error("⚠️ Erro ao puxar saldo na Vellox:", e.response ? JSON.stringify(e.response.data) : e.message);
+            }
+
+            socket.emit('hybrid_login_result', { success: true, firebaseToken: customToken, role: userRole, balance: { demo: "---", real: realBalance }, brokerToken: brokerToken, uid: uid });
 
         } catch (error) { 
             socket.emit('hybrid_login_result', { success: false, reason: 'broker', msg: 'Credenciais inválidas.' }); 
@@ -136,15 +136,36 @@ io.on('connection', (socket) => {
     });
 
     socket.on('auto_reconnect', async (data) => {
-        const { token, role, uid } = data;
-        socket.emit('auto_reconnect_result', { success: true, role: role });
+        try {
+            const { token, role, uid } = data;
+            if(!token || !uid) throw new Error("Sem Token ou UID");
+
+            // 🎯 REDE DE CAPTURA DE SALDO ROBUSTA (Reconexão)
+            let realBalance = "0,00";
+            try {
+                const balanceResponse = await axios.get(`https://velloxbroker.com/api/public/users/balance`, { 
+                    headers: { 
+                        'Authorization': `Bearer ${token}`,
+                        'Accept': 'application/json' 
+                    } 
+                });
+                const resData = balanceResponse.data;
+                realBalance = resData.user_credit || resData.credit || (resData.data ? resData.data.user_credit : null) || (resData.data ? resData.data.credit : null) || "0,00";
+            } catch (e) { 
+                console.error("⚠️ Token expirado ou erro ao puxar saldo (Reconexão):", e.message);
+                throw new Error("Token expirado"); 
+            }
+
+            socket.emit('auto_reconnect_result', { success: true, role: role, balance: { demo: "---", real: realBalance } });
+        } catch (error) {
+            socket.emit('auto_reconnect_result', { success: false, msg: 'Sessão expirada. Faça login novamente.' }); 
+        }
     });
 
     socket.on('admin_create_user', async (data) => {
         try {
             const decodedToken = await admin.auth().verifyIdToken(data.token);
-            const reqUid = decodedToken.uid; 
-            let isAdmin = false;
+            const reqUid = decodedToken.uid; let isAdmin = false;
             
             if (reqUid === 'admin_master') isAdmin = true;
             else { 
@@ -163,8 +184,7 @@ io.on('connection', (socket) => {
     socket.on('admin_get_users', async (token) => {
         try {
             const snapshot = await db.collection('users').get();
-            let usersList = []; 
-            usersList.push({ id: 'master', email: 'Master / Admin', role: 'admin (Master)' });
+            let usersList = []; usersList.push({ id: 'master', email: 'Master / Admin', role: 'admin (Master)' });
             snapshot.forEach(doc => { usersList.push({ id: doc.id, ...doc.data() }); });
             socket.emit('admin_users_list', { success: true, users: usersList });
         } catch (error) { socket.emit('admin_users_list', { success: false, msg: error.message }); }
