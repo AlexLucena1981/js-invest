@@ -6,7 +6,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth(); 
 
-// 🚀 CORREÇÃO APLICADA: Forçar conexão pura e direta via WebSocket
+// 🚀 Conexão Direta HFT
 const socket = io({
     transports: ['websocket'],
     upgrade: false
@@ -22,24 +22,26 @@ const liveChart = new Chart(ctx, {
 });
 
 // ==========================================
-// 🛑 PREPARAÇÃO DO MODO ANÁLISE (Ocultar Painéis)
+// 🛑 PREPARAÇÃO MODO ANÁLISE
 // ==========================================
 window.addEventListener('DOMContentLoaded', () => {
-    // Esconder botões de ação e painel de corretora
-    const elsToHide = ['riskAccount', 'btnToggleBot', 'btnManualCall', 'btnManualPut', 'valDemo'];
+    // 🎯 AQUI É A MAGIA: Esconder apenas os inputs e botões, mas DEIXAR a barra de saldo visível
+    const elsToHide = ['riskAccount', 'riskAmount', 'riskGale', 'riskWin', 'riskLoss', 'btnToggleBot', 'btnManualCall', 'btnManualPut'];
     elsToHide.forEach(id => {
         const el = document.getElementById(id);
         if (el) {
-            let parent = el.closest('.card');
-            if (parent) parent.style.display = 'none'; 
-            else el.parentElement.style.display = 'none';
+            el.style.display = 'none';
+            // Se estiver dentro de uma div embrulhada, esconde a div (para limpar rótulos)
+            if(el.parentElement && el.parentElement.tagName === 'DIV' && el.parentElement.id !== 'manualTradePanel') {
+                el.parentElement.style.display = 'none';
+            }
         }
     });
 
     const statusBot = document.getElementById('statusBot');
     if (statusBot) {
         statusBot.innerText = "Modo Análise: Gatilhos Desativados.";
-        statusBot.style.color = "#d29922";
+        statusBot.style.color = "#58a6ff";
     }
 
     const savedBrokerToken = localStorage.getItem('jsInvestBrokerToken');
@@ -47,7 +49,7 @@ window.addEventListener('DOMContentLoaded', () => {
     const savedUid = localStorage.getItem('jsInvestUid');
     
     if (savedBrokerToken && savedUid) {
-        document.getElementById('btnLogin').innerText = "Acessando Painel...";
+        document.getElementById('btnLogin').innerText = "Restaurando Sessão...";
         socket.emit('auto_reconnect', { token: savedBrokerToken, role: savedRole, uid: savedUid });
     }
 });
@@ -66,7 +68,10 @@ socket.on('hybrid_login_result', (res) => {
 
         auth.signInWithCustomToken(res.firebaseToken).then(() => {
             document.getElementById('loginScreen').style.display = 'none';
-            document.getElementById('manualTradePanel').style.display = 'none'; 
+            document.getElementById('valReal').innerText = `R$ ${res.balance.real}`;
+            document.getElementById('valDemo').innerText = res.balance.demo;
+            // 🎯 GARANTIR QUE O PAINEL ONDE O SALDO MORA APARECE
+            document.getElementById('manualTradePanel').style.display = 'flex'; 
             
             if (res.role === 'admin') { 
                 document.getElementById('btnAdminPanel').style.display = 'inline-block'; 
@@ -79,7 +84,10 @@ socket.on('hybrid_login_result', (res) => {
 socket.on('auto_reconnect_result', (res) => {
     if(res.success) {
         document.getElementById('loginScreen').style.display = 'none';
-        document.getElementById('manualTradePanel').style.display = 'none'; 
+        document.getElementById('valReal').innerText = `R$ ${res.balance.real}`; 
+        document.getElementById('valDemo').innerText = res.balance.demo; 
+        // 🎯 GARANTIR QUE O PAINEL ONDE O SALDO MORA APARECE
+        document.getElementById('manualTradePanel').style.display = 'flex'; 
         
         if (res.role === 'admin') { document.getElementById('btnAdminPanel').style.display = 'inline-block'; document.getElementById('btnOpenModal').style.display = 'inline-block'; }
     } else {
