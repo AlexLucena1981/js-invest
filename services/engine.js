@@ -7,6 +7,16 @@ let state;
 
 const radarLastCandleProcessed = {}; 
 
+// 🎯 LISTA MUNDIAL DE ATIVOS PARA O RADAR
+const radarCoins = [
+    'BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'ADAUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT', // Criptos (Binance)
+    'EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'USDCAD',                            // Forex (Vellox)
+    'EURUSDOTC', 'GBPUSDOTC', 'USDJPYOTC', 'BTCUSDTOTC',                         // OTC (Vellox)
+    'AAPL', 'XAUUSD'                                                             // Ações e Ouro (Vellox)
+];
+
+const cryptoBinance = ['BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'ADAUSDT', 'BNBUSDT', 'DOGEUSDT', 'SOLUSDT', 'XRPUSDT'];
+
 function initEngine(_io, _state) {
     io = _io;
     state = _state;
@@ -26,27 +36,49 @@ function initEngine(_io, _state) {
             }
         }
 
-        // 📡 DRONE DO RADAR C/ PARIDADE MATEMÁTICA
+        // 📡 DRONE DO RADAR GLOBAL (Varre o Mundo)
         try {
             let radarStrat = state.strategiesDB.find(s => s.name && s.name.toLowerCase().includes('live'));
             if (!radarStrat && state.strategiesDB.length > 0) radarStrat = state.strategiesDB.find(s => s.id === state.currentStrategyId);
             
             if (radarStrat) {
-                const radarCoins = ['BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'ADAUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT'];
                 const tf = state.currentTimeframe || '1m';
+                const tfMinutes = parseInt(tf.replace('m', ''));
                 
                 for (let sym of radarCoins) {
                     try {
-                        // 🎯 Puxamos 151 para tirar a vela atual e ficar com exatas 150 (Matemática Perfeita)
-                        const res = await axios.get(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=${tf}&limit=151`);
-                        if (!res.data) continue;
-                        
-                        const klines = res.data;
-                        const lastClosedCandleTime = klines[klines.length - 2][0]; 
+                        let closes = [];
+                        let lastClosedCandleTime = 0;
+                        const isCrypto = cryptoBinance.includes(sym.toUpperCase());
+
+                        if (isCrypto) {
+                            // 📡 VIA BINANCE
+                            const res = await axios.get(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=${tf}&limit=151`);
+                            if (!res.data) continue;
+                            const klines = res.data;
+                            lastClosedCandleTime = klines[klines.length - 2][0]; 
+                            closes = klines.slice(0, -1).map(k => parseFloat(k[4])); 
+                        } else {
+                            // 📡 VIA VELLOX (Usa o Cookie)
+                            if(!state.globalDynamicCookie) continue; // Sem cookie, ignora vellox
+                            const resolution = tfMinutes.toString();
+                            const to = Math.floor(Date.now() / 1000); 
+                            const from = to - (151 * tfMinutes * 60); 
+                            const otcHeaders = { 'accept': '*/*', 'Cookie': state.globalDynamicCookie, 'X-Requested-With': 'XMLHttpRequest', 'referer': 'https://velloxbroker.com/traderoom', 'user-agent': 'Mozilla/5.0' };
+                            
+                            const res = await axios.get(`https://velloxbroker.com/publicapi/tradingview/udf-history?symbol=${sym.toUpperCase()}&resolution=${resolution}&from=${from}&to=${to}&countback=151&site=velloxbroker.com`, { headers: otcHeaders });
+                            
+                            if (res.data && res.data.s === 'ok') {
+                                const timesArr = res.data.t;
+                                const closesArr = res.data.c;
+                                lastClosedCandleTime = timesArr[timesArr.length - 2] * 1000;
+                                closes = closesArr.slice(0, -1);
+                            } else {
+                                continue; // Mercado fechado ou erro
+                            }
+                        }
 
                         if (radarLastCandleProcessed[sym] === lastClosedCandleTime) continue;
-
-                        let closes = klines.slice(0, -1).map(k => parseFloat(k[4])); 
                         if (closes.length > 150) closes = closes.slice(closes.length - 150); 
                         
                         const signal = evaluateStrategy(closes, radarStrat);
@@ -73,7 +105,7 @@ function initEngine(_io, _state) {
 
                             io.emit('radar_alert', { symbol: sym, type: signal });
                             io.emit('radar_stats_update', state.radarStats);
-                            console.log(`🚨 RADAR A QUENTE: Oportunidade em ${sym} (${signal}) às ${hourStr}`);
+                            console.log(`🚨 DRONE: Oportunidade em ${sym} (${signal}) às ${hourStr}`);
                         }
                     } catch(e) {} 
                 }
@@ -82,9 +114,9 @@ function initEngine(_io, _state) {
     }, 20000); 
 }
 
-// ⏳ A MÁGICA: O BACKTEST RETROATIVO DO RADAR
+// ⏳ O BACKTEST RETROATIVO (Criptos + Vellox)
 async function scanRadarHistory() {
-    console.log("⏳ Iniciando Backtest Retroativo do Radar (Últimas 500 velas)...");
+    console.log("⏳ Iniciando Backtest Retroativo do Radar Mundial...");
     try {
         state.radarStats = { total: 0, byAsset: {}, byHour: {} };
         for (let key in radarLastCandleProcessed) delete radarLastCandleProcessed[key];
@@ -93,19 +125,38 @@ async function scanRadarHistory() {
         if (!radarStrat && state.strategiesDB.length > 0) radarStrat = state.strategiesDB.find(s => s.id === state.currentStrategyId);
         if (!radarStrat) return;
 
-        const radarCoins = ['BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'ADAUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT'];
         const tf = state.currentTimeframe || '1m';
+        const tfMinutes = parseInt(tf.replace('m', ''));
 
         for (let sym of radarCoins) {
             try {
-                const res = await axios.get(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=${tf}&limit=500`);
-                if (!res.data) continue;
+                const isCrypto = cryptoBinance.includes(sym.toUpperCase());
+                let timesArr = [];
+                let closesArr = [];
+
+                if (isCrypto) {
+                    const res = await axios.get(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=${tf}&limit=500`);
+                    if (!res.data) continue;
+                    timesArr = res.data.map(k => k[0]);
+                    closesArr = res.data.map(k => parseFloat(k[4]));
+                } else {
+                    if(!state.globalDynamicCookie) continue;
+                    const resolution = tfMinutes.toString();
+                    const to = Math.floor(Date.now() / 1000); const from = to - (500 * tfMinutes * 60); 
+                    const otcHeaders = { 'accept': '*/*', 'Cookie': state.globalDynamicCookie, 'X-Requested-With': 'XMLHttpRequest', 'referer': 'https://velloxbroker.com/traderoom', 'user-agent': 'Mozilla/5.0' };
+                    const res = await axios.get(`https://velloxbroker.com/publicapi/tradingview/udf-history?symbol=${sym.toUpperCase()}&resolution=${resolution}&from=${from}&to=${to}&countback=500&site=velloxbroker.com`, { headers: otcHeaders });
+                    if (res.data && res.data.s === 'ok') {
+                        timesArr = res.data.t.map(t => t * 1000);
+                        closesArr = res.data.c;
+                    } else {
+                        continue;
+                    }
+                }
                 
                 let tempCloses = [];
-                for (let i = 0; i < res.data.length - 1; i++) { 
-                    const k = res.data[i];
-                    const closedTime = k[0];
-                    tempCloses.push(parseFloat(k[4]));
+                for (let i = 0; i < closesArr.length - 1; i++) { 
+                    const closedTime = timesArr[i];
+                    tempCloses.push(closesArr[i]);
                     
                     if (tempCloses.length > 150) tempCloses.shift();
 
@@ -137,7 +188,7 @@ async function scanRadarHistory() {
             } catch(e) {}
         }
         io.emit('radar_stats_update', state.radarStats);
-        console.log(`✅ Backtest do Radar Concluído! ${state.radarStats.total} oportunidades matemáticas encontradas no histórico.`);
+        console.log(`✅ Backtest Concluído! ${state.radarStats.total} oportunidades matemáticas encontradas (Criptos + Vellox).`);
     } catch(err) {}
 }
 
@@ -310,8 +361,7 @@ async function startConnection(symbol, tf) {
     const currentStrategy = state.strategiesDB.find(s => s.id === state.currentStrategyId);
     if (!currentStrategy) return;
 
-    const cryptoBinance = ['btcusdt', 'ethusdt', 'ltcusdt', 'adausdt', 'bnbusdt', 'dogeusdt', 'solusdt', 'xrpusdt'];
-    const useBinance = cryptoBinance.includes(symbol.toLowerCase());
+    const useBinance = cryptoBinance.includes(symbol.toUpperCase());
 
     if (!useBinance) { 
         if (eng.key === state.currentEngineKey) updateStatus(`Carregando análise (500 velas)...`);

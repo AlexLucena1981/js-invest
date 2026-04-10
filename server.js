@@ -38,7 +38,7 @@ async function loadStrategiesFromDB() {
             state.currentStrategyId = state.strategiesDB[0].id; 
             state.currentEngineKey = `${state.currentSymbol.toLowerCase()}_${state.currentTimeframe}_${state.currentStrategyId}`;
             startConnection(state.currentSymbol, state.currentTimeframe); 
-            scanRadarHistory(); // 🎯 Dispara o Backtest no arranque!
+            scanRadarHistory(); 
         } else {
             state.currentEngineStatus = "Aguardando injeção de scripts...";
             io.emit('status', { msg: state.currentEngineStatus });
@@ -73,6 +73,8 @@ io.on('connection', (socket) => {
         state.globalDynamicCookie = newCookie;
         io.emit('status', { msg: 'Sessão VIP renovada!' });
         startConnection(state.currentSymbol, state.currentTimeframe); 
+        // 🎯 AQUI: Assim que o Cookie entra, refaz o Backtest para puxar os OTC/Forex!
+        scanRadarHistory(); 
     });
 
     socket.on('hybrid_login', async ({ brokerUser, brokerPass }) => {
@@ -147,13 +149,13 @@ io.on('connection', (socket) => {
         state.currentTimeframe = newTf; state.currentEngineKey = `${state.currentSymbol.toLowerCase()}_${state.currentTimeframe}_${state.currentStrategyId}`;
         io.emit('engine_state', { symbol: state.currentSymbol, timeframe: state.currentTimeframe, strategy: state.currentStrategyId }); 
         startConnection(state.currentSymbol, state.currentTimeframe); 
-        scanRadarHistory(); // 🎯 Refaz o backtest para o novo tempo!
+        scanRadarHistory(); 
     });
 
     socket.on('change_strategy', (newStrategyId) => { 
         state.currentStrategyId = newStrategyId; state.currentEngineKey = `${state.currentSymbol.toLowerCase()}_${state.currentTimeframe}_${state.currentStrategyId}`;
         startConnection(state.currentSymbol, state.currentTimeframe); 
-        scanRadarHistory(); // 🎯 Refaz o backtest para a nova estratégia!
+        scanRadarHistory(); 
     });
 
     socket.on('add_new_strategy', async (newStrategy) => {
