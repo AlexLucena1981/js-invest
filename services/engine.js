@@ -13,7 +13,7 @@ function initEngine(_io, _state) {
 
     setInterval(async () => {
         const now = Date.now();
-        // Limpeza de Zumbis
+        // Limpeza de Motores Zumbis
         for (let key in state.activeEngines) {
             let eng = state.activeEngines[key];
             if (eng.lastTickTime > 0 && (now - eng.lastTickTime > 120000)) {
@@ -26,16 +26,19 @@ function initEngine(_io, _state) {
             }
         }
 
-        // 📡 DRONE DO RADAR C/ INTELIGÊNCIA DE DADOS
+        // 📡 DRONE DO RADAR C/ PARIDADE MATEMÁTICA
         try {
             let radarStrat = state.strategiesDB.find(s => s.name && s.name.toLowerCase().includes('live'));
-            if (!radarStrat) radarStrat = state.strategiesDB.find(s => s.id === state.currentStrategyId);
+            if (!radarStrat && state.strategiesDB.length > 0) radarStrat = state.strategiesDB.find(s => s.id === state.currentStrategyId);
             
             if (radarStrat) {
                 const radarCoins = ['BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'ADAUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT'];
+                const tf = state.currentTimeframe || '1m';
+                
                 for (let sym of radarCoins) {
                     try {
-                        const res = await axios.get(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=1m&limit=150`);
+                        // 🎯 Puxamos 151 para tirar a vela atual e ficar com exatas 150 (Matemática Perfeita)
+                        const res = await axios.get(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=${tf}&limit=151`);
                         if (!res.data) continue;
                         
                         const klines = res.data;
@@ -43,23 +46,20 @@ function initEngine(_io, _state) {
 
                         if (radarLastCandleProcessed[sym] === lastClosedCandleTime) continue;
 
-                        const closes = klines.slice(0, -1).map(k => parseFloat(k[4])); 
+                        let closes = klines.slice(0, -1).map(k => parseFloat(k[4])); 
+                        if (closes.length > 150) closes = closes.slice(closes.length - 150); 
                         
                         const signal = evaluateStrategy(closes, radarStrat);
                         if (signal) {
                             radarLastCandleProcessed[sym] = lastClosedCandleTime;
 
                             const curDate = new Date();
-                            
-                            // 🎯 CORREÇÃO DE FUSO HORÁRIO (Forçando o fuso de Brasília)
                             const hourStr = curDate.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', hour12: false }) + 'h';
                             
                             state.radarStats.total++;
                             state.radarStats.byHour[hourStr] = (state.radarStats.byHour[hourStr] || 0) + 1;
                             
-                            if (!state.radarStats.byAsset[sym]) {
-                                state.radarStats.byAsset[sym] = { count: 0, intervals: [], lastTime: null };
-                            }
+                            if (!state.radarStats.byAsset[sym]) { state.radarStats.byAsset[sym] = { count: 0, intervals: [], lastTime: null }; }
                             
                             const assetData = state.radarStats.byAsset[sym];
                             assetData.count++;
@@ -73,13 +73,72 @@ function initEngine(_io, _state) {
 
                             io.emit('radar_alert', { symbol: sym, type: signal });
                             io.emit('radar_stats_update', state.radarStats);
-                            console.log(`🚨 RADAR: Oportunidade encontrada em ${sym} (${signal}) às ${hourStr}`);
+                            console.log(`🚨 RADAR A QUENTE: Oportunidade em ${sym} (${signal}) às ${hourStr}`);
                         }
                     } catch(e) {} 
                 }
             }
         } catch(err) {}
     }, 20000); 
+}
+
+// ⏳ A MÁGICA: O BACKTEST RETROATIVO DO RADAR
+async function scanRadarHistory() {
+    console.log("⏳ Iniciando Backtest Retroativo do Radar (Últimas 500 velas)...");
+    try {
+        state.radarStats = { total: 0, byAsset: {}, byHour: {} };
+        for (let key in radarLastCandleProcessed) delete radarLastCandleProcessed[key];
+
+        let radarStrat = state.strategiesDB.find(s => s.name && s.name.toLowerCase().includes('live'));
+        if (!radarStrat && state.strategiesDB.length > 0) radarStrat = state.strategiesDB.find(s => s.id === state.currentStrategyId);
+        if (!radarStrat) return;
+
+        const radarCoins = ['BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'ADAUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT'];
+        const tf = state.currentTimeframe || '1m';
+
+        for (let sym of radarCoins) {
+            try {
+                const res = await axios.get(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=${tf}&limit=500`);
+                if (!res.data) continue;
+                
+                let tempCloses = [];
+                for (let i = 0; i < res.data.length - 1; i++) { 
+                    const k = res.data[i];
+                    const closedTime = k[0];
+                    tempCloses.push(parseFloat(k[4]));
+                    
+                    if (tempCloses.length > 150) tempCloses.shift();
+
+                    if (tempCloses.length === 150) {
+                        const signal = evaluateStrategy(tempCloses, radarStrat);
+                        if (signal) {
+                            radarLastCandleProcessed[sym] = closedTime;
+
+                            const curDate = new Date(closedTime);
+                            const hourStr = curDate.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', hour12: false }) + 'h';
+                            
+                            state.radarStats.total++;
+                            state.radarStats.byHour[hourStr] = (state.radarStats.byHour[hourStr] || 0) + 1;
+                            
+                            if (!state.radarStats.byAsset[sym]) { state.radarStats.byAsset[sym] = { count: 0, intervals: [], lastTime: null }; }
+                            
+                            const assetData = state.radarStats.byAsset[sym];
+                            assetData.count++;
+                            
+                            if (assetData.lastTime) {
+                                const diffMin = (curDate.getTime() - assetData.lastTime) / 60000;
+                                assetData.intervals.push(diffMin);
+                                if(assetData.intervals.length > 50) assetData.intervals.shift(); 
+                            }
+                            assetData.lastTime = curDate.getTime();
+                        }
+                    }
+                }
+            } catch(e) {}
+        }
+        io.emit('radar_stats_update', state.radarStats);
+        console.log(`✅ Backtest do Radar Concluído! ${state.radarStats.total} oportunidades matemáticas encontradas no histórico.`);
+    } catch(err) {}
 }
 
 function getEngine(sym, tf, stratId) {
@@ -308,4 +367,4 @@ async function startConnection(symbol, tf) {
     }
 }
 
-module.exports = { initEngine, startConnection, getEngine };
+module.exports = { initEngine, startConnection, getEngine, scanRadarHistory };
