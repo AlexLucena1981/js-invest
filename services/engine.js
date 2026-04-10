@@ -35,7 +35,6 @@ function initEngine(_io, _state) {
                 const radarCoins = ['BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'ADAUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT'];
                 for (let sym of radarCoins) {
                     try {
-                        // 🎯 CORREÇÃO: Aumentado para 150 velas para os indicadores funcionarem perfeitamente!
                         const res = await axios.get(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=1m&limit=150`);
                         if (!res.data) continue;
                         
@@ -51,7 +50,9 @@ function initEngine(_io, _state) {
                             radarLastCandleProcessed[sym] = lastClosedCandleTime;
 
                             const curDate = new Date();
-                            const hourStr = curDate.getHours().toString().padStart(2, '0') + 'h';
+                            
+                            // 🎯 CORREÇÃO DE FUSO HORÁRIO (Forçando o fuso de Brasília)
+                            const hourStr = curDate.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', hour12: false }) + 'h';
                             
                             state.radarStats.total++;
                             state.radarStats.byHour[hourStr] = (state.radarStats.byHour[hourStr] || 0) + 1;
@@ -72,7 +73,7 @@ function initEngine(_io, _state) {
 
                             io.emit('radar_alert', { symbol: sym, type: signal });
                             io.emit('radar_stats_update', state.radarStats);
-                            console.log(`🚨 RADAR: Oportunidade encontrada em ${sym} (${signal})`);
+                            console.log(`🚨 RADAR: Oportunidade encontrada em ${sym} (${signal}) às ${hourStr}`);
                         }
                     } catch(e) {} 
                 }
