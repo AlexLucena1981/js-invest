@@ -6,13 +6,10 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth(); 
 
-// 🚀 Conexão Direta HFT
-const socket = io({
-    transports: ['websocket'],
-    upgrade: false
-});
+const socket = io({ transports: ['websocket'], upgrade: false });
 
 let currentEntryPrice = 0; 
+let radarGlobalStats = null; // Guarda os stats para o painel
 
 const ctx = document.getElementById('liveChart').getContext('2d');
 const liveChart = new Chart(ctx, {
@@ -22,36 +19,125 @@ const liveChart = new Chart(ctx, {
 });
 
 // ==========================================
-// 🛑 PREPARAÇÃO MODO ANÁLISE
+// 📊 INJEÇÃO DO PAINEL DE ESTATÍSTICAS
 // ==========================================
-window.addEventListener('DOMContentLoaded', () => {
-    // 🎯 AQUI É A MAGIA: Esconder apenas os inputs e botões, mas DEIXAR a barra de saldo visível
-    const elsToHide = ['riskAccount', 'riskAmount', 'riskGale', 'riskWin', 'riskLoss', 'btnToggleBot', 'btnManualCall', 'btnManualPut'];
-    elsToHide.forEach(id => {
-        const el = document.getElementById(id);
-        if (el) {
-            el.style.display = 'none';
-            // Se estiver dentro de uma div embrulhada, esconde a div (para limpar rótulos)
-            if(el.parentElement && el.parentElement.tagName === 'DIV' && el.parentElement.id !== 'manualTradePanel') {
-                el.parentElement.style.display = 'none';
-            }
-        }
+function setupStatsUI() {
+    // Botão Flutuante
+    const statsBtn = document.createElement('button');
+    statsBtn.id = 'btnOpenStats';
+    statsBtn.innerHTML = '📊 ESTATÍSTICAS RADAR';
+    statsBtn.style.cssText = 'position:fixed; bottom:20px; left:20px; background:#1f6feb; color:white; border:none; padding:12px 20px; border-radius:8px; font-weight:bold; cursor:pointer; z-index:9000; box-shadow:0 4px 15px rgba(31,111,235,0.4); transition:0.3s;';
+    statsBtn.onmouseover = () => statsBtn.style.background = '#388bfd';
+    statsBtn.onmouseout = () => statsBtn.style.background = '#1f6feb';
+    document.body.appendChild(statsBtn);
+
+    // Modal de Estatísticas
+    const statsModal = document.createElement('div');
+    statsModal.id = 'statsModal';
+    statsModal.style.cssText = 'display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:9999; justify-content:center; align-items:center;';
+    statsModal.innerHTML = `
+        <div style="background:#0d1117; border:1px solid #30363d; border-radius:12px; width:90%; max-width:600px; padding:20px; color:#c9d1d9; max-height:90vh; overflow-y:auto;">
+            <h2 style="color:#58a6ff; text-align:center; border-bottom:1px solid #30363d; padding-bottom:10px;">📊 INTELIGÊNCIA DO RADAR</h2>
+            
+            <div style="text-align:center; padding:15px; font-size:20px;">
+                TOTAL DE OPORTUNIDADES GERADAS: <b id="statTotal" style="color:#3fb950; font-size:28px;">0</b>
+            </div>
+
+            <div style="display:flex; gap:20px; margin-top:20px;">
+                <div style="flex:1; background:#161b22; padding:15px; border-radius:8px; border:1px solid #30363d;">
+                    <h4 style="color:#8b949e; text-align:center; margin-top:0;">RANKING POR ATIVO</h4>
+                    <div id="statAssets" style="font-size:14px; line-height:1.8;">Aguardando dados...</div>
+                </div>
+
+                <div style="flex:1; background:#161b22; padding:15px; border-radius:8px; border:1px solid #30363d;">
+                    <h4 style="color:#8b949e; text-align:center; margin-top:0;">MAPA POR HORÁRIO</h4>
+                    <div id="statHours" style="font-size:14px; line-height:1.8; display:flex; flex-wrap:wrap; gap:10px; justify-content:center;">Aguardando dados...</div>
+                </div>
+            </div>
+            
+            <div style="text-align:center; margin-top:20px;">
+                <button id="btnCloseStats" style="background:#21262d; color:#c9d1d9; border:1px solid #30363d; padding:10px 20px; border-radius:6px; cursor:pointer;">Fechar Painel</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(statsModal);
+
+    document.getElementById('btnOpenStats').addEventListener('click', () => { 
+        renderStats();
+        document.getElementById('statsModal').style.display = 'flex'; 
     });
+    document.getElementById('btnCloseStats').addEventListener('click', () => { 
+        document.getElementById('statsModal').style.display = 'none'; 
+    });
+}
+
+function renderStats() {
+    if (!radarGlobalStats) return;
+    
+    document.getElementById('statTotal').innerText = radarGlobalStats.total;
+    
+    // Renderiza Ativos e Médias
+    let assetsHtml = '';
+    const assets = Object.entries(radarGlobalStats.byAsset).sort((a,b) => b[1].count - a[1].count);
+    if(assets.length === 0) assetsHtml = 'Nenhum sinal hoje.';
+    assets.forEach(([sym, data]) => {
+        let avgStr = '-- min';
+        if (data.intervals && data.intervals.length > 0) {
+            const sum = data.intervals.reduce((a, b) => a + b, 0);
+            avgStr = (sum / data.intervals.length).toFixed(1) + ' min';
+        }
+        assetsHtml += `<div style="display:flex; justify-content:space-between; border-bottom:1px solid #21262d; padding:4px 0;">
+            <b style="color:#ffffff;">${sym}</b> 
+            <span><b style="color:#3fb950;">${data.count}</b> (Média: ${avgStr})</span>
+        </div>`;
+    });
+    document.getElementById('statAssets').innerHTML = assetsHtml;
+
+    // Renderiza Horários
+    let hoursHtml = '';
+    const hours = Object.entries(radarGlobalStats.byHour).sort((a,b) => a[0].localeCompare(b[0]));
+    if(hours.length === 0) hoursHtml = 'Nenhum horário registrado.';
+    hours.forEach(([hr, count]) => {
+        hoursHtml += `<div style="background:#21262d; padding:4px 8px; border-radius:4px; border:1px solid #30363d;">
+            ${hr}: <b style="color:#58a6ff;">${count}</b>
+        </div>`;
+    });
+    document.getElementById('statHours').innerHTML = hoursHtml;
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+    // Esconder Inputs para o Modo Análise
+    const elsToHide = ['riskAccount', 'riskAmount', 'riskGale', 'riskWin', 'riskLoss', 'btnToggleBot', 'btnManualCall', 'btnManualPut'];
+    elsToHide.forEach(id => { const el = document.getElementById(id); if (el) { el.style.display = 'none'; if(el.parentElement && el.parentElement.tagName === 'DIV' && el.parentElement.id !== 'manualTradePanel') { el.parentElement.style.display = 'none'; } } });
 
     const statusBot = document.getElementById('statusBot');
-    if (statusBot) {
-        statusBot.innerText = "Modo Análise: Gatilhos Desativados.";
-        statusBot.style.color = "#58a6ff";
-    }
+    if (statusBot) { statusBot.innerText = "Modo Análise: Radar e Stats Ativos."; statusBot.style.color = "#58a6ff"; }
 
-    const savedBrokerToken = localStorage.getItem('jsInvestBrokerToken');
-    const savedRole = localStorage.getItem('jsInvestUserRole');
-    const savedUid = localStorage.getItem('jsInvestUid');
-    
-    if (savedBrokerToken && savedUid) {
-        document.getElementById('btnLogin').innerText = "Restaurando Sessão...";
-        socket.emit('auto_reconnect', { token: savedBrokerToken, role: savedRole, uid: savedUid });
-    }
+    // Cria as UIs injetadas
+    setupStatsUI();
+
+    const radarDiv = document.createElement('div');
+    radarDiv.id = 'radarToast';
+    radarDiv.style.cssText = 'display:none; position:fixed; top:80px; right:20px; background:#161b22; border:2px solid #58a6ff; padding:20px; border-radius:10px; z-index:9999; box-shadow: 0 0 25px rgba(88, 166, 255, 0.4); transition: all 0.3s ease; text-align:center; min-width:250px;';
+    radarDiv.innerHTML = `<div style="font-size:24px; margin-bottom:10px;">🚨 <b style="color:#c9d1d9;">RADAR DETECTOU!</b> 🚨</div><div id="radarMsg" style="font-size:18px; color:#8b949e; font-weight:bold;">Aguardando...</div>`;
+    document.body.appendChild(radarDiv);
+
+    const savedBrokerToken = localStorage.getItem('jsInvestBrokerToken'); const savedRole = localStorage.getItem('jsInvestUserRole'); const savedUid = localStorage.getItem('jsInvestUid');
+    if (savedBrokerToken && savedUid) { document.getElementById('btnLogin').innerText = "Acessando Painel..."; socket.emit('auto_reconnect', { token: savedBrokerToken, role: savedRole, uid: savedUid }); }
+});
+
+// 🎯 RECEBENDO OS DADOS DO SERVIDOR
+socket.on('radar_alert', (data) => {
+    const toast = document.getElementById('radarToast'); const msg = document.getElementById('radarMsg');
+    let color = data.type === 'CALL' ? '#3fb950' : '#f85149';
+    toast.style.borderColor = color; toast.style.boxShadow = `0 0 35px ${color}`;
+    msg.innerHTML = `Oportunidade de <span style="color:${color}; font-size:22px;">${data.type}</span><br>no ativo <b style="color:#ffffff; font-size:24px;">${data.symbol}</b>`;
+    toast.style.display = 'block'; setTimeout(() => { toast.style.display = 'none'; }, 10000); 
+});
+
+socket.on('radar_stats_update', (stats) => {
+    radarGlobalStats = stats; // Guarda na memória
+    if (document.getElementById('statsModal').style.display === 'flex') renderStats(); // Se tiver aberto, atualiza ao vivo
 });
 
 document.getElementById('btnLogin').addEventListener('click', () => {
@@ -62,21 +148,11 @@ document.getElementById('btnLogin').addEventListener('click', () => {
 socket.on('hybrid_login_result', (res) => {
     document.getElementById('btnLogin').innerText = "Acessar Sistema";
     if (res.success) {
-        localStorage.setItem('jsInvestBrokerToken', res.brokerToken);
-        localStorage.setItem('jsInvestUserRole', res.role);
-        localStorage.setItem('jsInvestUid', res.uid);
-
+        localStorage.setItem('jsInvestBrokerToken', res.brokerToken); localStorage.setItem('jsInvestUserRole', res.role); localStorage.setItem('jsInvestUid', res.uid);
         auth.signInWithCustomToken(res.firebaseToken).then(() => {
             document.getElementById('loginScreen').style.display = 'none';
-            document.getElementById('valReal').innerText = `R$ ${res.balance.real}`;
-            document.getElementById('valDemo').innerText = res.balance.demo;
-            // 🎯 GARANTIR QUE O PAINEL ONDE O SALDO MORA APARECE
-            document.getElementById('manualTradePanel').style.display = 'flex'; 
-            
-            if (res.role === 'admin') { 
-                document.getElementById('btnAdminPanel').style.display = 'inline-block'; 
-                document.getElementById('btnOpenModal').style.display = 'inline-block'; 
-            }
+            document.getElementById('valReal').innerText = `R$ ${res.balance.real}`; document.getElementById('valDemo').innerText = res.balance.demo; document.getElementById('manualTradePanel').style.display = 'flex'; 
+            if (res.role === 'admin') { document.getElementById('btnAdminPanel').style.display = 'inline-block'; document.getElementById('btnOpenModal').style.display = 'inline-block'; }
         }).catch(err => { document.getElementById('loginError').innerText = "Erro: " + err.message; document.getElementById('loginError').style.display = 'block'; });
     } else { document.getElementById('loginError').innerText = res.msg; document.getElementById('loginError').style.display = 'block'; }
 });
@@ -84,21 +160,15 @@ socket.on('hybrid_login_result', (res) => {
 socket.on('auto_reconnect_result', (res) => {
     if(res.success) {
         document.getElementById('loginScreen').style.display = 'none';
-        document.getElementById('valReal').innerText = `R$ ${res.balance.real}`; 
-        document.getElementById('valDemo').innerText = res.balance.demo; 
-        // 🎯 GARANTIR QUE O PAINEL ONDE O SALDO MORA APARECE
-        document.getElementById('manualTradePanel').style.display = 'flex'; 
-        
+        document.getElementById('valReal').innerText = `R$ ${res.balance.real}`; document.getElementById('valDemo').innerText = res.balance.demo; document.getElementById('manualTradePanel').style.display = 'flex'; 
         if (res.role === 'admin') { document.getElementById('btnAdminPanel').style.display = 'inline-block'; document.getElementById('btnOpenModal').style.display = 'inline-block'; }
     } else {
-        localStorage.removeItem('jsInvestBrokerToken'); localStorage.removeItem('jsInvestUserRole'); localStorage.removeItem('jsInvestUid');
-        document.getElementById('btnLogin').innerText = "Acessar Sistema";
+        localStorage.removeItem('jsInvestBrokerToken'); localStorage.removeItem('jsInvestUserRole'); localStorage.removeItem('jsInvestUid'); document.getElementById('btnLogin').innerText = "Acessar Sistema";
     }
 });
 
 document.getElementById('btnLogout').addEventListener('click', () => { 
-    localStorage.removeItem('jsInvestBrokerToken'); localStorage.removeItem('jsInvestUserRole'); localStorage.removeItem('jsInvestUid');
-    auth.signOut().then(() => { window.location.reload(); }); 
+    localStorage.removeItem('jsInvestBrokerToken'); localStorage.removeItem('jsInvestUserRole'); localStorage.removeItem('jsInvestUid'); auth.signOut().then(() => { window.location.reload(); }); 
 });
 
 socket.on('available_strategies', (strats) => {
@@ -122,8 +192,7 @@ socket.on('engine_state', (state) => {
 });
 
 function clearUIForLoading() {
-    document.getElementById('priceValue').innerText = 'Sincronizando...'; document.getElementById('priceValue').style.color = '#8b949e';
-    document.getElementById('liveTradeCard').style.display = 'none';
+    document.getElementById('priceValue').innerText = 'Sincronizando...'; document.getElementById('priceValue').style.color = '#8b949e'; document.getElementById('liveTradeCard').style.display = 'none';
     document.getElementById('historyTableBody').innerHTML = `<tr><td colspan="3" style="text-align:center; color:#8b949e; padding: 20px;">Carregando análise histórica...</td></tr>`;
     document.getElementById('scoreWin1').innerText = '-'; document.getElementById('scoreWinG1').innerText = '-'; document.getElementById('scoreWinG2').innerText = '-'; document.getElementById('scoreLoss').innerText = '-'; document.getElementById('totalAccuracy').innerText = '0.0%';
     const alertBox = document.getElementById('alertBox'); alertBox.innerHTML = "Analisando Mercado..."; alertBox.className = "alert-box";
@@ -169,8 +238,10 @@ socket.on('signal', (data) => {
 const historyTableBody = document.getElementById('historyTableBody');
 
 socket.on('history_dump', (historyArr) => {
+    const telaMoeda = document.getElementById('coinSelector').value.toUpperCase();
     historyTableBody.innerHTML = ''; 
     historyArr.forEach(sig => {
+        if (sig.symbol.toUpperCase() !== telaMoeda) return; // 🛑 Barreira
         const tr = document.createElement('tr'); tr.id = `sig-${sig.id}`; const isCall = sig.type === 'CALL';
         let colorClass = 'text-warning'; if (sig.status.includes('WIN')) colorClass = 'text-green'; else if (sig.status.includes('LOSS')) colorClass = 'text-red'; 
         tr.innerHTML = `<td class="text-muted">${sig.time}</td><td class="${isCall ? 'text-green' : 'text-red'}"><span style="font-size:10px; color:#8b949e; display:block;">${sig.symbol || 'BTCUSDT'}</span>${isCall ? '🟢 CALL' : '🔴 PUT'}</td><td id="res-${sig.id}" class="${colorClass}">${sig.status}</td>`;
@@ -189,6 +260,9 @@ socket.on('scoreboard', (data) => {
 });
 
 socket.on('new_signal_history', (sig) => {
+    const telaMoeda = document.getElementById('coinSelector').value.toUpperCase();
+    if (sig.symbol.toUpperCase() !== telaMoeda) return; // 🛑 Barreira
+    
     const tr = document.createElement('tr'); tr.id = `sig-${sig.id}`;
     let colorClass = 'text-warning'; 
     tr.innerHTML = `<td class="text-muted">${sig.time}</td><td class="${sig.type === 'CALL' ? 'text-green' : 'text-red'}"><span style="font-size:10px; color:#8b949e; display:block;">${sig.symbol || 'BTCUSDT'}</span>${sig.type === 'CALL' ? '🟢 CALL' : '🔴 PUT'}</td><td id="res-${sig.id}" class="${colorClass}">${sig.status}</td>`;

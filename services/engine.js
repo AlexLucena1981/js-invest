@@ -5,26 +5,80 @@ const { evaluateStrategy } = require('../utils/indicators');
 let io;
 let state; 
 
+const radarLastCandleProcessed = {}; 
+
 function initEngine(_io, _state) {
     io = _io;
     state = _state;
 
-    setInterval(() => {
+    setInterval(async () => {
         const now = Date.now();
+        // Limpeza de Zumbis
         for (let key in state.activeEngines) {
             let eng = state.activeEngines[key];
-
             if (eng.lastTickTime > 0 && (now - eng.lastTickTime > 120000)) {
                 if (eng.activeSignals.length > 0) eng.activeSignals = [];
             }
-
             if (key !== state.currentEngineKey && eng.activeSignals.length === 0) {
                 if (eng.ws) { eng.ws.removeAllListeners(); eng.ws.on('error', () => {}); eng.ws.terminate(); eng.ws = null; }
                 if (eng.otcInterval) { clearInterval(eng.otcInterval); eng.otcInterval = null; }
                 delete state.activeEngines[key];
             }
         }
-    }, 5000);
+
+        // 📡 DRONE DO RADAR C/ INTELIGÊNCIA DE DADOS
+        try {
+            let radarStrat = state.strategiesDB.find(s => s.name && s.name.toLowerCase().includes('live'));
+            if (!radarStrat) radarStrat = state.strategiesDB.find(s => s.id === state.currentStrategyId);
+            
+            if (radarStrat) {
+                const radarCoins = ['BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'ADAUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT'];
+                for (let sym of radarCoins) {
+                    try {
+                        // 🎯 CORREÇÃO: Aumentado para 150 velas para os indicadores funcionarem perfeitamente!
+                        const res = await axios.get(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=1m&limit=150`);
+                        if (!res.data) continue;
+                        
+                        const klines = res.data;
+                        const lastClosedCandleTime = klines[klines.length - 2][0]; 
+
+                        if (radarLastCandleProcessed[sym] === lastClosedCandleTime) continue;
+
+                        const closes = klines.slice(0, -1).map(k => parseFloat(k[4])); 
+                        
+                        const signal = evaluateStrategy(closes, radarStrat);
+                        if (signal) {
+                            radarLastCandleProcessed[sym] = lastClosedCandleTime;
+
+                            const curDate = new Date();
+                            const hourStr = curDate.getHours().toString().padStart(2, '0') + 'h';
+                            
+                            state.radarStats.total++;
+                            state.radarStats.byHour[hourStr] = (state.radarStats.byHour[hourStr] || 0) + 1;
+                            
+                            if (!state.radarStats.byAsset[sym]) {
+                                state.radarStats.byAsset[sym] = { count: 0, intervals: [], lastTime: null };
+                            }
+                            
+                            const assetData = state.radarStats.byAsset[sym];
+                            assetData.count++;
+                            
+                            if (assetData.lastTime) {
+                                const diffMin = (curDate.getTime() - assetData.lastTime) / 60000;
+                                assetData.intervals.push(diffMin);
+                                if(assetData.intervals.length > 50) assetData.intervals.shift(); 
+                            }
+                            assetData.lastTime = curDate.getTime();
+
+                            io.emit('radar_alert', { symbol: sym, type: signal });
+                            io.emit('radar_stats_update', state.radarStats);
+                            console.log(`🚨 RADAR: Oportunidade encontrada em ${sym} (${signal})`);
+                        }
+                    } catch(e) {} 
+                }
+            }
+        } catch(err) {}
+    }, 20000); 
 }
 
 function getEngine(sym, tf, stratId) {
@@ -164,7 +218,6 @@ async function startConnection(symbol, tf) {
     const isStale = eng.lastTickTime > 0 && (Date.now() - eng.lastTickTime > 120000);
 
     if (isStale && eng.closePrices.length > 0) {
-        console.log(`🧟 Destruindo Motor Zumbi...`);
         if (eng.ws) { eng.ws.removeAllListeners(); eng.ws.on('error', () => {}); eng.ws.terminate(); eng.ws = null; }
         if (eng.otcInterval) { clearInterval(eng.otcInterval); eng.otcInterval = null; }
         eng.closePrices = []; 
@@ -215,10 +268,7 @@ async function startConnection(symbol, tf) {
                 for (let i = 0; i < closes.length - 1; i++) { processHistoricalCandle(eng, times[i] * 1000, opens[i], closes[i], currentStrategy); }
                 eng.lastClosedCandleTime = times[times.length - 2]; 
                 if (eng.key === state.currentEngineKey) { updateStatus(`Analisando Mercado Vivo...`); io.emit('scoreboard', eng.scoreboard); io.emit('history_dump', eng.signalHistory); }
-            } else if (response.data && response.data.s === 'no_data') {
-                // ALERTA DE MERCADO FECHADO
-                if (eng.key === state.currentEngineKey) updateStatus(`⚠️ Mercado Fechado ou Sem Dados para ${symbol.toUpperCase()}.`);
-            }
+            } 
 
             eng.otcInterval = setInterval(async () => {
                 if (myConnectionId !== eng.connectionId) return;
@@ -236,14 +286,7 @@ async function startConnection(symbol, tf) {
                 } catch (e) {} 
             }, 1500);
 
-        } catch (error) { 
-            // 📢 ALTO-FALANTE DE ERROS (Cookie Expirado)
-            const isAuthError = error.response && (error.response.status === 401 || error.response.status === 403);
-            if (eng.key === state.currentEngineKey) {
-                updateStatus(isAuthError ? `⚠️ Cookie Expirado! Injete um novo Cookie VIP no Painel.` : `⚠️ Falha na rede Vellox. Tentando novamente...`);
-            }
-            if (myConnectionId === eng.connectionId) setTimeout(() => startConnection(symbol, tf), 5000); 
-        }
+        } catch (error) { if (myConnectionId === eng.connectionId) setTimeout(() => startConnection(symbol, tf), 5000); }
 
     } else {
         if (eng.key === state.currentEngineKey) updateStatus(`Carregando análise Binance (500 velas)...`);

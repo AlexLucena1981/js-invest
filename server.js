@@ -3,11 +3,9 @@ const http = require('http');
 const { Server } = require('socket.io');
 const axios = require('axios');
 
-// Importação dos Módulos Modulares
 const { admin, db } = require('./config/firebase');
 const { initEngine, startConnection, getEngine } = require('./services/engine');
-// 🎯 Importamos a nova função aqui!
-const { dispararOrdemVellox, getVelloxBalance } = require('./services/velloxApi');
+const { getVelloxBalance } = require('./services/velloxApi');
 
 const app = express();
 const server = http.createServer(app);
@@ -21,10 +19,12 @@ app.use(express.static('public'));
 const MASTER_EMAIL = 'alexandre.lucena@gmail.com'; 
 const MASTER_BROKER_LOGIN = 'AlexLucena1981';
 
+// 🎯 ESTADO GLOBAL (Agora com o Cofre de Estatísticas do Radar)
 const state = {
     globalDynamicCookie: "locale=eyJpdiI6IkgvYk5XeTFiVUhoczRlQmM2RTZJMFE9PSIsInZhbHVlIjoiNktFOUs2T1lHTXhIN2JnSndzUG9leVczeWRmZ1RwMmJGc2tZQTVaaUh0RVJQSTNUOW9TMWFkSFR6SUxFeHVZZCIsIm1hYyI6ImJjMTFhOGUyNzY1NjA3ZDk3ZGJmMjdhZWU1MmI2NzVjNTg5YzIzYjM5ZWM3NDY5OWRjMTJhYmY1YWU0M2Y0Y2UiLCJ0YWciOiIifQ==; XSRF-TOKEN=eyJpdiI6IkJXTkh4d0NXZlFaQzhVZXpQZkZaa2c9PSIsInZhbHVlIjoidkU4cTBHbUVjZHhTeTkvUGh0YTNMZGpoZTRXV0xaU3hxeEdrTmk4TFVpYThWYnlkREFiVnFDNFNTVFJWVHFnTUFUdEZITzJzV3hOMUp3MzVYR0JwbTdHa2NrZ3JOSHM0R3MyVjVxbnFQZkdzTnpkb3pOS0hjWWU2QTlKdHExMGsiLCJtYWMiOiIzODZmM2MyM2IzMzc3ZjUxMWM4NDU0ZTA5YmMyNjZkZWEyMzdkOWFjMTA3OTdmYmFmNzgxZGNmZjI4ZmE1Yzg2IiwidGFnIjoiIn0=; laravel_session=eyJpdiI6Im8wQkZoRm1EaDYrcXhpSDFVRnZnN3c9PSIsInZhbHVlIjoic2JIb2tDMWhON0pBc3FoYjZpajhaTitweDdRQUs5TUVqamdNdXZBMytQTXFNaHNuSTYvTnpXUjJ4bzBhSEhseHZ0aWFRN0lkSWd1aTBJamZQMEs2YnJ4aFBZTmNxZGpzdkZ3b2VtL3JyS042eEZlWStzemxmNEpDVjlPN1FyemkiLCJtYWMiOiIwMmEwN2VlN2QyYzVjYmFkNGU0YzRlNzgxZTg2NzFiYjY3NmIwNjEyODE2MWU2Y2JlOWFlY2YzOGY1M2U1MzZhIiwidGFnIjoiIn0=",
     activeEngines: {}, currentEngineKey: '', currentSymbol: 'btcusdt', currentTimeframe: '1m', currentStrategyId: '', 
-    currentEngineStatus: "Aguardando inicialização...", strategiesDB: [], activeBrokers: {}, availableCoins: {}
+    currentEngineStatus: "Aguardando inicialização...", strategiesDB: [], activeBrokers: {}, availableCoins: {},
+    radarStats: { total: 0, byAsset: {}, byHour: {} } 
 };
 
 initEngine(io, state);
@@ -63,6 +63,7 @@ io.on('connection', (socket) => {
     socket.emit('available_strategies', state.strategiesDB.map(s => ({ id: s.id, name: s.name })));
     socket.emit('available_coins', state.availableCoins); 
     socket.emit('engine_state', { symbol: state.currentSymbol, timeframe: state.currentTimeframe, strategy: state.currentStrategyId });
+    socket.emit('radar_stats_update', state.radarStats); // Envia as estatísticas assim que abre a tela!
     
     let initEng = getEngine(state.currentSymbol, state.currentTimeframe, state.currentStrategyId);
     socket.emit('scoreboard', initEng ? initEng.scoreboard : { win1: 0, winG1: 0, winG2: 0, loss: 0 });
@@ -89,8 +90,6 @@ io.on('connection', (socket) => {
             else { const snapshot = await db.collection('users').where('email', '==', brokerUser).get(); if (!snapshot.empty) { uid = snapshot.docs[0].id; userRole = snapshot.docs[0].data().role; } }
 
             const customToken = await admin.auth().createCustomToken(uid);
-            
-            // 🎯 PUXA O SALDO REAL USANDO A NOSSA API
             const realBalance = await getVelloxBalance(brokerToken);
 
             state.activeBrokers[uid] = { 
@@ -106,7 +105,6 @@ io.on('connection', (socket) => {
             const { token, role, uid } = data;
             if(!token || !uid) throw new Error("Sem Token ou UID");
 
-            // 🎯 PUXA O SALDO REAL NO F5 USANDO A NOSSA API
             const realBalance = await getVelloxBalance(token);
             if(realBalance === "0,00" && !state.activeBrokers[uid]) throw new Error("Token Expirado");
 
