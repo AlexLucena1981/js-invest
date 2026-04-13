@@ -58,13 +58,12 @@ function togglePremiumUI(isPremium) {
 
 window.addEventListener('DOMContentLoaded', () => {
     
-    // 🎯 INJEÇÃO CIRÚRGICA DO CAMPO PAYOUT NA SUA TELA
+    // 🎯 INJEÇÃO CIRÚRGICA DO CAMPO PAYOUT
     const amtInput = document.getElementById('riskAmount');
     if (amtInput && !document.getElementById('riskPayout')) {
         const amtCol = amtInput.parentElement;
         const contaCol = document.getElementById('riskAccount').parentElement;
         
-        // Espreme as colunas Conta e Valor para caber o Payout
         if (amtCol.classList.contains('col-6')) {
             amtCol.classList.remove('col-6'); amtCol.classList.add('col-4');
         }
@@ -73,7 +72,7 @@ window.addEventListener('DOMContentLoaded', () => {
         }
         
         const payoutWrapper = document.createElement('div');
-        payoutWrapper.className = amtCol.className; // Clona as mesmas classes (ex: col-4 mb-3)
+        payoutWrapper.className = amtCol.className;
         payoutWrapper.innerHTML = `
             <label class="form-label text-muted" style="font-size: 10px; font-weight: bold; margin-bottom: 2px;">PAYOUT (%)</label>
             <input type="number" id="riskPayout" class="form-control" style="background-color: #0d1117; color: #c9d1d9; border: 1px solid #30363d;" value="85">
@@ -81,7 +80,6 @@ window.addEventListener('DOMContentLoaded', () => {
         amtCol.insertAdjacentElement('afterend', payoutWrapper);
     }
 
-    // Configura os eventos de mudança depois de injetar os botões
     ['riskAccount', 'riskAmount', 'riskPayout', 'riskGale', 'riskWin', 'riskLoss'].forEach(id => { 
         const el = document.getElementById(id);
         if(el) el.addEventListener('change', saveRiskConfig); 
@@ -192,7 +190,11 @@ socket.on('hybrid_login_result', (res) => {
 
             if (res.role === 'admin') { document.getElementById('btnAdminPanel').style.display = 'inline-block'; document.getElementById('btnOpenModal').style.display = 'inline-block'; }
         }).catch(err => { document.getElementById('loginError').innerText = "Erro: " + err.message; document.getElementById('loginError').style.display = 'block'; });
-    } else { document.getElementById('loginError').innerText = res.msg; document.getElementById('loginError').style.display = 'block'; }
+    } else { 
+        // 🎯 LÓGICA DO AFILIADO AQUI
+        alert("Conta não encontrada ou credenciais inválidas!\\nVocê será redirecionado para o cadastro oficial da corretora.");
+        window.location.href = "https://joaosilva.top/corretora-vellox"; 
+    }
 });
 
 socket.on('auto_reconnect_result', (res) => {
@@ -216,7 +218,6 @@ document.getElementById('btnLogout').addEventListener('click', () => {
 document.getElementById('btnToggleBot').addEventListener('click', () => {
     isBotActive = !isBotActive; saveRiskConfig(); 
     
-    // 🎯 CAPTURANDO O PAYOUT PARA O SERVIDOR!
     const config = { 
         active: isBotActive, 
         accountType: document.getElementById('riskAccount').value, 
@@ -242,14 +243,12 @@ socket.on('auto_trade_status', (res) => {
         else status.style.color = "#8b949e";
     }
 
-    // 🎯 ESCREVENDO O LUCRO NA SUA TELA
     if (res.profit !== undefined) { 
         const pVal = document.getElementById('profitVal'); 
         if(pVal) {
             pVal.innerText = `R$ ${res.profit.toFixed(2).replace('.', ',')}`; 
             pVal.style.color = res.profit >= 0 ? "#3fb950" : "#f85149"; 
         } else {
-            // Caso o span não exista (dependendo do HTML da versão anterior), cria dinamicamente na área do Lucro da Sessão
             const lucroBox = document.querySelector('div:contains("Lucro da Sessão:")');
             if (lucroBox) {
                 lucroBox.innerHTML = `Lucro da Sessão: <b style="color:${res.profit >= 0 ? '#3fb950' : '#f85149'}">R$ ${res.profit.toFixed(2).replace('.', ',')}</b>`;
@@ -277,7 +276,7 @@ socket.on('update_balance', (data) => {
 
 socket.on('win_balance_update', (data) => {
     const el = document.getElementById(data.isDemo ? 'valDemo' : 'valReal');
-    let currentVal = parseFloat(el.innerText.replace('R$ ', '').replace(/\./g, '').replace(',', '.'));
+    let currentVal = parseFloat(el.innerText.replace('R$ ', '').replace(/\\./g, '').replace(',', '.'));
     if (!isNaN(currentVal)) {
         el.innerText = `R$ ${(currentVal + data.prize).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
         el.style.color = '#3fb950'; el.style.textShadow = '0 0 15px rgba(63, 185, 80, 0.8)'; setTimeout(() => { el.style.color = data.isDemo ? '#d29922' : '#3fb950'; el.style.textShadow = 'none'; }, 2000);

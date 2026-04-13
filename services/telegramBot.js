@@ -14,18 +14,18 @@ const ativosMercadoReal = [
 ];
 
 let estadoSessao = {
-    ativa: false,          // Fica true às 09h e 15h
-    permitirSinais: false, // Fica true às 09h25 e 15h25
+    ativa: false,          
+    permitirSinais: false, 
     wins: 0,
     losses: 0,
-    preAlerta: null,       // Guarda o sinal que está quase a confirmar
-    sinalRodando: null     // Guarda a operação ativa (para ver os Gales)
+    preAlerta: null,       
+    sinalRodando: null     
 };
 
 async function initTelegramBot(stateGlobais) {
-    console.log("🤖 General do Telegram a postos para o mercado real!");
+    console.log("🤖 General do Telegram a postos! (Gatilho Direto + Gale 1)");
 
-    // 💥 GATILHO DE TESTE MANUAL (Avisa que o servidor ligou)
+    // 💥 GATILHO DE TESTE MANUAL
     bot.sendMessage(CHAT_ID, "🚀 *SISTEMA ONLINE:* O General do JS Invest acaba de assumir o comando da sala! Preparem-se para os lucros.", { parse_mode: 'Markdown' })
         .then(() => console.log("✅ Mensagem de teste Telegram enviada!"))
         .catch(err => console.error("❌ ERRO TELEGRAM:", err.message));
@@ -51,12 +51,12 @@ async function initTelegramBot(stateGlobais) {
             await conferirResultado(stateGlobais);
         }
 
-        // 2️⃣ CONFIRMAR ENTRADA DO PRÉ-ALERTA (Aos 10 seg após a vela fechar)
+        // 2️⃣ DISPARAR ENTRADA (O Robô Confia no Pré-Alerta e atira sem abortar)
         if (estadoSessao.permitirSinais && !estadoSessao.sinalRodando && estadoSessao.preAlerta && min % 5 === 0 && sec >= 10 && sec <= 20) {
-            await confirmarEEnviarSinal(stateGlobais);
+            await atirarSinal(stateGlobais);
         }
 
-        // 3️⃣ CAÇAR OPORTUNIDADES (Aos 45 seg do minuto 4, 9, 14... = 15 seg antes da vela fechar)
+        // 3️⃣ CAÇAR OPORTUNIDADES (Aos 45 seg do min 4, 9, 14... = 15 seg antes da vela fechar)
         if (estadoSessao.permitirSinais && !estadoSessao.sinalRodando && !estadoSessao.preAlerta && min % 5 === 4 && sec >= 45 && sec <= 55) {
             await cacarOportunidade(stateGlobais);
         }
@@ -66,17 +66,15 @@ async function initTelegramBot(stateGlobais) {
 
 function iniciarSessao(turno) {
     estadoSessao = { ativa: true, permitirSinais: false, wins: 0, losses: 0, preAlerta: null, sinalRodando: null };
-    bot.sendMessage(CHAT_ID, `👨‍💻 *O robô despertou!* (Sessão da ${turno})\n\nIniciando leitura dos gráficos de M5 e cálculo de assertividade (>95%).\nOs sinais começarão às ${turno === 'Manhã' ? '09:30' : '15:30'}.`, { parse_mode: 'Markdown' });
+    bot.sendMessage(CHAT_ID, `👨‍💻 *Atenção!* Iniciando análise do mercado para a sessão da ${turno}...`, { parse_mode: 'Markdown' });
 }
 
 async function cacarOportunidade(state) {
     for (let sym of ativosMercadoReal) {
         try {
-            // 1. FILTRO DE ELITE: Assertividade > 95% nas últimas 150 velas
             const assertividade = await calcularAssertividadeM5(sym, state);
             if (assertividade < 90) continue; 
 
-            // 2. LÊ O GATILHO AGORA
             const closes = await puxarFechamentosM5(sym, state);
             if (!closes || closes.length < 150) continue;
 
@@ -85,28 +83,26 @@ async function cacarOportunidade(state) {
 
             if (sinal) {
                 estadoSessao.preAlerta = { symbol: sym, type: sinal };
-                enviarPreAlerta(sym, sinal, assertividade);
-                break; // Achou um, para de procurar para não confundir o grupo
+                enviarPreAlerta(sym, sinal);
+                break; 
             }
         } catch (e) {}
     }
 }
 
-async function confirmarEEnviarSinal(state) {
+// 🚀 ROTINA DE DISPARO DIRETO (Removida a Trava de Aborto)
+async function atirarSinal(state) {
     const sym = estadoSessao.preAlerta.symbol;
+    const tipo = estadoSessao.preAlerta.type;
+    
+    // Puxa apenas para guardar o preço inicial
     const closes = await puxarFechamentosM5(sym, state);
-    if (!closes) { estadoSessao.preAlerta = null; return; }
+    const precoEntrada = closes ? closes[closes.length - 1] : 0;
 
-    const strategy = state.strategiesDB.find(s => s.name.toLowerCase().includes('live')) || state.strategiesDB[0];
-    const sinalConfirmado = evaluateStrategy(closes, strategy);
-
-    if (sinalConfirmado && sinalConfirmado === estadoSessao.preAlerta.type) {
-        // Sinal Validado! Envia pro grupo
-        dispararSinal(sym, sinalConfirmado);
-        estadoSessao.sinalRodando = { symbol: sym, type: sinalConfirmado, step: 0, entryPrice: closes[closes.length - 1] };
-    } else {
-        bot.sendMessage(CHAT_ID, `⚠️ *SINAL ABORTADO!*\n\nO mercado recuou no último segundo em ${sym}. Protegendo o capital. Aguardem a próxima oportunidade!`, { parse_mode: 'Markdown' });
-    }
+    dispararSinalTelegram(sym, tipo);
+    estadoSessao.sinalRodando = { symbol: sym, type: tipo, step: 0, entryPrice: precoEntrada };
+    
+    // Limpa a memória do pré-alerta
     estadoSessao.preAlerta = null; 
 }
 
@@ -115,27 +111,28 @@ async function conferirResultado(state) {
     const closes = await puxarFechamentosM5(operacao.symbol, state);
     if (!closes) return;
 
-    const precoFechamento = closes[closes.length - 1]; // Preço que a vela acabou de fechar
+    const precoFechamento = closes[closes.length - 1]; 
     const isGreen = precoFechamento > operacao.entryPrice;
     const isRed = precoFechamento < operacao.entryPrice;
     const won = (operacao.type === 'CALL' && isGreen) || (operacao.type === 'PUT' && isRed);
 
     if (won) {
-        let msgWin = operacao.step === 0 ? "✅ *WIN DE PRIMEIRA!* 🎯" : (operacao.step === 1 ? "✅ *WIN NO GALE 1!* 🎯" : "✅ *WIN NO GALE 2!* 🎯");
+        let msgWin = operacao.step === 0 ? "✅ *WIN DE PRIMEIRA!* 🎯" : "✅ *WIN NO GALE 1!* 🎯";
         bot.sendMessage(CHAT_ID, `${msgWin}\nAtivo: ${operacao.symbol}`, { parse_mode: 'Markdown' });
         estadoSessao.wins++;
         estadoSessao.sinalRodando = null;
         verificarMeta();
     } else {
         operacao.step++;
-        if (operacao.step > 2) {
+        // 🎯 LIMITADO A GALE 1: Se errar o Gale 1, é LOSS direto.
+        if (operacao.step > 1) {
             bot.sendMessage(CHAT_ID, `🔴 *LOSS!* O mercado não respeitou a análise em ${operacao.symbol}.`, { parse_mode: 'Markdown' });
             estadoSessao.losses++;
             estadoSessao.sinalRodando = null;
             verificarMeta();
         } else {
-            bot.sendMessage(CHAT_ID, `🔄 *PREPARAR GALE ${operacao.step}* em ${operacao.symbol}!\nMesma direção: ${operacao.type}`, { parse_mode: 'Markdown' });
-            operacao.entryPrice = precoFechamento; // Atualiza o preço de entrada para o Gale
+            bot.sendMessage(CHAT_ID, `🔄 *PREPARAR GALE ${operacao.step}* em ${operacao.symbol}!\nMesma direção.`, { parse_mode: 'Markdown' });
+            operacao.entryPrice = precoFechamento; 
         }
     }
 }
@@ -144,20 +141,50 @@ function verificarMeta() {
     let encerrar = false;
     let msgFinal = "";
 
-    if (estadoSessao.wins === 2 && estadoSessao.losses === 0) { encerrar = true; msgFinal = "🏆 *META BATIDA! (2x0)*\nDia perfeito. Fechamos a sessão!"; }
-    else if (estadoSessao.wins === 3 && estadoSessao.losses === 1) { encerrar = true; msgFinal = "🏆 *META BATIDA NA RAÇA! (3x1)*\nRecuperação concluída. Sessão encerrada!"; }
-    else if (estadoSessao.losses === 2) { encerrar = true; msgFinal = "🛑 *STOP LOSS ATINGIDO (2 Loss)*\nPreservando o capital. Voltamos na próxima sessão."; }
+    if (estadoSessao.wins === 2 && estadoSessao.losses === 0) { encerrar = true; msgFinal = "🏆 *META BATIDA! (2x0)*\nFechamos a sessão!"; }
+    else if (estadoSessao.wins === 3 && estadoSessao.losses === 1) { encerrar = true; msgFinal = "🏆 *META BATIDA NA RAÇA! (3x1)*\nSessão encerrada!"; }
+    else if (estadoSessao.losses === 2) { encerrar = true; msgFinal = "🛑 *STOP LOSS ATINGIDO (2 Loss)*\nPreservando o capital. Voltamos mais tarde."; }
 
     if (encerrar) {
         estadoSessao.ativa = false;
         bot.sendMessage(CHAT_ID, msgFinal, { parse_mode: 'Markdown' });
     } else {
-        bot.sendMessage(CHAT_ID, `📊 *Placar Parcial:* ${estadoSessao.wins} Win x ${estadoSessao.losses} Loss\nO Radar continua a buscar a meta...`, { parse_mode: 'Markdown' });
+        bot.sendMessage(CHAT_ID, `📊 *Placar Parcial:* ${estadoSessao.wins} Win x ${estadoSessao.losses} Loss`, { parse_mode: 'Markdown' });
     }
 }
 
 // ==========================================
-// FUNÇÕES DE DADOS (HÍBRIDO BINANCE/VELLOX)
+// FORMATAÇÃO DO GRUPO (O SEU TEMPLATE EXATO)
+// ==========================================
+function enviarPreAlerta(symbol, tipo) {
+    const acao = tipo === 'CALL' ? '🟩 Comprar' : '🟥 Vender';
+    const msg = `⚠️ *PRÉ-ALERTA DE SINAL*\n\nPreparem o ativo: *${symbol}*\nPossível Operação: *${acao}*`;
+    bot.sendMessage(CHAT_ID, msg, { parse_mode: 'Markdown' });
+}
+
+function dispararSinalTelegram(symbol, tipo) {
+    const agora = new Date();
+    // Arredonda para o múltiplo de 5 da entrada
+    const minEntrada = Math.floor(agora.getMinutes() / 5) * 5;
+    
+    const dataEntrada = new Date(agora);
+    dataEntrada.setMinutes(minEntrada);
+    
+    const dataGale = new Date(dataEntrada);
+    dataGale.setMinutes(dataEntrada.getMinutes() + 5); 
+
+    const horaEntrada = dataEntrada.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' });
+    const horaGale = dataGale.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' });
+
+    const acao = tipo === 'CALL' ? '🟩 Comprar' : '🟥 Vender';
+
+    const msg = `💵 Moeda = ${symbol}\n⏰ Expiração = 5 Minutos\n🛎 Entrada = ${horaEntrada}\n${acao}\n\nGale 1 - ${horaGale}\n\n👉🏼 Se necessário, fazer 1 Gale.\n\n➡️ [Clique aqui para abrir a Vellox](https://velloxbroker.com)`;
+
+    bot.sendMessage(CHAT_ID, msg, { parse_mode: 'Markdown', disable_web_page_preview: true });
+}
+
+// ==========================================
+// CONEXÃO COM AS CORRETORAS
 // ==========================================
 async function puxarFechamentosM5(symbol, state) {
     try {
@@ -213,16 +240,6 @@ async function calcularAssertividadeM5(symbol, state) {
         }
         return totalSinais > 0 ? (wins / totalSinais) * 100 : 0;
     } catch (e) { return 0; }
-}
-
-function enviarPreAlerta(symbol, tipo, taxa) {
-    const msg = `⚠️ *PRÉ-ALERTA DE ELITE (M5)*\n\n📊 *Assertividade do Ativo:* ${taxa.toFixed(1)}%\n\nFiquem de olho no ativo: *${symbol}*\nPossível Operação: *${tipo === 'CALL' ? '🟢 COMPRA' : '🔴 VENDA'}*\n\nPreparem-se para entrar no fechamento desta vela!`;
-    bot.sendMessage(CHAT_ID, msg, { parse_mode: 'Markdown' });
-}
-
-function dispararSinal(symbol, tipo) {
-    const msg = `🚀 *SINAL CONFIRMADO! ENTROU!*\n\nAtivo: *${symbol}*\nDireção: *${tipo === 'CALL' ? '🟢 COMPRA' : '🔴 VENDA'}*\nTempo: *5 Minutos (M5)*\n\n🎯 Protejam o capital, façam no máximo até Gale 2 se necessário.`;
-    bot.sendMessage(CHAT_ID, msg, { parse_mode: 'Markdown' });
 }
 
 module.exports = { initTelegramBot };
