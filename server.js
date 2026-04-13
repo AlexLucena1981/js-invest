@@ -7,8 +7,8 @@ const { admin, db } = require('./config/firebase');
 const { initEngine, startConnection, getEngine, scanRadarHistory } = require('./services/engine');
 const { getVelloxBalance, dispararOrdemVellox } = require('./services/velloxApi');
 
-// 🎯 IMPORTANDO O GENERAL DO TELEGRAM AQUI
-const { initTelegramBot } = require('./services/telegramBot');
+// 🎯 IMPORTANDO O GENERAL DO TELEGRAM
+const { initTelegramBot, reloadTelegramConfig, forcarSessaoTelegram } = require('./services/telegramBot');
 
 const app = express();
 const server = http.createServer(app);
@@ -20,7 +20,6 @@ app.use(express.static('public'));
 const MASTER_EMAIL = 'alexandre.lucena@gmail.com'; 
 const MASTER_BROKER_LOGIN = 'AlexLucena1981';
 
-// 🔥 LIBERADO PARA TESTES! Reduzi de 100.00 para 0.00 para você poder testar o Auto-Trade na Demo
 const MIN_BALANCE_PLUS = 100.00;
 
 function parseBalance(valStr) {
@@ -39,10 +38,15 @@ const state = {
 
 initEngine(io, state);
 
-// 🚀 ACORDANDO O ROBÔ DO TELEGRAM JUNTO COM O MOTOR PRINCIPAL
-initTelegramBot(state);
+// ⚙️ CONFIGURAÇÃO DINÂMICA DO TELEGRAM
+let tgConfigGlobal = {
+    dias: '1-5', horaManha: '09:00', horaTarde: '15:00',
+    msgDespertar: "👨‍💻 *Atenção!* Iniciando análise do mercado para a sessão...",
+    msgWin: "✅ *WIN DE PRIMEIRA!* 🎯",
+    msgLoss: "🔴 *LOSS!* O mercado não respeitou a análise."
+};
 
-async function loadStrategiesFromDB() {
+async function loadSystemData() {
     try {
         const snapshot = await db.collection('scripts').get();
         state.strategiesDB = [];
@@ -58,6 +62,13 @@ async function loadStrategiesFromDB() {
             io.emit('status', { msg: state.currentEngineStatus });
         }
         io.emit('available_strategies', state.strategiesDB.map(s => ({ id: s.id, name: s.name })));
+
+        // 🎯 Carrega as Configs do Telegram do Firebase
+        const tgDoc = await db.collection('settings').doc('telegram').get();
+        if (tgDoc.exists) tgConfigGlobal = { ...tgConfigGlobal, ...tgDoc.data() };
+        
+        initTelegramBot(state, tgConfigGlobal);
+
     } catch (error) { console.error("Erro Firebase:", error); }
 }
 
@@ -150,12 +161,7 @@ io.on('connection', (socket) => {
     socket.on('setup_auto_trade', (config) => {
         const broker = getBrokerBySocket(socket.id);
         if (!broker) return;
-        
-        if (!broker.isPremium) {
-            socket.emit('auto_trade_status', { active: false, msg: `🔒 Modo Free. Deposite R$ ${MIN_BALANCE_PLUS} para liberar.`, profit: 0 });
-            return;
-        }
-
+        if (!broker.isPremium) { socket.emit('auto_trade_status', { active: false, msg: `🔒 Modo Free. Deposite R$ ${MIN_BALANCE_PLUS} para liberar.`, profit: 0 }); return; }
         broker.config = config; broker.autoTradeActive = config.active;
         if (config.active) broker.sessionProfit = 0; 
         socket.emit('auto_trade_status', { active: config.active, msg: config.active ? "Robô Armado..." : "Robô Pausado.", profit: broker.sessionProfit });
@@ -184,11 +190,44 @@ io.on('connection', (socket) => {
         if (result.success) {
             socket.emit('sniper_success', `Ordem enviada com sucesso!`);
             if (result.balance) socket.emit('update_balance', { isDemo: isDemo, balance: result.balance });
-
             const manualSig = { id: Date.now(), type: direction, symbol: reqSymbol.toUpperCase(), timeframe: reqTf, time: new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' }), step: 0, status: '⚡ Sniper...', entryPrice: targetEng.currentGlobalPrice, isManual: true, brokerUid: broker.uid };
             targetEng.activeSignals.push(manualSig); targetEng.signalHistory.unshift(manualSig); if (targetEng.signalHistory.length > 20) targetEng.signalHistory.pop();
             io.emit('new_signal_history', manualSig);
         } else { socket.emit('sniper_error', result.msg); }
+    });
+
+    // ==========================================
+    // 🎯 PAINEL ADMIN: CONTROLES DO TELEGRAM
+    // ==========================================
+    socket.on('admin_get_tg_config', async (token) => {
+        try {
+            const decodedToken = await admin.auth().verifyIdToken(token);
+            if (decodedToken.uid === 'admin_master') {
+                socket.emit('admin_tg_config_data', tgConfigGlobal);
+            }
+        } catch(e) {}
+    });
+
+    socket.on('admin_save_tg_config', async (data) => {
+        try {
+            const decodedToken = await admin.auth().verifyIdToken(data.token);
+            if (decodedToken.uid === 'admin_master') {
+                await db.collection('settings').doc('telegram').set(data.config);
+                tgConfigGlobal = data.config;
+                reloadTelegramConfig(tgConfigGlobal);
+                socket.emit('user_creation_result', { success: true, msg: 'Configurações do Telegram atualizadas e Relógios reprogramados com sucesso! ⏰✅' });
+            }
+        } catch(e) {}
+    });
+
+    socket.on('admin_force_tg', async (data) => {
+        try {
+            const decodedToken = await admin.auth().verifyIdToken(data.token);
+            if (decodedToken.uid === 'admin_master') {
+                forcarSessaoTelegram(data.turno);
+                socket.emit('user_creation_result', { success: true, msg: `🔥 SESSÃO FORÇADA INICIADA! O Robô acabou de acordar para a sessão da ${data.turno}!` });
+            }
+        } catch(e) {}
     });
 
     socket.on('admin_create_user', async (data) => {
@@ -239,6 +278,6 @@ io.on('connection', (socket) => {
     });
 });
 
-loadStrategiesFromDB();
+loadSystemData();
 loadAvailableCoins();
-server.listen(3000, () => { console.log('🚀 Terminal JS Invest operando. (VIP Liberado p/ Testes + Telegram Ativo)'); });
+server.listen(3000, () => { console.log('🚀 Terminal JS Invest operando. (C/ Controle Dinâmico do Telegram)'); });

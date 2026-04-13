@@ -56,20 +56,77 @@ function togglePremiumUI(isPremium) {
     }
 }
 
+// 🎯 INJEÇÃO DA INTERFACE DO TELEGRAM NO PAINEL ADMIN
+function setupTelegramAdminUI() {
+    const adminModalContent = document.querySelector('#adminModal > div');
+    if (!adminModalContent || document.getElementById('tgAdminPanel')) return;
+
+    const tgPanel = document.createElement('div');
+    tgPanel.id = 'tgAdminPanel';
+    tgPanel.style.cssText = 'margin-top: 20px; border-top: 1px solid #30363d; padding-top: 20px;';
+    tgPanel.innerHTML = `
+        <h3 style="color:#58a6ff; text-align:center; margin-bottom: 15px;">🤖 CENTRO DE COMANDO: TELEGRAM</h3>
+        
+        <div style="display:flex; gap:10px; margin-bottom:15px;">
+            <div style="flex:1;">
+                <label style="font-size:12px; color:#8b949e;">Início Manhã (Ex: 09:00)</label>
+                <input type="time" id="tgHoraManha" class="form-control" style="background:#0d1117; color:#c9d1d9; border:1px solid #30363d;">
+            </div>
+            <div style="flex:1;">
+                <label style="font-size:12px; color:#8b949e;">Início Tarde (Ex: 15:00)</label>
+                <input type="time" id="tgHoraTarde" class="form-control" style="background:#0d1117; color:#c9d1d9; border:1px solid #30363d;">
+            </div>
+            <div style="flex:1;">
+                <label style="font-size:12px; color:#8b949e;">Dias (ex: 1-5 Seg/Sex)</label>
+                <input type="text" id="tgDias" class="form-control" style="background:#0d1117; color:#c9d1d9; border:1px solid #30363d;" placeholder="1-5">
+            </div>
+        </div>
+
+        <div style="margin-bottom:10px;">
+            <label style="font-size:12px; color:#8b949e;">Msg: Despertar do Robô</label>
+            <input type="text" id="tgMsgDespertar" class="form-control" style="background:#0d1117; color:#c9d1d9; border:1px solid #30363d;">
+        </div>
+        <div style="margin-bottom:10px;">
+            <label style="font-size:12px; color:#8b949e;">Msg: Win de Primeira</label>
+            <input type="text" id="tgMsgWin" class="form-control" style="background:#0d1117; color:#3fb950; border:1px solid #30363d;">
+        </div>
+        <div style="margin-bottom:15px;">
+            <label style="font-size:12px; color:#8b949e;">Msg: Loss Final</label>
+            <input type="text" id="tgMsgLoss" class="form-control" style="background:#0d1117; color:#f85149; border:1px solid #30363d;">
+        </div>
+
+        <div style="display:flex; justify-content:space-between; gap:10px;">
+            <button id="btnSalvarTg" style="flex:1; background:#2ea043; color:white; border:none; padding:10px; border-radius:6px; font-weight:bold; cursor:pointer;">💾 Salvar Configuração</button>
+            <button id="btnForcarTgManha" style="flex:1; background:#f85149; color:white; border:none; padding:10px; border-radius:6px; font-weight:bold; cursor:pointer;">🔥 Iniciar Sessão AGORA!</button>
+        </div>
+    `;
+    adminModalContent.appendChild(tgPanel);
+
+    document.getElementById('btnSalvarTg').addEventListener('click', () => {
+        const config = {
+            horaManha: document.getElementById('tgHoraManha').value,
+            horaTarde: document.getElementById('tgHoraTarde').value,
+            dias: document.getElementById('tgDias').value,
+            msgDespertar: document.getElementById('tgMsgDespertar').value,
+            msgWin: document.getElementById('tgMsgWin').value,
+            msgLoss: document.getElementById('tgMsgLoss').value
+        };
+        auth.currentUser.getIdToken().then(token => socket.emit('admin_save_tg_config', { token, config }));
+    });
+
+    document.getElementById('btnForcarTgManha').addEventListener('click', () => {
+        auth.currentUser.getIdToken().then(token => socket.emit('admin_force_tg', { token, turno: 'Forçada Manualmente' }));
+    });
+}
+
 window.addEventListener('DOMContentLoaded', () => {
     
-    // 🎯 INJEÇÃO CIRÚRGICA DO CAMPO PAYOUT
     const amtInput = document.getElementById('riskAmount');
     if (amtInput && !document.getElementById('riskPayout')) {
         const amtCol = amtInput.parentElement;
         const contaCol = document.getElementById('riskAccount').parentElement;
-        
-        if (amtCol.classList.contains('col-6')) {
-            amtCol.classList.remove('col-6'); amtCol.classList.add('col-4');
-        }
-        if (contaCol && contaCol.classList.contains('col-6')) {
-            contaCol.classList.remove('col-6'); contaCol.classList.add('col-4');
-        }
+        if (amtCol.classList.contains('col-6')) { amtCol.classList.remove('col-6'); amtCol.classList.add('col-4'); }
+        if (contaCol && contaCol.classList.contains('col-6')) { contaCol.classList.remove('col-6'); contaCol.classList.add('col-4'); }
         
         const payoutWrapper = document.createElement('div');
         payoutWrapper.className = amtCol.className;
@@ -188,12 +245,28 @@ socket.on('hybrid_login_result', (res) => {
             
             togglePremiumUI(res.isPremium);
 
-            if (res.role === 'admin') { document.getElementById('btnAdminPanel').style.display = 'inline-block'; document.getElementById('btnOpenModal').style.display = 'inline-block'; }
+            if (res.role === 'admin') { 
+                document.getElementById('btnAdminPanel').style.display = 'inline-block'; 
+                document.getElementById('btnOpenModal').style.display = 'inline-block'; 
+                setupTelegramAdminUI(); // 🎯 INJETA O PAINEL DO TELEGRAM SE FOR ADMIN
+                auth.currentUser.getIdToken().then(token => socket.emit('admin_get_tg_config', token));
+            }
         }).catch(err => { document.getElementById('loginError').innerText = "Erro: " + err.message; document.getElementById('loginError').style.display = 'block'; });
     } else { 
-        // 🎯 LÓGICA DO AFILIADO AQUI
-        alert("Conta não encontrada ou credenciais inválidas!\\nVocê será redirecionado para o cadastro oficial da corretora.");
+        alert("Conta não encontrada ou credenciais inválidas!\nVocê será redirecionado para o cadastro oficial da corretora.");
         window.location.href = "https://joaosilva.top/corretora-vellox"; 
+    }
+});
+
+// 🎯 RECEBE AS CONFIGS DO SERVIDOR PARA PREENCHER OS CAMPOS DO PAINEL ADMIN
+socket.on('admin_tg_config_data', (config) => {
+    if(document.getElementById('tgHoraManha')) {
+        document.getElementById('tgHoraManha').value = config.horaManha || '09:00';
+        document.getElementById('tgHoraTarde').value = config.horaTarde || '15:00';
+        document.getElementById('tgDias').value = config.dias || '1-5';
+        document.getElementById('tgMsgDespertar').value = config.msgDespertar || '';
+        document.getElementById('tgMsgWin').value = config.msgWin || '';
+        document.getElementById('tgMsgLoss').value = config.msgLoss || '';
     }
 });
 
@@ -205,7 +278,12 @@ socket.on('auto_reconnect_result', (res) => {
         
         togglePremiumUI(res.isPremium);
 
-        if (res.role === 'admin') { document.getElementById('btnAdminPanel').style.display = 'inline-block'; document.getElementById('btnOpenModal').style.display = 'inline-block'; }
+        if (res.role === 'admin') { 
+            document.getElementById('btnAdminPanel').style.display = 'inline-block'; 
+            document.getElementById('btnOpenModal').style.display = 'inline-block'; 
+            setupTelegramAdminUI(); // 🎯 INJETA O PAINEL DO TELEGRAM SE FOR ADMIN
+            auth.currentUser.getIdToken().then(token => socket.emit('admin_get_tg_config', token));
+        }
     } else {
         localStorage.removeItem('jsInvestBrokerToken'); localStorage.removeItem('jsInvestUserRole'); localStorage.removeItem('jsInvestUid'); document.getElementById('btnLogin').innerText = "Acessar Sistema";
     }
@@ -250,9 +328,7 @@ socket.on('auto_trade_status', (res) => {
             pVal.style.color = res.profit >= 0 ? "#3fb950" : "#f85149"; 
         } else {
             const lucroBox = document.querySelector('div:contains("Lucro da Sessão:")');
-            if (lucroBox) {
-                lucroBox.innerHTML = `Lucro da Sessão: <b style="color:${res.profit >= 0 ? '#3fb950' : '#f85149'}">R$ ${res.profit.toFixed(2).replace('.', ',')}</b>`;
-            }
+            if (lucroBox) { lucroBox.innerHTML = `Lucro da Sessão: <b style="color:${res.profit >= 0 ? '#3fb950' : '#f85149'}">R$ ${res.profit.toFixed(2).replace('.', ',')}</b>`; }
         }
     }
 });
@@ -276,7 +352,7 @@ socket.on('update_balance', (data) => {
 
 socket.on('win_balance_update', (data) => {
     const el = document.getElementById(data.isDemo ? 'valDemo' : 'valReal');
-    let currentVal = parseFloat(el.innerText.replace('R$ ', '').replace(/\\./g, '').replace(',', '.'));
+    let currentVal = parseFloat(el.innerText.replace('R$ ', '').replace(/\./g, '').replace(',', '.'));
     if (!isNaN(currentVal)) {
         el.innerText = `R$ ${(currentVal + data.prize).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
         el.style.color = '#3fb950'; el.style.textShadow = '0 0 15px rgba(63, 185, 80, 0.8)'; setTimeout(() => { el.style.color = data.isDemo ? '#d29922' : '#3fb950'; el.style.textShadow = 'none'; }, 2000);
@@ -389,9 +465,13 @@ socket.on('signal_result', (sig) => {
     if (resTd) { resTd.innerText = sig.status; if (sig.status.includes('WIN')) resTd.className = 'text-green'; else if (sig.status.includes('LOSS')) resTd.className = 'text-red'; else resTd.className = 'text-warning'; }
 });
 
-const scriptModal = document.getElementById('scriptModal');
-if(document.getElementById('btnOpenModal')) document.getElementById('btnOpenModal').addEventListener('click', () => { scriptModal.style.display = 'flex'; });
-if(document.getElementById('btnCancelScript')) document.getElementById('btnCancelScript').addEventListener('click', () => { scriptModal.style.display = 'none'; });
+const scriptModal = document.getElementById('adminModal');
+if(document.getElementById('btnAdminPanel')) document.getElementById('btnAdminPanel').addEventListener('click', () => { scriptModal.style.display = 'flex'; auth.currentUser.getIdToken().then(token => socket.emit('admin_get_users', token)); });
+if(document.getElementById('btnCancelAdmin')) document.getElementById('btnCancelAdmin').addEventListener('click', () => { scriptModal.style.display = 'none'; });
+
+const stratModal = document.getElementById('scriptModal');
+if(document.getElementById('btnOpenModal')) document.getElementById('btnOpenModal').addEventListener('click', () => { stratModal.style.display = 'flex'; });
+if(document.getElementById('btnCancelScript')) document.getElementById('btnCancelScript').addEventListener('click', () => { stratModal.style.display = 'none'; });
 
 if(document.getElementById('btnSaveScript')) {
     document.getElementById('btnSaveScript').addEventListener('click', () => {
@@ -402,13 +482,9 @@ if(document.getElementById('btnSaveScript')) {
 
 socket.on('script_injection_result', (res) => {
     if(document.getElementById('btnSaveScript')) document.getElementById('btnSaveScript').innerText = 'Salvar & Injetar'; 
-    if (res.success) { alert("✅ " + res.msg); scriptModal.style.display = 'none'; setTimeout(() => { document.getElementById('strategySelector').value = res.id; socket.emit('change_strategy', res.id); }, 500); } 
+    if (res.success) { alert("✅ " + res.msg); if(stratModal) stratModal.style.display = 'none'; setTimeout(() => { document.getElementById('strategySelector').value = res.id; socket.emit('change_strategy', res.id); }, 500); } 
     else { alert("❌ Erro:\n" + res.msg); }
 });
-
-const adminModal = document.getElementById('adminModal');
-if(document.getElementById('btnAdminPanel')) document.getElementById('btnAdminPanel').addEventListener('click', () => { adminModal.style.display = 'flex'; auth.currentUser.getIdToken().then(token => socket.emit('admin_get_users', token)); });
-if(document.getElementById('btnCancelAdmin')) document.getElementById('btnCancelAdmin').addEventListener('click', () => { adminModal.style.display = 'none'; });
 
 socket.on('admin_users_list', (res) => {
     const tbody = document.getElementById('usersListBody'); tbody.innerHTML = '';
@@ -427,7 +503,7 @@ if(document.getElementById('btnCreateUser')) {
 
 socket.on('user_creation_result', (res) => {
     alert(res.msg); if(document.getElementById('btnCreateUser')) document.getElementById('btnCreateUser').innerText = 'Cadastrar';
-    if(res.success) { document.getElementById('newUserEmail').value = ''; document.getElementById('newUserPassword').value = ''; auth.currentUser.getIdToken().then(token => socket.emit('admin_get_users', token)); }
+    if(res.success) { if(document.getElementById('newUserEmail')) document.getElementById('newUserEmail').value = ''; if(document.getElementById('newUserPassword')) document.getElementById('newUserPassword').value = ''; auth.currentUser.getIdToken().then(token => socket.emit('admin_get_users', token)); }
 });
 
 if(document.getElementById('btnInjectCookie')) {
