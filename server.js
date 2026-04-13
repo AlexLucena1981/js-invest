@@ -7,6 +7,9 @@ const { admin, db } = require('./config/firebase');
 const { initEngine, startConnection, getEngine, scanRadarHistory } = require('./services/engine');
 const { getVelloxBalance, dispararOrdemVellox } = require('./services/velloxApi');
 
+// 🎯 IMPORTANDO O GENERAL DO TELEGRAM AQUI
+const { initTelegramBot } = require('./services/telegramBot');
+
 const app = express();
 const server = http.createServer(app);
 
@@ -18,7 +21,7 @@ const MASTER_EMAIL = 'alexandre.lucena@gmail.com';
 const MASTER_BROKER_LOGIN = 'AlexLucena1981';
 
 // 🔥 LIBERADO PARA TESTES! Reduzi de 100.00 para 0.00 para você poder testar o Auto-Trade na Demo
-const MIN_BALANCE_PLUS = 100.00;
+const MIN_BALANCE_PLUS = 0.00;
 
 function parseBalance(valStr) {
     if (!valStr || valStr === "0,00" || valStr === "---") return 0;
@@ -35,6 +38,9 @@ const state = {
 };
 
 initEngine(io, state);
+
+// 🚀 ACORDANDO O ROBÔ DO TELEGRAM JUNTO COM O MOTOR PRINCIPAL
+initTelegramBot(state);
 
 async function loadStrategiesFromDB() {
     try {
@@ -179,7 +185,6 @@ io.on('connection', (socket) => {
             socket.emit('sniper_success', `Ordem enviada com sucesso!`);
             if (result.balance) socket.emit('update_balance', { isDemo: isDemo, balance: result.balance });
 
-            // 🎯 ETIQUETA DE DONO: Adicionamos o brokerUid para sabermos de quem é o Gale!
             const manualSig = { id: Date.now(), type: direction, symbol: reqSymbol.toUpperCase(), timeframe: reqTf, time: new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' }), step: 0, status: '⚡ Sniper...', entryPrice: targetEng.currentGlobalPrice, isManual: true, brokerUid: broker.uid };
             targetEng.activeSignals.push(manualSig); targetEng.signalHistory.unshift(manualSig); if (targetEng.signalHistory.length > 20) targetEng.signalHistory.pop();
             io.emit('new_signal_history', manualSig);
@@ -236,4 +241,4 @@ io.on('connection', (socket) => {
 
 loadStrategiesFromDB();
 loadAvailableCoins();
-server.listen(3000, () => { console.log('🚀 Terminal JS Invest operando. (VIP Liberado p/ Testes)'); });
+server.listen(3000, () => { console.log('🚀 Terminal JS Invest operando. (VIP Liberado p/ Testes + Telegram Ativo)'); });
