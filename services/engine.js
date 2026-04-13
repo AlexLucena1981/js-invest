@@ -1,18 +1,18 @@
 const axios = require('axios');
 const WebSocket = require('ws');
 const { evaluateStrategy } = require('../utils/indicators');
+const { dispararOrdemVellox } = require('./velloxApi');
 
 let io;
 let state; 
 
 const radarLastCandleProcessed = {}; 
 
-// 🎯 LISTA MUNDIAL DE ATIVOS PARA O RADAR
 const radarCoins = [
-    'BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'ADAUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT', // Criptos (Binance)
-    'EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'USDCAD',                            // Forex (Vellox)
-    'EURUSDOTC', 'GBPUSDOTC', 'USDJPYOTC', 'BTCUSDTOTC',                         // OTC (Vellox)
-    'AAPL', 'XAUUSD'                                                             // Ações e Ouro (Vellox)
+    'BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'ADAUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT', 
+    'EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'USDCAD',                            
+    'EURUSDOTC', 'GBPUSDOTC', 'USDJPYOTC', 'BTCUSDTOTC',                         
+    'AAPL', 'XAUUSD'                                                             
 ];
 
 const cryptoBinance = ['BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'ADAUSDT', 'BNBUSDT', 'DOGEUSDT', 'SOLUSDT', 'XRPUSDT'];
@@ -23,7 +23,6 @@ function initEngine(_io, _state) {
 
     setInterval(async () => {
         const now = Date.now();
-        // Limpeza de Motores Zumbis
         for (let key in state.activeEngines) {
             let eng = state.activeEngines[key];
             if (eng.lastTickTime > 0 && (now - eng.lastTickTime > 120000)) {
@@ -36,7 +35,6 @@ function initEngine(_io, _state) {
             }
         }
 
-        // 📡 DRONE DO RADAR GLOBAL (Varre o Mundo)
         try {
             let radarStrat = state.strategiesDB.find(s => s.name && s.name.toLowerCase().includes('live'));
             if (!radarStrat && state.strategiesDB.length > 0) radarStrat = state.strategiesDB.find(s => s.id === state.currentStrategyId);
@@ -52,15 +50,13 @@ function initEngine(_io, _state) {
                         const isCrypto = cryptoBinance.includes(sym.toUpperCase());
 
                         if (isCrypto) {
-                            // 📡 VIA BINANCE
                             const res = await axios.get(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=${tf}&limit=151`);
                             if (!res.data) continue;
                             const klines = res.data;
                             lastClosedCandleTime = klines[klines.length - 2][0]; 
                             closes = klines.slice(0, -1).map(k => parseFloat(k[4])); 
                         } else {
-                            // 📡 VIA VELLOX (Usa o Cookie)
-                            if(!state.globalDynamicCookie) continue; // Sem cookie, ignora vellox
+                            if(!state.globalDynamicCookie) continue; 
                             const resolution = tfMinutes.toString();
                             const to = Math.floor(Date.now() / 1000); 
                             const from = to - (151 * tfMinutes * 60); 
@@ -74,7 +70,7 @@ function initEngine(_io, _state) {
                                 lastClosedCandleTime = timesArr[timesArr.length - 2] * 1000;
                                 closes = closesArr.slice(0, -1);
                             } else {
-                                continue; // Mercado fechado ou erro
+                                continue; 
                             }
                         }
 
@@ -105,7 +101,6 @@ function initEngine(_io, _state) {
 
                             io.emit('radar_alert', { symbol: sym, type: signal });
                             io.emit('radar_stats_update', state.radarStats);
-                            console.log(`🚨 DRONE: Oportunidade em ${sym} (${signal}) às ${hourStr}`);
                         }
                     } catch(e) {} 
                 }
@@ -114,9 +109,7 @@ function initEngine(_io, _state) {
     }, 20000); 
 }
 
-// ⏳ O BACKTEST RETROATIVO (Criptos + Vellox)
 async function scanRadarHistory() {
-    console.log("⏳ Iniciando Backtest Retroativo do Radar Mundial...");
     try {
         state.radarStats = { total: 0, byAsset: {}, byHour: {} };
         for (let key in radarLastCandleProcessed) delete radarLastCandleProcessed[key];
@@ -131,26 +124,19 @@ async function scanRadarHistory() {
         for (let sym of radarCoins) {
             try {
                 const isCrypto = cryptoBinance.includes(sym.toUpperCase());
-                let timesArr = [];
-                let closesArr = [];
+                let timesArr = []; let closesArr = [];
 
                 if (isCrypto) {
                     const res = await axios.get(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=${tf}&limit=500`);
                     if (!res.data) continue;
-                    timesArr = res.data.map(k => k[0]);
-                    closesArr = res.data.map(k => parseFloat(k[4]));
+                    timesArr = res.data.map(k => k[0]); closesArr = res.data.map(k => parseFloat(k[4]));
                 } else {
                     if(!state.globalDynamicCookie) continue;
                     const resolution = tfMinutes.toString();
                     const to = Math.floor(Date.now() / 1000); const from = to - (500 * tfMinutes * 60); 
                     const otcHeaders = { 'accept': '*/*', 'Cookie': state.globalDynamicCookie, 'X-Requested-With': 'XMLHttpRequest', 'referer': 'https://velloxbroker.com/traderoom', 'user-agent': 'Mozilla/5.0' };
                     const res = await axios.get(`https://velloxbroker.com/publicapi/tradingview/udf-history?symbol=${sym.toUpperCase()}&resolution=${resolution}&from=${from}&to=${to}&countback=500&site=velloxbroker.com`, { headers: otcHeaders });
-                    if (res.data && res.data.s === 'ok') {
-                        timesArr = res.data.t.map(t => t * 1000);
-                        closesArr = res.data.c;
-                    } else {
-                        continue;
-                    }
+                    if (res.data && res.data.s === 'ok') { timesArr = res.data.t.map(t => t * 1000); closesArr = res.data.c; } else { continue; }
                 }
                 
                 let tempCloses = [];
@@ -188,7 +174,6 @@ async function scanRadarHistory() {
             } catch(e) {}
         }
         io.emit('radar_stats_update', state.radarStats);
-        console.log(`✅ Backtest Concluído! ${state.radarStats.total} oportunidades matemáticas encontradas (Criptos + Vellox).`);
     } catch(err) {}
 }
 
@@ -208,6 +193,40 @@ function getEngine(sym, tf, stratId) {
 function updateStatus(msg) {
     state.currentEngineStatus = msg;
     io.emit('status', { msg });
+}
+
+// 🎯 MATEMÁTICA C/ EXIGÊNCIA DE "BILHETE DE EMBARQUE"
+function updateBrokerProfits(step, isWin, sig) {
+    Object.values(state.activeBrokers).forEach(broker => {
+        if (sig.isManual) {
+            if (sig.brokerUid !== broker.uid) return;
+        } else {
+            // BARREIRA DE INTRUSO: O passageiro só recebe o prémio/perda se embarcou neste exato passo!
+            if (!sig.firedBrokers || !sig.firedBrokers[step] || !sig.firedBrokers[step].includes(broker.uid)) return; 
+        }
+        
+        let amountBet = broker.config.baseAmount * Math.pow(2, step);
+        let payoutPerc = (broker.config.payout || 85) / 100;
+        
+        if (isWin) {
+            let lucroLiquido = (amountBet * payoutPerc); 
+            broker.sessionProfit += lucroLiquido;
+            io.to(broker.socketId).emit('win_balance_update', { isDemo: broker.config.accountType === 'demo', prize: (amountBet + lucroLiquido) });
+        } else { 
+            broker.sessionProfit -= amountBet; 
+        }
+
+        let stopReason = null;
+        if (broker.sessionProfit <= -broker.config.stopLoss) stopReason = `🛑 STOP LOSS ATINGIDO!`;
+        if (broker.sessionProfit >= broker.config.stopWin) stopReason = `🏆 META BATIDA!`;
+
+        if (stopReason) {
+            broker.autoTradeActive = false; 
+            io.to(broker.socketId).emit('auto_trade_status', { active: false, msg: stopReason, profit: broker.sessionProfit });
+        } else {
+            io.to(broker.socketId).emit('auto_trade_status', { active: broker.autoTradeActive, msg: broker.autoTradeActive ? "Robô Operando..." : "Robô Pausado.", profit: broker.sessionProfit });
+        }
+    });
 }
 
 function processHistoricalCandle(eng, k_time, k_o, k_c, currentStrategy) {
@@ -236,7 +255,8 @@ function processHistoricalCandle(eng, k_time, k_o, k_c, currentStrategy) {
             const newSig = {
                 id: k_time, type: newSigType, symbol: eng.symbol.toUpperCase(), timeframe: eng.timeframe,
                 time: new Date(k_time).toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' }),
-                step: 0, status: 'Aguardando...', entryPrice: k_o, isManual: false
+                step: 0, status: 'Aguardando...', entryPrice: k_o, isManual: false,
+                firedBrokers: {} // Backtest não dispara
             };
             eng.activeSignals.push(newSig); 
             eng.signalHistory.unshift(newSig);
@@ -253,29 +273,56 @@ async function handleCandleClose(eng, closedPrice, candleStartTime) {
     if (eng.closePrices.length > 150) eng.closePrices.shift();
 
     let signalResolvedThisCandle = false;
-    const MAX_GALE = 2; 
+    const MAX_GALE_GLOBAL = 2; 
 
     eng.activeSignals = eng.activeSignals.filter(sig => {
         const won = (sig.type === 'CALL' && closedPrice > sig.entryPrice) || (sig.type === 'PUT' && closedPrice < sig.entryPrice);
+        const prefix = sig.isManual ? '⚡ Sniper: ' : '';
 
         if (won) {
-            if (sig.step === 0) { sig.status = 'WIN 1ª 🎯'; eng.scoreboard.win1++; }
-            else if (sig.step === 1) { sig.status = 'WIN G1 🎯'; eng.scoreboard.winG1++; }
-            else if (sig.step === 2) { sig.status = 'WIN G2 🎯'; eng.scoreboard.winG2++; }
+            if (sig.step === 0) { sig.status = prefix + 'WIN 1ª 🎯'; if(!sig.isManual) eng.scoreboard.win1++; }
+            else if (sig.step === 1) { sig.status = prefix + 'WIN G1 🎯'; if(!sig.isManual) eng.scoreboard.winG1++; }
+            else if (sig.step === 2) { sig.status = prefix + 'WIN G2 🎯'; if(!sig.isManual) eng.scoreboard.winG2++; }
             
+            updateBrokerProfits(sig.step, true, sig); // Cobra o bilhete
             io.emit('signal_result', sig); 
             if (eng.key === state.currentEngineKey) io.emit('scoreboard', eng.scoreboard); 
             signalResolvedThisCandle = true; return false; 
         } else {
+            updateBrokerProfits(sig.step, false, sig); // Cobra o bilhete da perda
             sig.step++; 
-            if (sig.step > MAX_GALE) {
-                sig.status = 'LOSS 🔴'; eng.scoreboard.loss++; 
+            if (sig.step > MAX_GALE_GLOBAL) {
+                sig.status = prefix + 'LOSS 🔴'; if(!sig.isManual) eng.scoreboard.loss++; 
                 io.emit('signal_result', sig); 
                 if (eng.key === state.currentEngineKey) io.emit('scoreboard', eng.scoreboard); 
                 signalResolvedThisCandle = true; return false; 
             } else {
-                sig.status = `Gale ${sig.step}...`; sig.entryPrice = eng.currentGlobalPrice || closedPrice; 
+                sig.status = prefix + `Gale ${sig.step}...`; sig.entryPrice = eng.currentGlobalPrice || closedPrice; 
                 io.emit('signal_result', sig);
+                
+                // 🎫 PREPARA O BILHETE DO GALE
+                if (!sig.firedBrokers) sig.firedBrokers = {};
+                sig.firedBrokers[sig.step] = [];
+
+                Object.values(state.activeBrokers).forEach(async (broker) => {
+                    if (sig.isManual) {
+                        if (sig.brokerUid !== broker.uid) return; 
+                    } else {
+                        if (!broker.autoTradeActive || !broker.isPremium) return;
+                        // 🛑 SE NÃO ESTAVA NO PASSO 0, NÃO PODE ENTRAR DE PENETRA NO GALE!
+                        if (!sig.firedBrokers[0] || !sig.firedBrokers[0].includes(broker.uid)) return;
+                    }
+                    
+                    if (sig.step > broker.config.maxGale) return; 
+                    
+                    if (!sig.isManual) sig.firedBrokers[sig.step].push(broker.uid); // Dá o bilhete do Gale
+                    
+                    let valorGale = broker.config.baseAmount * Math.pow(2, sig.step); 
+                    let isDemo = broker.config.accountType === 'demo';
+                    
+                    const result = await dispararOrdemVellox(broker, isDemo, eng.symbol, sig.type, valorGale.toFixed(2).replace('.', ','), eng.currentGlobalPrice || closedPrice, eng.timeframe);
+                    if (result.success && result.balance) io.to(broker.socketId).emit('update_balance', { isDemo: isDemo, balance: result.balance });
+                });
                 return true; 
             }
         }
@@ -291,10 +338,23 @@ async function handleCandleClose(eng, closedPrice, candleStartTime) {
             const newSig = { 
                 id: Date.now(), type: newSignalType, symbol: eng.symbol.toUpperCase(), timeframe: eng.timeframe, 
                 time: new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' }), 
-                step: 0, status: 'Aguardando Vela...', entryPrice: eng.currentGlobalPrice || closedPrice, isManual: false 
+                step: 0, status: 'Aguardando Vela...', entryPrice: eng.currentGlobalPrice || closedPrice, isManual: false,
+                firedBrokers: { 0: [] } // 🎫 ABERTURA DA BILHETEIRA
             };
             eng.activeSignals.push(newSig); eng.signalHistory.unshift(newSig); if (eng.signalHistory.length > 20) eng.signalHistory.pop();
             io.emit('new_signal_history', newSig); io.emit('signal', { type: newSignalType, time: newSig.time }); 
+            
+            Object.values(state.activeBrokers).forEach(async (broker) => {
+                if (!broker.autoTradeActive || !broker.isPremium) return;
+                
+                newSig.firedBrokers[0].push(broker.uid); // 🎫 O Robô ligou a tempo? Toma o bilhete!
+                
+                let valorInicial = parseFloat(broker.config.baseAmount).toFixed(2).replace('.', ','); 
+                let isDemo = broker.config.accountType === 'demo';
+                
+                const result = await dispararOrdemVellox(broker, isDemo, eng.symbol, newSignalType, valorInicial, eng.currentGlobalPrice || closedPrice, eng.timeframe);
+                if (result.success && result.balance) io.to(broker.socketId).emit('update_balance', { isDemo: isDemo, balance: result.balance });
+            });
         }
     }
 }

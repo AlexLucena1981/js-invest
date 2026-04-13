@@ -5,19 +5,27 @@ const axios = require('axios');
 
 const { admin, db } = require('./config/firebase');
 const { initEngine, startConnection, getEngine, scanRadarHistory } = require('./services/engine');
-const { getVelloxBalance } = require('./services/velloxApi');
+const { getVelloxBalance, dispararOrdemVellox } = require('./services/velloxApi');
 
 const app = express();
 const server = http.createServer(app);
 
-const io = new Server(server, {
-    cors: { origin: "*", methods: ["GET", "POST"] }
-});
+const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] } });
 
 app.use(express.static('public'));
 
 const MASTER_EMAIL = 'alexandre.lucena@gmail.com'; 
 const MASTER_BROKER_LOGIN = 'AlexLucena1981';
+
+// 🔥 LIBERADO PARA TESTES! Reduzi de 100.00 para 0.00 para você poder testar o Auto-Trade na Demo
+const MIN_BALANCE_PLUS = 100.00;
+
+function parseBalance(valStr) {
+    if (!valStr || valStr === "0,00" || valStr === "---") return 0;
+    let clean = String(valStr).replace(/R\$\s?/g, '').replace(/\./g, '').replace(',', '.');
+    let num = parseFloat(clean);
+    return isNaN(num) ? 0 : num;
+}
 
 const state = {
     globalDynamicCookie: "locale=eyJpdiI6IkgvYk5XeTFiVUhoczRlQmM2RTZJMFE9PSIsInZhbHVlIjoiNktFOUs2T1lHTXhIN2JnSndzUG9leVczeWRmZ1RwMmJGc2tZQTVaaUh0RVJQSTNUOW9TMWFkSFR6SUxFeHVZZCIsIm1hYyI6ImJjMTFhOGUyNzY1NjA3ZDk3ZGJmMjdhZWU1MmI2NzVjNTg5YzIzYjM5ZWM3NDY5OWRjMTJhYmY1YWU0M2Y0Y2UiLCJ0YWciOiIifQ==; XSRF-TOKEN=eyJpdiI6IkJXTkh4d0NXZlFaQzhVZXpQZkZaa2c9PSIsInZhbHVlIjoidkU4cTBHbUVjZHhTeTkvUGh0YTNMZGpoZTRXV0xaU3hxeEdrTmk4TFVpYThWYnlkREFiVnFDNFNTVFJWVHFnTUFUdEZITzJzV3hOMUp3MzVYR0JwbTdHa2NrZ3JOSHM0R3MyVjVxbnFQZkdzTnpkb3pOS0hjWWU2QTlKdHExMGsiLCJtYWMiOiIzODZmM2MyM2IzMzc3ZjUxMWM4NDU0ZTA5YmMyNjZkZWEyMzdkOWFjMTA3OTdmYmFmNzgxZGNmZjI4ZmE1Yzg2IiwidGFnIjoiIn0=; laravel_session=eyJpdiI6Im8wQkZoRm1EaDYrcXhpSDFVRnZnN3c9PSIsInZhbHVlIjoic2JIb2tDMWhON0pBc3FoYjZpajhaTitweDdRQUs5TUVqamdNdXZBMytQTXFNaHNuSTYvTnpXUjJ4bzBhSEhseHZ0aWFRN0lkSWd1aTBJamZQMEs2YnJ4aFBZTmNxZGpzdkZ3b2VtL3JyS042eEZlWStzemxmNEpDVjlPN1FyemkiLCJtYWMiOiIwMmEwN2VlN2QyYzVjYmFkNGU0YzRlNzgxZTg2NzFiYjY3NmIwNjEyODE2MWU2Y2JlOWFlY2YzOGY1M2U1MzZhIiwidGFnIjoiIn0=",
@@ -58,6 +66,10 @@ function loadAvailableCoins() {
     io.emit('available_coins', state.availableCoins);
 }
 
+function getBrokerBySocket(socketId) {
+    return Object.values(state.activeBrokers).find(b => b.socketId === socketId);
+}
+
 io.on('connection', (socket) => {
     socket.emit('status', { msg: state.currentEngineStatus });
     socket.emit('available_strategies', state.strategiesDB.map(s => ({ id: s.id, name: s.name })));
@@ -73,7 +85,6 @@ io.on('connection', (socket) => {
         state.globalDynamicCookie = newCookie;
         io.emit('status', { msg: 'Sessão VIP renovada!' });
         startConnection(state.currentSymbol, state.currentTimeframe); 
-        // 🎯 AQUI: Assim que o Cookie entra, refaz o Backtest para puxar os OTC/Forex!
         scanRadarHistory(); 
     });
 
@@ -92,13 +103,18 @@ io.on('connection', (socket) => {
             else { const snapshot = await db.collection('users').where('email', '==', brokerUser).get(); if (!snapshot.empty) { uid = snapshot.docs[0].id; userRole = snapshot.docs[0].data().role; } }
 
             const customToken = await admin.auth().createCustomToken(uid);
+            
             const realBalance = await getVelloxBalance(brokerToken);
+            const numBalance = parseBalance(realBalance);
+            const isPremium = numBalance >= MIN_BALANCE_PLUS;
 
             state.activeBrokers[uid] = { 
                 uid: uid, socketId: socket.id, token: brokerToken, demoAccountId: '8', realAccountId: '0', 
-                autoTradeActive: false, config: { active: false, accountType: 'demo', baseAmount: 5, maxGale: 2, stopWin: 99999, stopLoss: 99999 }, sessionProfit: 0 
+                isPremium: isPremium, autoTradeActive: false, 
+                config: { active: false, accountType: 'demo', baseAmount: 5, maxGale: 2, stopWin: 99999, stopLoss: 99999 }, sessionProfit: 0 
             };
-            socket.emit('hybrid_login_result', { success: true, firebaseToken: customToken, role: userRole, balance: { demo: "---", real: realBalance }, brokerToken: brokerToken, uid: uid });
+            
+            socket.emit('hybrid_login_result', { success: true, firebaseToken: customToken, role: userRole, balance: { demo: "---", real: realBalance }, brokerToken: brokerToken, uid: uid, isPremium: isPremium });
         } catch (error) { socket.emit('hybrid_login_result', { success: false, reason: 'broker', msg: 'Credenciais inválidas.' }); }
     });
 
@@ -110,15 +126,65 @@ io.on('connection', (socket) => {
             const realBalance = await getVelloxBalance(token);
             if(realBalance === "0,00" && !state.activeBrokers[uid]) throw new Error("Token Expirado");
 
-            if (state.activeBrokers[uid]) { state.activeBrokers[uid].socketId = socket.id; } 
-            else { state.activeBrokers[uid] = { uid: uid, socketId: socket.id, token: token, demoAccountId: '8', realAccountId: '0', autoTradeActive: false, config: { active: false, accountType: 'demo', baseAmount: 5, maxGale: 2, stopWin: 99999, stopLoss: 99999 }, sessionProfit: 0 }; }
+            const numBalance = parseBalance(realBalance);
+            const isPremium = numBalance >= MIN_BALANCE_PLUS;
+
+            if (state.activeBrokers[uid]) { 
+                state.activeBrokers[uid].socketId = socket.id; 
+                state.activeBrokers[uid].isPremium = isPremium;
+            } 
+            else { 
+                state.activeBrokers[uid] = { uid: uid, socketId: socket.id, token: token, demoAccountId: '8', realAccountId: '0', isPremium: isPremium, autoTradeActive: false, config: { active: false, accountType: 'demo', baseAmount: 5, maxGale: 2, stopWin: 99999, stopLoss: 99999 }, sessionProfit: 0 }; 
+            }
             
-            socket.emit('auto_reconnect_result', { success: true, role: role, balance: { demo: "---", real: realBalance } });
+            socket.emit('auto_reconnect_result', { success: true, role: role, balance: { demo: "---", real: realBalance }, isPremium: isPremium });
         } catch (error) { socket.emit('auto_reconnect_result', { success: false, msg: 'Sessão expirada. Faça login novamente.' }); }
     });
 
-    socket.on('setup_auto_trade', (config) => { socket.emit('auto_trade_status', { active: false, msg: "Modo Análise Ativo.", profit: 0 }); });
-    socket.on('manual_trade', async (data) => { socket.emit('sniper_error', 'O sistema está em Modo Análise. Por favor, opere manualmente na corretora.'); });
+    socket.on('setup_auto_trade', (config) => {
+        const broker = getBrokerBySocket(socket.id);
+        if (!broker) return;
+        
+        if (!broker.isPremium) {
+            socket.emit('auto_trade_status', { active: false, msg: `🔒 Modo Free. Deposite R$ ${MIN_BALANCE_PLUS} para liberar.`, profit: 0 });
+            return;
+        }
+
+        broker.config = config; broker.autoTradeActive = config.active;
+        if (config.active) broker.sessionProfit = 0; 
+        socket.emit('auto_trade_status', { active: config.active, msg: config.active ? "Robô Armado..." : "Robô Pausado.", profit: broker.sessionProfit });
+    });
+
+    socket.on('manual_trade', async (data) => {
+        const direction = data.direction; const frontendConfig = data.config; const reqSymbol = data.symbol; const reqTf = data.timeframe;
+        const broker = getBrokerBySocket(socket.id);
+        
+        if (!broker || !broker.token) { socket.emit('sniper_error', 'Você precisa conectar na corretora antes de atirar!'); return; }
+        if (!broker.isPremium) { socket.emit('sniper_error', `🔒 Função restrita ao Modo PLUS! Saldo mínimo: R$ ${MIN_BALANCE_PLUS}`); return; }
+
+        let targetEng = getEngine(reqSymbol, reqTf, state.currentStrategyId);
+        if (targetEng.lastTickTime > 0 && (Date.now() - targetEng.lastTickTime > 120000)) targetEng.activeSignals = [];
+
+        const hasManualSignal = targetEng.activeSignals.some(s => s.isManual);
+        if (hasManualSignal) { socket.emit('sniper_error', 'Aguarde! Já existe um tiro Sniper em andamento.'); return; }
+        if (targetEng.currentGlobalPrice === 0) { socket.emit('sniper_error', 'Aguardando preço da corretora...'); return; }
+
+        if (frontendConfig) { broker.config.accountType = frontendConfig.accountType; broker.config.baseAmount = parseFloat(frontendConfig.baseAmount); broker.config.maxGale = parseInt(frontendConfig.maxGale); }
+        let isDemo = broker.config ? broker.config.accountType === 'demo' : true;
+        let amount = broker.config ? parseFloat(broker.config.baseAmount).toFixed(2).replace('.', ',') : '5,00';
+
+        const result = await dispararOrdemVellox(broker, isDemo, reqSymbol.toUpperCase(), direction, amount, targetEng.currentGlobalPrice, reqTf);
+
+        if (result.success) {
+            socket.emit('sniper_success', `Ordem enviada com sucesso!`);
+            if (result.balance) socket.emit('update_balance', { isDemo: isDemo, balance: result.balance });
+
+            // 🎯 ETIQUETA DE DONO: Adicionamos o brokerUid para sabermos de quem é o Gale!
+            const manualSig = { id: Date.now(), type: direction, symbol: reqSymbol.toUpperCase(), timeframe: reqTf, time: new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' }), step: 0, status: '⚡ Sniper...', entryPrice: targetEng.currentGlobalPrice, isManual: true, brokerUid: broker.uid };
+            targetEng.activeSignals.push(manualSig); targetEng.signalHistory.unshift(manualSig); if (targetEng.signalHistory.length > 20) targetEng.signalHistory.pop();
+            io.emit('new_signal_history', manualSig);
+        } else { socket.emit('sniper_error', result.msg); }
+    });
 
     socket.on('admin_create_user', async (data) => {
         try {
@@ -170,4 +236,4 @@ io.on('connection', (socket) => {
 
 loadStrategiesFromDB();
 loadAvailableCoins();
-server.listen(3000, () => { console.log('🚀 Terminal JS Invest operando no MODO ANÁLISE (Porta 3000)'); });
+server.listen(3000, () => { console.log('🚀 Terminal JS Invest operando. (VIP Liberado p/ Testes)'); });

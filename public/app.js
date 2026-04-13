@@ -9,7 +9,8 @@ const auth = firebase.auth();
 const socket = io({ transports: ['websocket'], upgrade: false });
 
 let currentEntryPrice = 0; 
-let radarGlobalStats = null; // Guarda os stats para o painel
+let radarGlobalStats = null; 
+let isBotActive = false; 
 
 const ctx = document.getElementById('liveChart').getContext('2d');
 const liveChart = new Chart(ctx, {
@@ -18,106 +19,89 @@ const liveChart = new Chart(ctx, {
     options: { responsive: true, maintainAspectRatio: false, animation: false, plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { position: 'right', grid: { color: '#30363d' }, ticks: { color: '#8b949e', font: {size: 10} } } } }
 });
 
-// ==========================================
-// 📊 INJEÇÃO DO PAINEL DE ESTATÍSTICAS
-// ==========================================
-function setupStatsUI() {
-    // Botão Flutuante
-    const statsBtn = document.createElement('button');
-    statsBtn.id = 'btnOpenStats';
-    statsBtn.innerHTML = '📊 ESTATÍSTICAS RADAR';
-    statsBtn.style.cssText = 'position:fixed; bottom:20px; left:20px; background:#1f6feb; color:white; border:none; padding:12px 20px; border-radius:8px; font-weight:bold; cursor:pointer; z-index:9000; box-shadow:0 4px 15px rgba(31,111,235,0.4); transition:0.3s;';
-    statsBtn.onmouseover = () => statsBtn.style.background = '#388bfd';
-    statsBtn.onmouseout = () => statsBtn.style.background = '#1f6feb';
-    document.body.appendChild(statsBtn);
-
-    // Modal de Estatísticas
-    const statsModal = document.createElement('div');
-    statsModal.id = 'statsModal';
-    statsModal.style.cssText = 'display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:9999; justify-content:center; align-items:center;';
-    statsModal.innerHTML = `
-        <div style="background:#0d1117; border:1px solid #30363d; border-radius:12px; width:90%; max-width:600px; padding:20px; color:#c9d1d9; max-height:90vh; overflow-y:auto;">
-            <h2 style="color:#58a6ff; text-align:center; border-bottom:1px solid #30363d; padding-bottom:10px;">📊 INTELIGÊNCIA DO RADAR</h2>
-            
-            <div style="text-align:center; padding:15px; font-size:20px;">
-                TOTAL DE OPORTUNIDADES GERADAS: <b id="statTotal" style="color:#3fb950; font-size:28px;">0</b>
-            </div>
-
-            <div style="display:flex; gap:20px; margin-top:20px;">
-                <div style="flex:1; background:#161b22; padding:15px; border-radius:8px; border:1px solid #30363d;">
-                    <h4 style="color:#8b949e; text-align:center; margin-top:0;">RANKING POR ATIVO</h4>
-                    <div id="statAssets" style="font-size:14px; line-height:1.8;">Aguardando dados...</div>
-                </div>
-
-                <div style="flex:1; background:#161b22; padding:15px; border-radius:8px; border:1px solid #30363d;">
-                    <h4 style="color:#8b949e; text-align:center; margin-top:0;">MAPA POR HORÁRIO</h4>
-                    <div id="statHours" style="font-size:14px; line-height:1.8; display:flex; flex-wrap:wrap; gap:10px; justify-content:center;">Aguardando dados...</div>
-                </div>
-            </div>
-            
-            <div style="text-align:center; margin-top:20px;">
-                <button id="btnCloseStats" style="background:#21262d; color:#c9d1d9; border:1px solid #30363d; padding:10px 20px; border-radius:6px; cursor:pointer;">Fechar Painel</button>
-            </div>
-        </div>
-    `;
-    document.body.appendChild(statsModal);
-
-    document.getElementById('btnOpenStats').addEventListener('click', () => { 
-        renderStats();
-        document.getElementById('statsModal').style.display = 'flex'; 
-    });
-    document.getElementById('btnCloseStats').addEventListener('click', () => { 
-        document.getElementById('statsModal').style.display = 'none'; 
-    });
+function saveRiskConfig() {
+    const config = {
+        accountType: document.getElementById('riskAccount').value,
+        baseAmount: document.getElementById('riskAmount').value,
+        payout: document.getElementById('riskPayout') ? document.getElementById('riskPayout').value : 85,
+        maxGale: document.getElementById('riskGale').value,
+        stopWin: document.getElementById('riskWin').value,
+        stopLoss: document.getElementById('riskLoss').value
+    };
+    localStorage.setItem('jsInvestConfig', JSON.stringify(config));
 }
 
-function renderStats() {
-    if (!radarGlobalStats) return;
+function togglePremiumUI(isPremium) {
+    const elsToToggle = ['riskAccount', 'riskAmount', 'riskPayout', 'riskGale', 'riskWin', 'riskLoss', 'btnToggleBot', 'btnManualCall', 'btnManualPut'];
     
-    document.getElementById('statTotal').innerText = radarGlobalStats.total;
-    
-    // Renderiza Ativos e Médias
-    let assetsHtml = '';
-    const assets = Object.entries(radarGlobalStats.byAsset).sort((a,b) => b[1].count - a[1].count);
-    if(assets.length === 0) assetsHtml = 'Nenhum sinal hoje.';
-    assets.forEach(([sym, data]) => {
-        let avgStr = '-- min';
-        if (data.intervals && data.intervals.length > 0) {
-            const sum = data.intervals.reduce((a, b) => a + b, 0);
-            avgStr = (sum / data.intervals.length).toFixed(1) + ' min';
+    elsToToggle.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.style.display = isPremium ? '' : 'none'; 
+            if(el.parentElement && el.parentElement.tagName === 'DIV' && el.parentElement.id !== 'manualTradePanel') {
+                el.parentElement.style.display = isPremium ? '' : 'none';
+            }
         }
-        assetsHtml += `<div style="display:flex; justify-content:space-between; border-bottom:1px solid #21262d; padding:4px 0;">
-            <b style="color:#ffffff;">${sym}</b> 
-            <span><b style="color:#3fb950;">${data.count}</b> (Média: ${avgStr})</span>
-        </div>`;
     });
-    document.getElementById('statAssets').innerHTML = assetsHtml;
 
-    // Renderiza Horários
-    let hoursHtml = '';
-    const hours = Object.entries(radarGlobalStats.byHour).sort((a,b) => a[0].localeCompare(b[0]));
-    if(hours.length === 0) hoursHtml = 'Nenhum horário registrado.';
-    hours.forEach(([hr, count]) => {
-        hoursHtml += `<div style="background:#21262d; padding:4px 8px; border-radius:4px; border:1px solid #30363d;">
-            ${hr}: <b style="color:#58a6ff;">${count}</b>
-        </div>`;
-    });
-    document.getElementById('statHours').innerHTML = hoursHtml;
+    const statusBot = document.getElementById('statusBot');
+    if (statusBot) {
+        if (isPremium) {
+            statusBot.innerText = "🚀 MODO PLUS ATIVO: Operações Liberadas!";
+            statusBot.style.color = "#3fb950";
+        } else {
+            statusBot.innerText = "🔒 MODO FREE: Radar Ativo (Requer banca R$ 100+)";
+            statusBot.style.color = "#d29922";
+        }
+    }
 }
 
 window.addEventListener('DOMContentLoaded', () => {
-    // Esconder Inputs para o Modo Análise
-    const elsToHide = ['riskAccount', 'riskAmount', 'riskGale', 'riskWin', 'riskLoss', 'btnToggleBot', 'btnManualCall', 'btnManualPut'];
-    elsToHide.forEach(id => { const el = document.getElementById(id); if (el) { el.style.display = 'none'; if(el.parentElement && el.parentElement.tagName === 'DIV' && el.parentElement.id !== 'manualTradePanel') { el.parentElement.style.display = 'none'; } } });
+    
+    // 🎯 INJEÇÃO CIRÚRGICA DO CAMPO PAYOUT NA SUA TELA
+    const amtInput = document.getElementById('riskAmount');
+    if (amtInput && !document.getElementById('riskPayout')) {
+        const amtCol = amtInput.parentElement;
+        const contaCol = document.getElementById('riskAccount').parentElement;
+        
+        // Espreme as colunas Conta e Valor para caber o Payout
+        if (amtCol.classList.contains('col-6')) {
+            amtCol.classList.remove('col-6'); amtCol.classList.add('col-4');
+        }
+        if (contaCol && contaCol.classList.contains('col-6')) {
+            contaCol.classList.remove('col-6'); contaCol.classList.add('col-4');
+        }
+        
+        const payoutWrapper = document.createElement('div');
+        payoutWrapper.className = amtCol.className; // Clona as mesmas classes (ex: col-4 mb-3)
+        payoutWrapper.innerHTML = `
+            <label class="form-label text-muted" style="font-size: 10px; font-weight: bold; margin-bottom: 2px;">PAYOUT (%)</label>
+            <input type="number" id="riskPayout" class="form-control" style="background-color: #0d1117; color: #c9d1d9; border: 1px solid #30363d;" value="85">
+        `;
+        amtCol.insertAdjacentElement('afterend', payoutWrapper);
+    }
 
-    const statusBot = document.getElementById('statusBot');
-    if (statusBot) { statusBot.innerText = "Modo Análise: Radar e Stats Ativos."; statusBot.style.color = "#58a6ff"; }
+    // Configura os eventos de mudança depois de injetar os botões
+    ['riskAccount', 'riskAmount', 'riskPayout', 'riskGale', 'riskWin', 'riskLoss'].forEach(id => { 
+        const el = document.getElementById(id);
+        if(el) el.addEventListener('change', saveRiskConfig); 
+    });
 
-    // Cria as UIs injetadas
+    togglePremiumUI(false);
+
+    const savedConfig = JSON.parse(localStorage.getItem('jsInvestConfig'));
+    if (savedConfig) {
+        if(document.getElementById('riskAccount')) document.getElementById('riskAccount').value = savedConfig.accountType || 'demo'; 
+        if(document.getElementById('riskAmount')) document.getElementById('riskAmount').value = savedConfig.baseAmount || 5;
+        if(document.getElementById('riskPayout')) document.getElementById('riskPayout').value = savedConfig.payout || 85;
+        if(document.getElementById('riskGale')) document.getElementById('riskGale').value = savedConfig.maxGale || 2; 
+        if(document.getElementById('riskWin')) document.getElementById('riskWin').value = savedConfig.stopWin || 50; 
+        if(document.getElementById('riskLoss')) document.getElementById('riskLoss').value = savedConfig.stopLoss || 50;
+    }
+
     setupStatsUI();
 
-    const radarDiv = document.createElement('div');
-    radarDiv.id = 'radarToast';
+    const radarDiv = document.createElement('div'); radarDiv.id = 'radarToast';
     radarDiv.style.cssText = 'display:none; position:fixed; top:80px; right:20px; background:#161b22; border:2px solid #58a6ff; padding:20px; border-radius:10px; z-index:9999; box-shadow: 0 0 25px rgba(88, 166, 255, 0.4); transition: all 0.3s ease; text-align:center; min-width:250px;';
     radarDiv.innerHTML = `<div style="font-size:24px; margin-bottom:10px;">🚨 <b style="color:#c9d1d9;">RADAR DETECTOU!</b> 🚨</div><div id="radarMsg" style="font-size:18px; color:#8b949e; font-weight:bold;">Aguardando...</div>`;
     document.body.appendChild(radarDiv);
@@ -126,7 +110,57 @@ window.addEventListener('DOMContentLoaded', () => {
     if (savedBrokerToken && savedUid) { document.getElementById('btnLogin').innerText = "Acessando Painel..."; socket.emit('auto_reconnect', { token: savedBrokerToken, role: savedRole, uid: savedUid }); }
 });
 
-// 🎯 RECEBENDO OS DADOS DO SERVIDOR
+function setupStatsUI() {
+    const statsBtn = document.createElement('button');
+    statsBtn.id = 'btnOpenStats'; statsBtn.innerHTML = '📊 ESTATÍSTICAS RADAR';
+    statsBtn.style.cssText = 'position:fixed; bottom:20px; left:20px; background:#1f6feb; color:white; border:none; padding:12px 20px; border-radius:8px; font-weight:bold; cursor:pointer; z-index:9000; box-shadow:0 4px 15px rgba(31,111,235,0.4); transition:0.3s;';
+    statsBtn.onmouseover = () => statsBtn.style.background = '#388bfd'; statsBtn.onmouseout = () => statsBtn.style.background = '#1f6feb';
+    document.body.appendChild(statsBtn);
+
+    const statsModal = document.createElement('div');
+    statsModal.id = 'statsModal';
+    statsModal.style.cssText = 'display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:9999; justify-content:center; align-items:center;';
+    statsModal.innerHTML = `
+        <div style="background:#0d1117; border:1px solid #30363d; border-radius:12px; width:90%; max-width:600px; padding:20px; color:#c9d1d9; max-height:90vh; overflow-y:auto;">
+            <h2 style="color:#58a6ff; text-align:center; border-bottom:1px solid #30363d; padding-bottom:10px;">📊 INTELIGÊNCIA DO RADAR</h2>
+            <div style="text-align:center; padding:15px; font-size:20px;">TOTAL DE OPORTUNIDADES GERADAS: <b id="statTotal" style="color:#3fb950; font-size:28px;">0</b></div>
+            <div style="display:flex; gap:20px; margin-top:20px;">
+                <div style="flex:1; background:#161b22; padding:15px; border-radius:8px; border:1px solid #30363d;">
+                    <h4 style="color:#8b949e; text-align:center; margin-top:0;">RANKING POR ATIVO</h4>
+                    <div id="statAssets" style="font-size:14px; line-height:1.8;">Aguardando dados...</div>
+                </div>
+                <div style="flex:1; background:#161b22; padding:15px; border-radius:8px; border:1px solid #30363d;">
+                    <h4 style="color:#8b949e; text-align:center; margin-top:0;">MAPA POR HORÁRIO</h4>
+                    <div id="statHours" style="font-size:14px; line-height:1.8; display:flex; flex-wrap:wrap; gap:10px; justify-content:center;">Aguardando dados...</div>
+                </div>
+            </div>
+            <div style="text-align:center; margin-top:20px;"><button id="btnCloseStats" style="background:#21262d; color:#c9d1d9; border:1px solid #30363d; padding:10px 20px; border-radius:6px; cursor:pointer;">Fechar Painel</button></div>
+        </div>
+    `;
+    document.body.appendChild(statsModal);
+    document.getElementById('btnOpenStats').addEventListener('click', () => { renderStats(); document.getElementById('statsModal').style.display = 'flex'; });
+    document.getElementById('btnCloseStats').addEventListener('click', () => { document.getElementById('statsModal').style.display = 'none'; });
+}
+
+function renderStats() {
+    if (!radarGlobalStats) return;
+    document.getElementById('statTotal').innerText = radarGlobalStats.total;
+    
+    let assetsHtml = ''; const assets = Object.entries(radarGlobalStats.byAsset).sort((a,b) => b[1].count - a[1].count);
+    if(assets.length === 0) assetsHtml = 'Nenhum sinal hoje.';
+    assets.forEach(([sym, data]) => {
+        let avgStr = '-- min';
+        if (data.intervals && data.intervals.length > 0) { const sum = data.intervals.reduce((a, b) => a + b, 0); avgStr = (sum / data.intervals.length).toFixed(1) + ' min'; }
+        assetsHtml += `<div style="display:flex; justify-content:space-between; border-bottom:1px solid #21262d; padding:4px 0;"><b style="color:#ffffff;">${sym}</b> <span><b style="color:#3fb950;">${data.count}</b> (Média: ${avgStr})</span></div>`;
+    });
+    document.getElementById('statAssets').innerHTML = assetsHtml;
+
+    let hoursHtml = ''; const hours = Object.entries(radarGlobalStats.byHour).sort((a,b) => a[0].localeCompare(b[0]));
+    if(hours.length === 0) hoursHtml = 'Nenhum horário registrado.';
+    hours.forEach(([hr, count]) => { hoursHtml += `<div style="background:#21262d; padding:4px 8px; border-radius:4px; border:1px solid #30363d;">${hr}: <b style="color:#58a6ff;">${count}</b></div>`; });
+    document.getElementById('statHours').innerHTML = hoursHtml;
+}
+
 socket.on('radar_alert', (data) => {
     const toast = document.getElementById('radarToast'); const msg = document.getElementById('radarMsg');
     let color = data.type === 'CALL' ? '#3fb950' : '#f85149';
@@ -136,8 +170,8 @@ socket.on('radar_alert', (data) => {
 });
 
 socket.on('radar_stats_update', (stats) => {
-    radarGlobalStats = stats; // Guarda na memória
-    if (document.getElementById('statsModal').style.display === 'flex') renderStats(); // Se tiver aberto, atualiza ao vivo
+    radarGlobalStats = stats; 
+    if (document.getElementById('statsModal').style.display === 'flex') renderStats(); 
 });
 
 document.getElementById('btnLogin').addEventListener('click', () => {
@@ -151,7 +185,11 @@ socket.on('hybrid_login_result', (res) => {
         localStorage.setItem('jsInvestBrokerToken', res.brokerToken); localStorage.setItem('jsInvestUserRole', res.role); localStorage.setItem('jsInvestUid', res.uid);
         auth.signInWithCustomToken(res.firebaseToken).then(() => {
             document.getElementById('loginScreen').style.display = 'none';
-            document.getElementById('valReal').innerText = `R$ ${res.balance.real}`; document.getElementById('valDemo').innerText = res.balance.demo; document.getElementById('manualTradePanel').style.display = 'flex'; 
+            document.getElementById('valReal').innerText = `R$ ${res.balance.real}`; document.getElementById('valDemo').innerText = res.balance.demo; 
+            document.getElementById('manualTradePanel').style.display = 'flex'; 
+            
+            togglePremiumUI(res.isPremium);
+
             if (res.role === 'admin') { document.getElementById('btnAdminPanel').style.display = 'inline-block'; document.getElementById('btnOpenModal').style.display = 'inline-block'; }
         }).catch(err => { document.getElementById('loginError').innerText = "Erro: " + err.message; document.getElementById('loginError').style.display = 'block'; });
     } else { document.getElementById('loginError').innerText = res.msg; document.getElementById('loginError').style.display = 'block'; }
@@ -160,7 +198,11 @@ socket.on('hybrid_login_result', (res) => {
 socket.on('auto_reconnect_result', (res) => {
     if(res.success) {
         document.getElementById('loginScreen').style.display = 'none';
-        document.getElementById('valReal').innerText = `R$ ${res.balance.real}`; document.getElementById('valDemo').innerText = res.balance.demo; document.getElementById('manualTradePanel').style.display = 'flex'; 
+        document.getElementById('valReal').innerText = `R$ ${res.balance.real}`; document.getElementById('valDemo').innerText = res.balance.demo; 
+        document.getElementById('manualTradePanel').style.display = 'flex'; 
+        
+        togglePremiumUI(res.isPremium);
+
         if (res.role === 'admin') { document.getElementById('btnAdminPanel').style.display = 'inline-block'; document.getElementById('btnOpenModal').style.display = 'inline-block'; }
     } else {
         localStorage.removeItem('jsInvestBrokerToken'); localStorage.removeItem('jsInvestUserRole'); localStorage.removeItem('jsInvestUid'); document.getElementById('btnLogin').innerText = "Acessar Sistema";
@@ -170,6 +212,80 @@ socket.on('auto_reconnect_result', (res) => {
 document.getElementById('btnLogout').addEventListener('click', () => { 
     localStorage.removeItem('jsInvestBrokerToken'); localStorage.removeItem('jsInvestUserRole'); localStorage.removeItem('jsInvestUid'); auth.signOut().then(() => { window.location.reload(); }); 
 });
+
+document.getElementById('btnToggleBot').addEventListener('click', () => {
+    isBotActive = !isBotActive; saveRiskConfig(); 
+    
+    // 🎯 CAPTURANDO O PAYOUT PARA O SERVIDOR!
+    const config = { 
+        active: isBotActive, 
+        accountType: document.getElementById('riskAccount').value, 
+        baseAmount: parseFloat(document.getElementById('riskAmount').value), 
+        payout: parseFloat(document.getElementById('riskPayout') ? document.getElementById('riskPayout').value : 85),
+        maxGale: parseInt(document.getElementById('riskGale').value), 
+        stopWin: parseFloat(document.getElementById('riskWin').value), 
+        stopLoss: parseFloat(document.getElementById('riskLoss').value) 
+    };
+    socket.emit('setup_auto_trade', config);
+});
+
+socket.on('auto_trade_status', (res) => {
+    isBotActive = res.active;
+    const btn = document.getElementById('btnToggleBot'); const status = document.getElementById('statusBot');
+    
+    if(isBotActive) { 
+        btn.className = "btn-toggle-bot bot-on"; btn.innerText = "PARAR AUTO-TRADE"; status.innerText = res.msg; status.style.color = "#58a6ff"; 
+    } else { 
+        btn.className = "btn-toggle-bot bot-off"; btn.innerText = "ATIVAR AUTO-TRADE"; status.innerText = res.msg; 
+        if(res.msg.includes("META")) status.style.color = "#e3b341"; 
+        else if(res.msg.includes("STOP")) status.style.color = "#f85149"; 
+        else status.style.color = "#8b949e";
+    }
+
+    // 🎯 ESCREVENDO O LUCRO NA SUA TELA
+    if (res.profit !== undefined) { 
+        const pVal = document.getElementById('profitVal'); 
+        if(pVal) {
+            pVal.innerText = `R$ ${res.profit.toFixed(2).replace('.', ',')}`; 
+            pVal.style.color = res.profit >= 0 ? "#3fb950" : "#f85149"; 
+        } else {
+            // Caso o span não exista (dependendo do HTML da versão anterior), cria dinamicamente na área do Lucro da Sessão
+            const lucroBox = document.querySelector('div:contains("Lucro da Sessão:")');
+            if (lucroBox) {
+                lucroBox.innerHTML = `Lucro da Sessão: <b style="color:${res.profit >= 0 ? '#3fb950' : '#f85149'}">R$ ${res.profit.toFixed(2).replace('.', ',')}</b>`;
+            }
+        }
+    }
+});
+
+document.getElementById('btnManualCall').addEventListener('click', () => { 
+    saveRiskConfig(); 
+    const config = { accountType: document.getElementById('riskAccount').value, baseAmount: parseFloat(document.getElementById('riskAmount').value), payout: parseFloat(document.getElementById('riskPayout') ? document.getElementById('riskPayout').value : 85), maxGale: parseInt(document.getElementById('riskGale').value) };
+    socket.emit('manual_trade', { direction: 'CALL', config: config, symbol: document.getElementById('coinSelector').value, timeframe: document.getElementById('timeframeSelector').value }); 
+});
+
+document.getElementById('btnManualPut').addEventListener('click', () => { 
+    saveRiskConfig(); 
+    const config = { accountType: document.getElementById('riskAccount').value, baseAmount: parseFloat(document.getElementById('riskAmount').value), payout: parseFloat(document.getElementById('riskPayout') ? document.getElementById('riskPayout').value : 85), maxGale: parseInt(document.getElementById('riskGale').value) };
+    socket.emit('manual_trade', { direction: 'PUT', config: config, symbol: document.getElementById('coinSelector').value, timeframe: document.getElementById('timeframeSelector').value }); 
+});
+
+socket.on('update_balance', (data) => {
+    const el = document.getElementById(data.isDemo ? 'valDemo' : 'valReal'); 
+    el.innerText = `R$ ${data.balance}`; el.style.color = data.isDemo ? '#3fb950' : '#58a6ff'; setTimeout(() => { el.style.color = data.isDemo ? '#d29922' : '#3fb950'; }, 1000);
+});
+
+socket.on('win_balance_update', (data) => {
+    const el = document.getElementById(data.isDemo ? 'valDemo' : 'valReal');
+    let currentVal = parseFloat(el.innerText.replace('R$ ', '').replace(/\./g, '').replace(',', '.'));
+    if (!isNaN(currentVal)) {
+        el.innerText = `R$ ${(currentVal + data.prize).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        el.style.color = '#3fb950'; el.style.textShadow = '0 0 15px rgba(63, 185, 80, 0.8)'; setTimeout(() => { el.style.color = data.isDemo ? '#d29922' : '#3fb950'; el.style.textShadow = 'none'; }, 2000);
+    }
+});
+
+socket.on('sniper_success', (msg) => { console.log("✅ " + msg); });
+socket.on('sniper_error', (msg) => { alert("❌ Erro: " + msg); });
 
 socket.on('available_strategies', (strats) => {
     const sel = document.getElementById('strategySelector'); sel.innerHTML = '';
@@ -241,7 +357,7 @@ socket.on('history_dump', (historyArr) => {
     const telaMoeda = document.getElementById('coinSelector').value.toUpperCase();
     historyTableBody.innerHTML = ''; 
     historyArr.forEach(sig => {
-        if (sig.symbol.toUpperCase() !== telaMoeda) return; // 🛑 Barreira
+        if (sig.symbol.toUpperCase() !== telaMoeda) return; 
         const tr = document.createElement('tr'); tr.id = `sig-${sig.id}`; const isCall = sig.type === 'CALL';
         let colorClass = 'text-warning'; if (sig.status.includes('WIN')) colorClass = 'text-green'; else if (sig.status.includes('LOSS')) colorClass = 'text-red'; 
         tr.innerHTML = `<td class="text-muted">${sig.time}</td><td class="${isCall ? 'text-green' : 'text-red'}"><span style="font-size:10px; color:#8b949e; display:block;">${sig.symbol || 'BTCUSDT'}</span>${isCall ? '🟢 CALL' : '🔴 PUT'}</td><td id="res-${sig.id}" class="${colorClass}">${sig.status}</td>`;
@@ -261,7 +377,7 @@ socket.on('scoreboard', (data) => {
 
 socket.on('new_signal_history', (sig) => {
     const telaMoeda = document.getElementById('coinSelector').value.toUpperCase();
-    if (sig.symbol.toUpperCase() !== telaMoeda) return; // 🛑 Barreira
+    if (sig.symbol.toUpperCase() !== telaMoeda) return; 
     
     const tr = document.createElement('tr'); tr.id = `sig-${sig.id}`;
     let colorClass = 'text-warning'; 
