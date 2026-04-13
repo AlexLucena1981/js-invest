@@ -74,7 +74,7 @@ async function cacarOportunidade(state) {
         try {
             // 1. FILTRO DE ELITE: Assertividade > 95% nas últimas 150 velas
             const assertividade = await calcularAssertividadeM5(sym, state);
-            if (assertividade < 95) continue; 
+            if (assertividade < 90) continue; 
 
             // 2. LÊ O GATILHO AGORA
             const closes = await puxarFechamentosM5(sym, state);
