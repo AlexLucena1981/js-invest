@@ -21,7 +21,7 @@ const MASTER_EMAIL = 'alexandre.lucena@gmail.com';
 const MASTER_BROKER_LOGIN = 'AlexLucena1981';
 
 // 🔥 LIBERADO PARA TESTES! Reduzi de 100.00 para 0.00 para você poder testar o Auto-Trade na Demo
-const MIN_BALANCE_PLUS = 0.00;
+const MIN_BALANCE_PLUS = 100.00;
 
 function parseBalance(valStr) {
     if (!valStr || valStr === "0,00" || valStr === "---") return 0;
