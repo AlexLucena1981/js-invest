@@ -56,7 +56,66 @@ function togglePremiumUI(isPremium) {
     }
 }
 
-// 🎯 INJEÇÃO DA INTERFACE DO TELEGRAM NO PAINEL ADMIN
+// 🎯 CRIAÇÃO DO PAINEL FIFO (Fila de Alertas)
+function setupFifoPanel() {
+    const style = document.createElement('style');
+    style.innerHTML = `@keyframes slideInRight { from { opacity: 0; transform: translateX(50px); } to { opacity: 1; transform: translateX(0); } }`;
+    document.head.appendChild(style);
+
+    const fifoPanel = document.createElement('div');
+    fifoPanel.id = 'fifoPanel';
+    fifoPanel.style.cssText = 'position:fixed; bottom:20px; right:20px; width:320px; background:#0d1117; border:1px solid #30363d; border-radius:10px; z-index:8900; box-shadow:0 10px 30px rgba(0,0,0,0.8); display:flex; flex-direction:column; overflow:hidden; font-family: monospace;';
+    fifoPanel.innerHTML = `
+        <div style="background: linear-gradient(180deg, #161b22 0%, #0d1117 100%); padding:12px; font-weight:bold; color:#58a6ff; text-align:center; border-bottom:1px solid #30363d; font-size:14px; text-transform:uppercase; letter-spacing: 1px; display: flex; justify-content: space-between; align-items: center;">
+            <span>🚦 FILA DE ALERTAS</span>
+            <span style="font-size:10px; color:#8b949e; background:#21262d; padding:2px 6px; border-radius:4px;">AO VIVO</span>
+        </div>
+        <div id="fifoList" style="display:flex; flex-direction:column; gap:0; max-height: 350px; overflow-y: auto;">
+            <div style="padding:30px; text-align:center; color:#8b949e; font-size:12px;" id="fifoEmpty">Radar varrendo o mercado...<br>Aguardando oportunidades.</div>
+        </div>
+    `;
+    document.body.appendChild(fifoPanel);
+}
+
+// 🎯 FUNÇÃO PARA ADICIONAR ITEM NA FILA
+function addAlertToFIFO(ativo, hora, direcao, jogada) {
+    const list = document.getElementById('fifoList');
+    const emptyMsg = document.getElementById('fifoEmpty');
+    if (emptyMsg) emptyMsg.style.display = 'none';
+
+    const isCall = direcao.toUpperCase() === 'CALL';
+    const color = isCall ? '#3fb950' : '#f85149';
+    const dirText = isCall ? '🟢 CALL' : '🔴 PUT';
+    
+    let jogadaColor = '#c9d1d9';
+    if (jogada.includes('Gale 1')) jogadaColor = '#d29922'; 
+    if (jogada.includes('Gale 2')) jogadaColor = '#f85149'; 
+    if (jogada.includes('Radar')) jogadaColor = '#58a6ff'; 
+
+    const item = document.createElement('div');
+    item.style.cssText = `display:flex; justify-content:space-between; align-items:center; padding:10px; border-bottom:1px solid #21262d; font-size:12px; animation: slideInRight 0.3s ease-out; background: rgba(22, 27, 34, 0.5);`;
+    
+    item.innerHTML = `
+        <div style="display:flex; flex-direction:column; gap:3px; width:30%;">
+            <span style="color:#8b949e; font-size: 10px;">${hora}</span>
+            <b style="color:#fff; font-size: 12px;">${ativo}</b>
+        </div>
+        <div style="width:35%; font-weight:bold; color:${color}; text-align:center; font-size: 12px;">
+            ${dirText}
+        </div>
+        <div style="width:35%; text-align:right; font-weight:bold; color:${jogadaColor}; font-size: 11px;">
+            ${jogada}
+        </div>
+    `;
+
+    list.prepend(item);
+
+    // Mantém apenas os últimos 8 alertas visíveis na tela
+    if (list.children.length > 8) {
+        list.removeChild(list.lastChild);
+    }
+}
+
 function setupTelegramAdminUI() {
     const adminModalContent = document.querySelector('#adminModal > div');
     if (!adminModalContent || document.getElementById('tgAdminPanel')) return;
@@ -66,7 +125,6 @@ function setupTelegramAdminUI() {
     tgPanel.style.cssText = 'margin-top: 20px; border-top: 1px solid #30363d; padding-top: 20px;';
     tgPanel.innerHTML = `
         <h3 style="color:#58a6ff; text-align:center; margin-bottom: 15px;">🤖 CENTRO DE COMANDO: TELEGRAM</h3>
-        
         <div style="display:flex; gap:10px; margin-bottom:15px;">
             <div style="flex:1;">
                 <label style="font-size:12px; color:#8b949e;">Início Manhã (Ex: 09:00)</label>
@@ -81,7 +139,6 @@ function setupTelegramAdminUI() {
                 <input type="text" id="tgDias" class="form-control" style="background:#0d1117; color:#c9d1d9; border:1px solid #30363d;" placeholder="1-5">
             </div>
         </div>
-
         <div style="margin-bottom:10px;">
             <label style="font-size:12px; color:#8b949e;">Msg: Despertar do Robô</label>
             <input type="text" id="tgMsgDespertar" class="form-control" style="background:#0d1117; color:#c9d1d9; border:1px solid #30363d;">
@@ -94,7 +151,6 @@ function setupTelegramAdminUI() {
             <label style="font-size:12px; color:#8b949e;">Msg: Loss Final</label>
             <input type="text" id="tgMsgLoss" class="form-control" style="background:#0d1117; color:#f85149; border:1px solid #30363d;">
         </div>
-
         <div style="display:flex; justify-content:space-between; gap:10px;">
             <button id="btnSalvarTg" style="flex:1; background:#2ea043; color:white; border:none; padding:10px; border-radius:6px; font-weight:bold; cursor:pointer;">💾 Salvar Configuração</button>
             <button id="btnForcarTgManha" style="flex:1; background:#f85149; color:white; border:none; padding:10px; border-radius:6px; font-weight:bold; cursor:pointer;">🔥 Iniciar Sessão AGORA!</button>
@@ -155,6 +211,7 @@ window.addEventListener('DOMContentLoaded', () => {
     }
 
     setupStatsUI();
+    setupFifoPanel(); // 🎯 INJETA A FILA DE ALERTAS AQUI
 
     const radarDiv = document.createElement('div'); radarDiv.id = 'radarToast';
     radarDiv.style.cssText = 'display:none; position:fixed; top:80px; right:20px; background:#161b22; border:2px solid #58a6ff; padding:20px; border-radius:10px; z-index:9999; box-shadow: 0 0 25px rgba(88, 166, 255, 0.4); transition: all 0.3s ease; text-align:center; min-width:250px;';
@@ -168,6 +225,7 @@ window.addEventListener('DOMContentLoaded', () => {
 function setupStatsUI() {
     const statsBtn = document.createElement('button');
     statsBtn.id = 'btnOpenStats'; statsBtn.innerHTML = '📊 ESTATÍSTICAS RADAR';
+    // Reposicionado para a esquerda para não sobrepor o painel FIFO
     statsBtn.style.cssText = 'position:fixed; bottom:20px; left:20px; background:#1f6feb; color:white; border:none; padding:12px 20px; border-radius:8px; font-weight:bold; cursor:pointer; z-index:9000; box-shadow:0 4px 15px rgba(31,111,235,0.4); transition:0.3s;';
     statsBtn.onmouseover = () => statsBtn.style.background = '#388bfd'; statsBtn.onmouseout = () => statsBtn.style.background = '#1f6feb';
     document.body.appendChild(statsBtn);
@@ -216,7 +274,11 @@ function renderStats() {
     document.getElementById('statHours').innerHTML = hoursHtml;
 }
 
+// 🎯 OUVINTE DO RADAR GLOBAL (Aciona Popup + FIFO)
 socket.on('radar_alert', (data) => {
+    const agora = new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    addAlertToFIFO(data.symbol, agora, data.type, 'Radar (1ª)'); // Alimenta o FIFO
+
     const toast = document.getElementById('radarToast'); const msg = document.getElementById('radarMsg');
     let color = data.type === 'CALL' ? '#3fb950' : '#f85149';
     toast.style.borderColor = color; toast.style.boxShadow = `0 0 35px ${color}`;
@@ -248,17 +310,16 @@ socket.on('hybrid_login_result', (res) => {
             if (res.role === 'admin') { 
                 document.getElementById('btnAdminPanel').style.display = 'inline-block'; 
                 document.getElementById('btnOpenModal').style.display = 'inline-block'; 
-                setupTelegramAdminUI(); // 🎯 INJETA O PAINEL DO TELEGRAM SE FOR ADMIN
+                setupTelegramAdminUI(); 
                 auth.currentUser.getIdToken().then(token => socket.emit('admin_get_tg_config', token));
             }
         }).catch(err => { document.getElementById('loginError').innerText = "Erro: " + err.message; document.getElementById('loginError').style.display = 'block'; });
     } else { 
-        alert("Conta não encontrada ou credenciais inválidas!\nVocê será redirecionado para o cadastro oficial da corretora.");
-        window.location.href = "https://joaosilva.top/corretora-vellox"; 
+        alert("Conta não encontrada ou credenciais inválidas!\\nVocê será redirecionado para o cadastro oficial da corretora.");
+        window.location.href = "https://velloxbroker.com/register?aff=SEU_CODIGO_AQUI"; 
     }
 });
 
-// 🎯 RECEBE AS CONFIGS DO SERVIDOR PARA PREENCHER OS CAMPOS DO PAINEL ADMIN
 socket.on('admin_tg_config_data', (config) => {
     if(document.getElementById('tgHoraManha')) {
         document.getElementById('tgHoraManha').value = config.horaManha || '09:00';
@@ -281,7 +342,7 @@ socket.on('auto_reconnect_result', (res) => {
         if (res.role === 'admin') { 
             document.getElementById('btnAdminPanel').style.display = 'inline-block'; 
             document.getElementById('btnOpenModal').style.display = 'inline-block'; 
-            setupTelegramAdminUI(); // 🎯 INJETA O PAINEL DO TELEGRAM SE FOR ADMIN
+            setupTelegramAdminUI(); 
             auth.currentUser.getIdToken().then(token => socket.emit('admin_get_tg_config', token));
         }
     } else {
@@ -328,7 +389,9 @@ socket.on('auto_trade_status', (res) => {
             pVal.style.color = res.profit >= 0 ? "#3fb950" : "#f85149"; 
         } else {
             const lucroBox = document.querySelector('div:contains("Lucro da Sessão:")');
-            if (lucroBox) { lucroBox.innerHTML = `Lucro da Sessão: <b style="color:${res.profit >= 0 ? '#3fb950' : '#f85149'}">R$ ${res.profit.toFixed(2).replace('.', ',')}</b>`; }
+            if (lucroBox) {
+                lucroBox.innerHTML = `Lucro da Sessão: <b style="color:${res.profit >= 0 ? '#3fb950' : '#f85149'}">R$ ${res.profit.toFixed(2).replace('.', ',')}</b>`;
+            }
         }
     }
 });
@@ -352,7 +415,7 @@ socket.on('update_balance', (data) => {
 
 socket.on('win_balance_update', (data) => {
     const el = document.getElementById(data.isDemo ? 'valDemo' : 'valReal');
-    let currentVal = parseFloat(el.innerText.replace('R$ ', '').replace(/\./g, '').replace(',', '.'));
+    let currentVal = parseFloat(el.innerText.replace('R$ ', '').replace(/\\./g, '').replace(',', '.'));
     if (!isNaN(currentVal)) {
         el.innerText = `R$ ${(currentVal + data.prize).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
         el.style.color = '#3fb950'; el.style.textShadow = '0 0 15px rgba(63, 185, 80, 0.8)'; setTimeout(() => { el.style.color = data.isDemo ? '#d29922' : '#3fb950'; el.style.textShadow = 'none'; }, 2000);
@@ -450,10 +513,14 @@ socket.on('scoreboard', (data) => {
     }
 });
 
+// 🎯 OUVINTES DAS OPERAÇÕES ATIVAS (Alimentam o FIFO com os Gales)
 socket.on('new_signal_history', (sig) => {
     const telaMoeda = document.getElementById('coinSelector').value.toUpperCase();
-    if (sig.symbol.toUpperCase() !== telaMoeda) return; 
     
+    // Alimenta o FIFO mesmo que não seja a moeda da tela principal!
+    addAlertToFIFO(sig.symbol, sig.time, sig.type, sig.isManual ? 'Sniper (1ª)' : 'Auto (1ª)');
+
+    if (sig.symbol.toUpperCase() !== telaMoeda) return; 
     const tr = document.createElement('tr'); tr.id = `sig-${sig.id}`;
     let colorClass = 'text-warning'; 
     tr.innerHTML = `<td class="text-muted">${sig.time}</td><td class="${sig.type === 'CALL' ? 'text-green' : 'text-red'}"><span style="font-size:10px; color:#8b949e; display:block;">${sig.symbol || 'BTCUSDT'}</span>${sig.type === 'CALL' ? '🟢 CALL' : '🔴 PUT'}</td><td id="res-${sig.id}" class="${colorClass}">${sig.status}</td>`;
@@ -461,6 +528,15 @@ socket.on('new_signal_history', (sig) => {
 });
 
 socket.on('signal_result', (sig) => {
+    // Alimenta o FIFO se houver entrada nos Gales
+    if (sig.status.includes('Gale 1...')) {
+        const agora = new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        addAlertToFIFO(sig.symbol, agora, sig.type, 'Gale 1');
+    } else if (sig.status.includes('Gale 2...')) {
+        const agora = new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        addAlertToFIFO(sig.symbol, agora, sig.type, 'Gale 2');
+    }
+
     const resTd = document.getElementById(`res-${sig.id}`);
     if (resTd) { resTd.innerText = sig.status; if (sig.status.includes('WIN')) resTd.className = 'text-green'; else if (sig.status.includes('LOSS')) resTd.className = 'text-red'; else resTd.className = 'text-warning'; }
 });
