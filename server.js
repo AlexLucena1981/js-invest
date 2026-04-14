@@ -7,7 +7,6 @@ const { admin, db } = require('./config/firebase');
 const { initEngine, startConnection, getEngine, scanRadarHistory } = require('./services/engine');
 const { getVelloxBalance, dispararOrdemVellox } = require('./services/velloxApi');
 
-// 🎯 IMPORTANDO O GENERAL DO TELEGRAM
 const { initTelegramBot, reloadTelegramConfig, forcarSessaoTelegram } = require('./services/telegramBot');
 
 const app = express();
@@ -38,7 +37,6 @@ const state = {
 
 initEngine(io, state);
 
-// ⚙️ CONFIGURAÇÃO DINÂMICA DO TELEGRAM
 let tgConfigGlobal = {
     dias: '1-5', horaManha: '09:00', horaTarde: '15:00',
     msgDespertar: "👨‍💻 *Atenção!* Iniciando análise do mercado para a sessão...",
@@ -63,7 +61,6 @@ async function loadSystemData() {
         }
         io.emit('available_strategies', state.strategiesDB.map(s => ({ id: s.id, name: s.name })));
 
-        // 🎯 Carrega as Configs do Telegram do Firebase
         const tgDoc = await db.collection('settings').doc('telegram').get();
         if (tgDoc.exists) tgConfigGlobal = { ...tgConfigGlobal, ...tgDoc.data() };
         
@@ -149,6 +146,8 @@ io.on('connection', (socket) => {
             if (state.activeBrokers[uid]) { 
                 state.activeBrokers[uid].socketId = socket.id; 
                 state.activeBrokers[uid].isPremium = isPremium;
+                // 🔥 TRAVA DE SEGURANÇA: Se ele fez F5 ou reconectou, GARANTIMOS que o robô nasce desligado!
+                state.activeBrokers[uid].autoTradeActive = false; 
             } 
             else { 
                 state.activeBrokers[uid] = { uid: uid, socketId: socket.id, token: token, demoAccountId: '8', realAccountId: '0', isPremium: isPremium, autoTradeActive: false, config: { active: false, accountType: 'demo', baseAmount: 5, maxGale: 2, stopWin: 99999, stopLoss: 99999 }, sessionProfit: 0 }; 
@@ -196,9 +195,6 @@ io.on('connection', (socket) => {
         } else { socket.emit('sniper_error', result.msg); }
     });
 
-    // ==========================================
-    // 🎯 PAINEL ADMIN: CONTROLES DO TELEGRAM
-    // ==========================================
     socket.on('admin_get_tg_config', async (token) => {
         try {
             const decodedToken = await admin.auth().verifyIdToken(token);
@@ -273,11 +269,17 @@ io.on('connection', (socket) => {
         catch (e) { socket.emit('script_injection_result', { success: false, msg: 'Erro: ' + e.message }); }
     });
 
+    // 🔥 VACINA ZUMBI: QUANDO O UTILIZADOR FECHA A ABA, O ROBÔ DELE DESLIGA NA HORA!
     socket.on('disconnect', () => { 
-        for (let uid in state.activeBrokers) { if (state.activeBrokers[uid].socketId === socket.id) { state.activeBrokers[uid].socketId = null; } }
+        for (let uid in state.activeBrokers) { 
+            if (state.activeBrokers[uid].socketId === socket.id) { 
+                state.activeBrokers[uid].socketId = null; 
+                state.activeBrokers[uid].autoTradeActive = false; // DESLIGA O ROBÔ
+            } 
+        }
     });
 });
 
 loadSystemData();
 loadAvailableCoins();
-server.listen(3000, () => { console.log('🚀 Terminal JS Invest operando. (C/ Controle Dinâmico do Telegram)'); });
+server.listen(3000, () => { console.log('🚀 Terminal JS Invest operando. (C/ Trava de Segurança Auto-Trade)'); });
