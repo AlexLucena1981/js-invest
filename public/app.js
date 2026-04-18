@@ -31,6 +31,36 @@ function saveRiskConfig() {
     localStorage.setItem('jsInvestConfig', JSON.stringify(config));
 }
 
+function mostrarPopupBloqueioFreemium() {
+    if (document.getElementById('premiumBlockModal')) return;
+
+    const modal = document.createElement('div');
+    modal.id = 'premiumBlockModal';
+    modal.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:99999; display:flex; justify-content:center; align-items:center; backdrop-filter: blur(8px); animation: fadeIn 0.3s ease-out;';
+    
+    modal.innerHTML = `
+        <div style="background:#0d1117; border:2px solid #f85149; border-radius:15px; width:90%; max-width:400px; padding:30px; text-align:center; color:#c9d1d9; box-shadow: 0 0 40px rgba(248, 81, 73, 0.4); position:relative;">
+            <div style="font-size:50px; margin-bottom:10px; text-shadow: 0 0 15px rgba(248, 81, 73, 0.8);">🔒</div>
+            <h2 style="color:#f85149; margin-bottom:15px; font-weight:900; letter-spacing:1px;">AUTO-TRADE BLOQUEADO</h2>
+            <p style="font-size:15px; margin-bottom:20px; line-height:1.6; color:#8b949e;">
+                A ferramenta de <b style="color:#c9d1d9;">Robô de Alta Frequência</b> é um recurso exclusivo para contas com um saldo mínimo de R$100.
+            </p>
+            <div style="background:#161b22; padding:15px; border-radius:8px; border:1px solid #30363d; margin-bottom:25px;">
+                <span style="color:#8b949e; font-size:12px; display:block; margin-bottom:5px;">STATUS DA SUA CONTA</span>
+                <span style="color:#d29922; font-size:16px; font-weight:bold;">⚠️ MODO FREE (Apenas Sinais)</span>
+                <div style="margin-top:10px; font-size:12px; color:#58a6ff;">
+                    A sua banca real não atingiu o saldo mínimo de R$ 100,00. Deposite o valor exigido para libertar a automação!
+                </div>
+            </div>
+            <button onclick="document.getElementById('premiumBlockModal').remove()" style="background: linear-gradient(180deg, #f85149 0%, #da3633 100%); color:white; border:none; padding:12px 25px; border-radius:8px; font-weight:bold; cursor:pointer; width:100%; font-size:16px; transition:0.2s; box-shadow: 0 4px 15px rgba(248, 81, 73, 0.4);">
+                ENTENDI
+            </button>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+}
+
 function togglePremiumUI(isPremium) {
     const elsToToggle = ['riskAccount', 'riskAmount', 'riskPayout', 'riskGale', 'riskWin', 'riskLoss', 'btnToggleBot', 'btnManualCall', 'btnManualPut'];
     
@@ -56,7 +86,6 @@ function togglePremiumUI(isPremium) {
     }
 }
 
-// 🎯 CRIAÇÃO DO PAINEL FIFO (Fila de Alertas Inteligente)
 function setupFifoPanel() {
     const style = document.createElement('style');
     style.innerHTML = `@keyframes slideInRight { from { opacity: 0; transform: translateX(50px); } to { opacity: 1; transform: translateX(0); } }`;
@@ -77,13 +106,11 @@ function setupFifoPanel() {
     document.body.appendChild(fifoPanel);
 }
 
-// 🎯 GESTOR INTELIGENTE DA FILA (Atualiza e Auto-Limpa)
 function manageFifoAlert(data) {
     const list = document.getElementById('fifoList');
     const emptyMsg = document.getElementById('fifoEmpty');
     if (emptyMsg) emptyMsg.style.display = 'none';
 
-    // Se entrar um sinal real, remove o alerta de Radar daquela moeda para não duplicar
     if (!data.isRadar) {
         const existingRadar = document.getElementById('fifo-radar-' + data.symbol);
         if (existingRadar) existingRadar.remove();
@@ -95,7 +122,6 @@ function manageFifoAlert(data) {
     const colorDir = isCall ? '#3fb950' : '#f85149';
     const dirText = isCall ? '🟢 CALL' : '🔴 PUT';
 
-    // Inteligência de Cores
     let jogadaColor = '#c9d1d9';
     if (data.stepText.includes('Gale 1')) jogadaColor = '#d29922'; 
     if (data.stepText.includes('Gale 2')) jogadaColor = '#f85149'; 
@@ -103,7 +129,6 @@ function manageFifoAlert(data) {
     if (data.stepText.includes('WIN')) jogadaColor = '#3fb950';
     if (data.stepText.includes('LOSS')) jogadaColor = '#f85149';
 
-    // Se não existe, cria! Se existe, só atualiza para não poluir
     if (!item) {
         item = document.createElement('div');
         item.id = 'fifo-' + data.id;
@@ -124,13 +149,11 @@ function manageFifoAlert(data) {
         </div>
     `;
 
-    // Mantém a tela limpa: empurra para fora os muito velhos
     if (list.children.length > 8 && !data.isEnd) {
         const last = list.lastElementChild;
         if (last && last.id !== 'fifoEmpty' && last !== item) last.remove();
     }
 
-    // 🧹 Auto-Limpeza do Radar (40 segundos)
     if (data.isRadar) {
         setTimeout(() => {
             if (document.getElementById('fifo-' + data.id)) {
@@ -140,7 +163,6 @@ function manageFifoAlert(data) {
         }, 40000);
     }
 
-    // 🧹 Auto-Limpeza de Sinais Finalizados (Win ou Loss saem em 5 segundos)
     if (data.isEnd) {
         setTimeout(() => {
             if (document.getElementById('fifo-' + data.id)) {
@@ -253,7 +275,7 @@ window.addEventListener('DOMContentLoaded', () => {
     }
 
     setupStatsUI();
-    setupFifoPanel(); // 🎯 INICIA O NOVO PAINEL DE FILA AQUI
+    setupFifoPanel(); 
 
     const radarDiv = document.createElement('div'); radarDiv.id = 'radarToast';
     radarDiv.style.cssText = 'display:none; position:fixed; top:80px; right:20px; background:#161b22; border:2px solid #58a6ff; padding:20px; border-radius:10px; z-index:9999; box-shadow: 0 0 25px rgba(88, 166, 255, 0.4); transition: all 0.3s ease; text-align:center; min-width:250px;';
@@ -315,11 +337,9 @@ function renderStats() {
     document.getElementById('statHours').innerHTML = hoursHtml;
 }
 
-// 🎯 INTEGRAÇÃO DO RADAR COM A NOVA FILA
 socket.on('radar_alert', (data) => {
     const agora = new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', second: '2-digit' });
     
-    // Manda para a Fila Inteligente
     manageFifoAlert({
         id: 'radar-' + data.symbol,
         symbol: data.symbol,
@@ -358,28 +378,28 @@ socket.on('hybrid_login_result', (res) => {
             
             togglePremiumUI(res.isPremium);
 
+            if (!res.isPremium) {
+                setTimeout(() => { mostrarPopupBloqueioFreemium(); }, 1500); 
+            }
+
             if (res.role === 'admin') { 
                 document.getElementById('btnAdminPanel').style.display = 'inline-block'; 
                 document.getElementById('btnOpenModal').style.display = 'inline-block'; 
                 setupTelegramAdminUI(); 
+                // 🎯 AQUI É O SEGREDO: O App pede os dados ANTES de clicar
                 auth.currentUser.getIdToken().then(token => socket.emit('admin_get_tg_config', token));
             }
         }).catch(err => { document.getElementById('loginError').innerText = "Erro: " + err.message; document.getElementById('loginError').style.display = 'block'; });
     } else { 
         alert("Conta não encontrada ou credenciais inválidas!\\nVocê será redirecionado para o cadastro oficial da corretora.");
-        window.location.href = "https://velloxbroker.com/register?aff=SEU_CODIGO_AQUI"; 
+        window.location.href = "https://joaosilva.top/corretora-vellox"; 
     }
 });
 
+// 🎯 E AQUI É ONDE ELE PREENCHE. Se a aba do Modal for aberta, os campos já vão ter a informação.
 socket.on('admin_tg_config_data', (config) => {
-    if(document.getElementById('tgHoraManha')) {
-        document.getElementById('tgHoraManha').value = config.horaManha || '09:00';
-        document.getElementById('tgHoraTarde').value = config.horaTarde || '15:00';
-        document.getElementById('tgDias').value = config.dias || '1-5';
-        document.getElementById('tgMsgDespertar').value = config.msgDespertar || '';
-        document.getElementById('tgMsgWin').value = config.msgWin || '';
-        document.getElementById('tgMsgLoss').value = config.msgLoss || '';
-    }
+    // Como a div só é montada quando clica no botão, vamos salvá-la numa variável global temporária
+    window.tempTgConfig = config;
 });
 
 socket.on('auto_reconnect_result', (res) => {
@@ -389,6 +409,10 @@ socket.on('auto_reconnect_result', (res) => {
         document.getElementById('manualTradePanel').style.display = 'flex'; 
         
         togglePremiumUI(res.isPremium);
+
+        if (!res.isPremium) {
+            setTimeout(() => { mostrarPopupBloqueioFreemium(); }, 1500); 
+        }
 
         if (res.role === 'admin') { 
             document.getElementById('btnAdminPanel').style.display = 'inline-block'; 
@@ -466,7 +490,7 @@ socket.on('update_balance', (data) => {
 
 socket.on('win_balance_update', (data) => {
     const el = document.getElementById(data.isDemo ? 'valDemo' : 'valReal');
-    let currentVal = parseFloat(el.innerText.replace('R$ ', '').replace(/\\./g, '').replace(',', '.'));
+    let currentVal = parseFloat(el.innerText.replace('R$ ', '').replace(/\./g, '').replace(',', '.'));
     if (!isNaN(currentVal)) {
         el.innerText = `R$ ${(currentVal + data.prize).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
         el.style.color = '#3fb950'; el.style.textShadow = '0 0 15px rgba(63, 185, 80, 0.8)'; setTimeout(() => { el.style.color = data.isDemo ? '#d29922' : '#3fb950'; el.style.textShadow = 'none'; }, 2000);
@@ -564,11 +588,9 @@ socket.on('scoreboard', (data) => {
     }
 });
 
-// 🎯 INTEGRAÇÃO DOS SINAIS E GALES NA NOVA FILA FIFO
 socket.on('new_signal_history', (sig) => {
     const telaMoeda = document.getElementById('coinSelector').value.toUpperCase();
     
-    // Alimenta a Fila Inteligente (Mesmo que o sinal não seja da moeda da tela principal)
     manageFifoAlert({
         id: 'sig-' + sig.id,
         symbol: sig.symbol,
@@ -587,7 +609,6 @@ socket.on('new_signal_history', (sig) => {
 });
 
 socket.on('signal_result', (sig) => {
-    // 🎯 Inteligência da Fila: Atualiza a linha existente e decide se apaga
     let stepText = '';
     let isEnd = false;
     
@@ -597,7 +618,7 @@ socket.on('signal_result', (sig) => {
         stepText = sig.status.includes('WIN') ? 'WIN 🎯' : 'LOSS 🔴';
         isEnd = true;
     } else {
-        stepText = sig.status; // Fallback
+        stepText = sig.status; 
     }
 
     manageFifoAlert({
@@ -615,7 +636,22 @@ socket.on('signal_result', (sig) => {
 });
 
 const scriptModal = document.getElementById('adminModal');
-if(document.getElementById('btnAdminPanel')) document.getElementById('btnAdminPanel').addEventListener('click', () => { scriptModal.style.display = 'flex'; auth.currentUser.getIdToken().then(token => socket.emit('admin_get_users', token)); });
+if(document.getElementById('btnAdminPanel')) {
+    document.getElementById('btnAdminPanel').addEventListener('click', () => { 
+        scriptModal.style.display = 'flex'; 
+        auth.currentUser.getIdToken().then(token => socket.emit('admin_get_users', token)); 
+        
+        // 🎯 AQUI PREENCHE O PAINEL DE COMANDO DO TELEGRAM AO ABRIR O MODAL
+        if (window.tempTgConfig) {
+            if(document.getElementById('tgHoraManha')) document.getElementById('tgHoraManha').value = window.tempTgConfig.horaManha || '09:00';
+            if(document.getElementById('tgHoraTarde')) document.getElementById('tgHoraTarde').value = window.tempTgConfig.horaTarde || '15:00';
+            if(document.getElementById('tgDias')) document.getElementById('tgDias').value = window.tempTgConfig.dias || '1-5';
+            if(document.getElementById('tgMsgDespertar')) document.getElementById('tgMsgDespertar').value = window.tempTgConfig.msgDespertar || '';
+            if(document.getElementById('tgMsgWin')) document.getElementById('tgMsgWin').value = window.tempTgConfig.msgWin || '';
+            if(document.getElementById('tgMsgLoss')) document.getElementById('tgMsgLoss').value = window.tempTgConfig.msgLoss || '';
+        }
+    });
+}
 if(document.getElementById('btnCancelAdmin')) document.getElementById('btnCancelAdmin').addEventListener('click', () => { scriptModal.style.display = 'none'; });
 
 const stratModal = document.getElementById('scriptModal');
