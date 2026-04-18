@@ -64,9 +64,10 @@ function evaluateStrategy(prices, strategyConfig) {
     if (!prices || prices.length < 50) return null;
 
     // =====================================================================
-    // 🎯 BYPASS DO PAINEL ADMIN (ESTRATÉGIA OFICIAL DA LIVE / STRESS TEST)
+    // 🎯 BYPASS UNIVERSAL DO PAINEL ADMIN (STRESS TEST)
+    // Lê as variáveis injetadas pelo server.js independentemente do nome!
     // =====================================================================
-    if (strategyConfig.name && strategyConfig.name.toLowerCase().includes('live')) {
+    if (strategyConfig.rsiOverbought !== undefined || (strategyConfig.name && strategyConfig.name.toLowerCase().includes('live'))) {
         const rsiPeriod = 14; 
         // Puxa as variáveis vivas que o server.js injetou do Firebase
         const rsiOverbought = strategyConfig.rsiOverbought || 65; 
@@ -88,14 +89,13 @@ function evaluateStrategy(prices, strategyConfig) {
             if (currentPrice >= lastBB.upper && lastRSI >= rsiOverbought) return 'PUT';
         }
         
-        return null; // Se não houver gatilho, continua a varrer o mercado
+        return null; // MODO METRALHADORA: Se não houver gatilho, continua a varrer o mercado!
     }
 
     // =====================================================================
-    // ⚙️ LÓGICAS ANTIGAS (MANTIDAS INTACTAS PARA O SEU SISTEMA)
+    // ⚙️ LÓGICAS ANTIGAS (MANTIDAS INTACTAS PARA O SEU SISTEMA JSON)
     // =====================================================================
     
-    // Lógica especial para estratégias complexas manuais
     if (strategyConfig.isComplex && strategyConfig.id === 'rei_das_binarias') {
         let buf1 = [];
         for (let i = 10; i >= 0; i--) {
@@ -116,7 +116,6 @@ function evaluateStrategy(prices, strategyConfig) {
         return null;
     }
 
-    // Lógica para as estratégias criadas dinamicamente no painel JSON
     let current = { price: prices[prices.length - 1] }; 
     let prev = { price: prices[prices.length - 2] };
     

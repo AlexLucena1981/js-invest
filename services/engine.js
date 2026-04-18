@@ -11,7 +11,6 @@ const radarLastCandleProcessed = {};
 const radarCoins = [
     'BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'ADAUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT', 
     'EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'USDCAD', 'AAPL', 'XAUUSD',                           
-    // 🔥 MEGA LISTA OTC
     'EURUSDOTC', 'AUDJPYOTC', 'EURJPYOTC', 'EURAUDOTC', 'AUDCHFOTC', 'GBPJPYOTC', 
     'CADCHFOTC', 'EURNZDOTC', 'GBPAUDOTC', 'NZDJPYOTC', 'GBPCHFOTC', 'USDCHFOTC', 
     'EURCADOTC', 'EURCHFOTC',
@@ -23,16 +22,14 @@ const radarCoins = [
 
 const cryptoBinance = ['BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'ADAUSDT', 'BNBUSDT', 'DOGEUSDT', 'SOLUSDT', 'XRPUSDT'];
 
-// 🛠️ O CANIVETE SUÍÇO DO OTC
+// ⏱️ FUNÇÃO DE RESPIRO
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
 async function fetchOtcWithFallback(symbol, resolution, from, to, countback, headers) {
     const symUpper = symbol.toUpperCase();
     const baseName = symUpper.replace('OTC', '').replace('-', '').replace('_', ''); 
     const variacoes = [
-        `${baseName}OTC`,       
-        `${baseName}-OTC`,      
-        `${baseName}_otc`,      
-        `${baseName}_OTC`,      
-        `${baseName.substring(0,3)}/${baseName.substring(3)} (OTC)` 
+        `${baseName}OTC`, `${baseName}-OTC`, `${baseName}_otc`, `${baseName}_OTC`, `${baseName.substring(0,3)}/${baseName.substring(3)} (OTC)` 
     ];
 
     for (let variante of variacoes) {
@@ -42,6 +39,7 @@ async function fetchOtcWithFallback(symbol, resolution, from, to, countback, hea
                 return res.data; 
             }
         } catch(e) {}
+        await sleep(150); // ⏱️ Respiro
     }
     return null; 
 }
@@ -80,12 +78,12 @@ function initEngine(_io, _state) {
 
                         if (isCrypto) {
                             const res = await axios.get(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=${tf}&limit=151`);
-                            if (!res.data) continue;
+                            if (!res.data) { await sleep(200); continue; }
                             const klines = res.data;
                             lastClosedCandleTime = klines[klines.length - 2][0]; 
                             closes = klines.slice(0, -1).map(k => parseFloat(k[4])); 
                         } else {
-                            if(!state.globalDynamicCookie) continue; 
+                            if(!state.globalDynamicCookie) { await sleep(200); continue; }
                             const resolution = tfMinutes.toString();
                             const to = Math.floor(Date.now() / 1000); 
                             const from = to - (151 * tfMinutes * 60); 
@@ -99,11 +97,12 @@ function initEngine(_io, _state) {
                                 lastClosedCandleTime = timesArr[timesArr.length - 2] * 1000;
                                 closes = closesArr.slice(0, -1);
                             } else {
+                                await sleep(200);
                                 continue; 
                             }
                         }
 
-                        if (radarLastCandleProcessed[sym] === lastClosedCandleTime) continue;
+                        if (radarLastCandleProcessed[sym] === lastClosedCandleTime) { await sleep(200); continue; }
                         if (closes.length > 150) closes = closes.slice(closes.length - 150); 
                         
                         const signal = evaluateStrategy(closes, radarStrat);
@@ -132,6 +131,7 @@ function initEngine(_io, _state) {
                             io.emit('radar_stats_update', state.radarStats);
                         }
                     } catch(e) {} 
+                    await sleep(200); // ⏱️ Respiro entre cada ativo do Radar
                 }
             }
         } catch(err) {}
@@ -157,16 +157,16 @@ async function scanRadarHistory() {
 
                 if (isCrypto) {
                     const res = await axios.get(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=${tf}&limit=500`);
-                    if (!res.data) continue;
+                    if (!res.data) { await sleep(200); continue; }
                     timesArr = res.data.map(k => k[0]); closesArr = res.data.map(k => parseFloat(k[4]));
                 } else {
-                    if(!state.globalDynamicCookie) continue;
+                    if(!state.globalDynamicCookie) { await sleep(200); continue; }
                     const resolution = tfMinutes.toString();
                     const to = Math.floor(Date.now() / 1000); const from = to - (500 * tfMinutes * 60); 
                     const otcHeaders = { 'accept': '*/*', 'Cookie': state.globalDynamicCookie, 'X-Requested-With': 'XMLHttpRequest', 'referer': 'https://velloxbroker.com/traderoom', 'user-agent': 'Mozilla/5.0' };
                     
                     const otcData = await fetchOtcWithFallback(sym, resolution, from, to, 500, otcHeaders);
-                    if (otcData) { timesArr = otcData.t.map(t => t * 1000); closesArr = otcData.c; } else { continue; }
+                    if (otcData) { timesArr = otcData.t.map(t => t * 1000); closesArr = otcData.c; } else { await sleep(200); continue; }
                 }
                 
                 let tempCloses = [];
@@ -202,6 +202,7 @@ async function scanRadarHistory() {
                     }
                 }
             } catch(e) {}
+            await sleep(200); // ⏱️ Respiro anti-bloqueio histórico
         }
         io.emit('radar_stats_update', state.radarStats);
     } catch(err) {}

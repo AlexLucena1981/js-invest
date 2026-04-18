@@ -30,10 +30,12 @@ let estadoSessao = { ativa: false, permitirSinais: false, wins: 0, losses: 0, si
 let activeCronJobs = [];
 let configLocal = {};
 let motorCacaId = null;
-let isProcessing = false; // 🔥 TRAVA ANTI-ENGARRAFAMENTO
+let isProcessing = false; 
 
-// 🔥 MEMÓRIA CACHE DOS ATIVOS OTC (Para não esgotar a API)
 const activeOtcSuffixes = {};
+
+// ⏱️ FUNÇÃO DE RESPIRO (Evita que a Corretora bloqueie o nosso IP)
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 function parseTimeToCron(timeStr, addMinutes, dias) {
     let [h, m] = timeStr.split(':').map(Number);
@@ -44,7 +46,7 @@ function parseTimeToCron(timeStr, addMinutes, dias) {
 }
 
 async function initTelegramBot(stateGlobais, configFirebase) {
-    console.log("🤖 General Telegram: MODO STRESS TEST (Cache Memory & Anti-Zumbi) 🚀");
+    console.log("🤖 General Telegram: MODO FANTASMA (Anti-Bloqueio) Ativado! 🚀");
     configLocal = configFirebase;
     agendarSessoes(stateGlobais);
     iniciarMotorContinuo(stateGlobais);
@@ -83,7 +85,6 @@ function iniciarMotorContinuo(stateGlobais) {
     if (motorCacaId) clearInterval(motorCacaId);
 
     motorCacaId = setInterval(async () => {
-        // 🔥 Se o motor anterior ainda estiver a ler gráficos lentos, ignora este ciclo!
         if (!estadoSessao.ativa || isProcessing) return; 
         isProcessing = true;
 
@@ -95,7 +96,6 @@ function iniciarMotorContinuo(stateGlobais) {
             if (estadoSessao.sinalRodando) {
                 const op = estadoSessao.sinalRodando;
                 
-                // DISPARO DO SINAL
                 if (op.status === 'PRE_ALERTA') {
                     const minAnterior = (op.minutoEntrada - 1 + 60) % 60;
                     if ((min === minAnterior && sec >= 50) || min === op.minutoEntrada) {
@@ -103,7 +103,6 @@ function iniciarMotorContinuo(stateGlobais) {
                         atirarSinalDefinitivo(op);
                     }
                 } 
-                // CONFERÊNCIA DO RESULTADO E PROTEÇÃO DEADLOCK
                 else if (op.status === 'OPERANDO') {
                     if (min === op.minutoVerificacao && sec >= 4 && sec <= 20) {
                         if (!op.verificando) {
@@ -112,7 +111,6 @@ function iniciarMotorContinuo(stateGlobais) {
                         }
                     }
                     
-                    // DEADLOCK: Se passaram 2 minutos e a corretora não deu os dados, limpa a fila!
                     const minsPassados = (min - op.minutoVerificacao + 60) % 60;
                     if (minsPassados >= 2 && minsPassados < 50) {
                         bot.sendMessage(CHAT_ID, `⚠️ *Aviso:* A corretora atrasou os dados finais de ${op.nomeAmigavel}. Cancelando análise fantasma.`, { parse_mode: 'Markdown' });
@@ -126,7 +124,7 @@ function iniciarMotorContinuo(stateGlobais) {
         } catch (e) {
             console.error("Erro no motor contínuo:", e);
         } finally {
-            isProcessing = false; // Liberta a trava para o próximo ciclo
+            isProcessing = false; 
         }
     }, 3000); 
 }
@@ -136,20 +134,20 @@ async function cacarOportunidade(state) {
     const strategy = state.strategiesDB.find(s => s.name.toLowerCase().includes('live')) || state.strategiesDB[0];
     
     for (let sym of ativosTestes) {
-        // Se encontrou um sinal a meio do loop, sai imediatamente!
         if (estadoSessao.sinalRodando) break; 
 
         try {
             if (estadoSessao.ultimoSinalEnviado === `${sym}_${minAtual}`) continue;
 
-            // 🔥 PUXA AS VELAS APENAS 1 VEZ POR ATIVO!
             const velas = await puxarVelasM1(sym, state);
-            if (!velas || velas.length < 150) continue;
+            if (!velas || velas.length < 150) {
+                await sleep(200); // ⏱️ Respiro para não ser bloqueado!
+                continue;
+            }
 
-            // 🔥 CÁLCULO LOCAL DA ASSERTIVIDADE (Poupa a API da corretora)
-            const assertividade = calcularAssertividadeLocal(velas, strategy);
-            if (assertividade < 80) continue; 
-
+            // 🔥 TRAVA DE ASSERTIVIDADE DESLIGADA PARA O STRESS TEST (Metralhadora 100% Livre)
+            // Não bloqueamos mais moedas que ficaram horas sem bater na banda.
+            
             const closes = velas.map(k => parseFloat(k[4]));
             const sinal = evaluateStrategy(closes, strategy);
 
@@ -172,34 +170,11 @@ async function cacarOportunidade(state) {
                     nomeAmigavel: nomeAmigavel,
                     verificando: false
                 };
-                break; // Achou sinal, trava a busca global!
+                break; 
             }
+            await sleep(200); // ⏱️ Respiro antes de consultar a próxima moeda
         } catch (e) {}
     }
-}
-
-// 🎯 FUNÇÃO MESTRA: Calcula assertividade usando a RAM do servidor, sem internet!
-function calcularAssertividadeLocal(velas, strategy) {
-    let wins = 0; let totalSinais = 0;
-    
-    for (let i = 100; i < velas.length - 3; i++) {
-        const histCloses = velas.slice(0, i).map(k => parseFloat(k[4])); 
-        const sig = evaluateStrategy(histCloses, strategy);
-        
-        if (sig) {
-            totalSinais++;
-            const o0 = parseFloat(velas[i][1]); const c0 = parseFloat(velas[i][4]);
-            const o1 = parseFloat(velas[i+1][1]); const c1 = parseFloat(velas[i+1][4]);
-            const o2 = parseFloat(velas[i+2][1]); const c2 = parseFloat(velas[i+2][4]);
-
-            const win0 = (sig === 'CALL' && c0 > o0) || (sig === 'PUT' && c0 < o0);
-            const win1 = (sig === 'CALL' && c1 > o1) || (sig === 'PUT' && c1 < o1);
-            const win2 = (sig === 'CALL' && c2 > o2) || (sig === 'PUT' && c2 < o2);
-            
-            if (win0 || win1 || win2) wins++;
-        }
-    }
-    return totalSinais > 0 ? (wins / totalSinais) * 100 : 0;
 }
 
 function formatarMensagem(template, dados) {
@@ -223,9 +198,7 @@ function atirarSinalDefinitivo(operacao) {
     const agora = new Date();
     let hora = agora.getHours();
     
-    if (agora.getMinutes() === 59 && operacao.minutoEntrada === 0) {
-        hora = (hora + 1) % 24;
-    }
+    if (agora.getMinutes() === 59 && operacao.minutoEntrada === 0) hora = (hora + 1) % 24;
 
     let minGale = (operacao.minutoEntrada + 1) % 60;
     let hrGale = hora;
@@ -243,13 +216,7 @@ function atirarSinalDefinitivo(operacao) {
     
     const templateOriginal = configLocal.msgSinal || "⚡ *ALERTA DE TOQUE (OTC/M1)* ⚡\\n\\n💵 Moeda = {MOEDA}\\n⏰ Expiração = 1 Minuto\\n🛎 Entrada = {HORA_ENTRADA}\\n{DIRECAO}\\n\\nGale 1 - {HORA_GALE}\\n\\n👉🏼 Se necessário, fazer 1 Gale.\\n\\n➡️ [Clique aqui para abrir a Vellox](https://velloxbroker.com)";
 
-    const msg = formatarMensagem(templateOriginal, {
-        moeda: operacao.nomeAmigavel, 
-        direcao: acao,
-        horaEntrada: horaEntrada,
-        horaGale: horaGale
-    });
-    
+    const msg = formatarMensagem(templateOriginal, { moeda: operacao.nomeAmigavel, direcao: acao, horaEntrada: horaEntrada, horaGale: horaGale });
     bot.sendMessage(CHAT_ID, msg, { parse_mode: 'Markdown', disable_web_page_preview: true });
 }
 
@@ -310,7 +277,6 @@ async function puxarVelasM1(symbol, state) {
             const from = to - (150 * 60); 
             const otcHeaders = { 'accept': '*/*', 'Cookie': state.globalDynamicCookie, 'X-Requested-With': 'XMLHttpRequest', 'referer': 'https://velloxbroker.com/traderoom', 'user-agent': 'Mozilla/5.0' };
             
-            // 🔥 SISTEMA DE CACHE: Se já soubermos o formato que a corretora aceita, usamos ele direto!
             if (activeOtcSuffixes[symUpper]) {
                 try {
                     let res = await axios.get(`https://velloxbroker.com/publicapi/tradingview/udf-history?symbol=${activeOtcSuffixes[symUpper]}&resolution=1&from=${from}&to=${to}&countback=150&site=velloxbroker.com`, { headers: otcHeaders });
@@ -321,16 +287,12 @@ async function puxarVelasM1(symbol, state) {
                         }
                         return klines;
                     }
-                } catch(e) { delete activeOtcSuffixes[symUpper]; } // Se falhar, apaga da cache e tenta buscar de novo
+                } catch(e) { delete activeOtcSuffixes[symUpper]; } 
             }
 
             const baseName = symUpper.replace('OTC', '').replace('-', '').replace('_', ''); 
             const variacoes = [
-                `${baseName}OTC`,       
-                `${baseName}-OTC`,      
-                `${baseName}_otc`,      
-                `${baseName}_OTC`,      
-                `${baseName.substring(0,3)}/${baseName.substring(3)} (OTC)` 
+                `${baseName}OTC`, `${baseName}-OTC`, `${baseName}_otc`, `${baseName}_OTC`, `${baseName.substring(0,3)}/${baseName.substring(3)} (OTC)` 
             ];
 
             let klines = null;
@@ -340,7 +302,7 @@ async function puxarVelasM1(symbol, state) {
                     let res = await axios.get(`https://velloxbroker.com/publicapi/tradingview/udf-history?symbol=${variante}&resolution=1&from=${from}&to=${to}&countback=150&site=velloxbroker.com`, { headers: otcHeaders });
                     
                     if (res.data && res.data.s === 'ok' && res.data.c && res.data.c.length > 0) {
-                        activeOtcSuffixes[symUpper] = variante; // SALVA NA MEMÓRIA CACHE!
+                        activeOtcSuffixes[symUpper] = variante; 
                         klines = [];
                         for(let i=0; i<res.data.c.length; i++){
                             klines.push([res.data.t[i]*1000, res.data.o[i], res.data.h ? res.data.h[i] : res.data.o[i], res.data.l ? res.data.l[i] : res.data.c[i], res.data.c[i]]);
@@ -348,6 +310,7 @@ async function puxarVelasM1(symbol, state) {
                         break; 
                     }
                 } catch(e) {}
+                await sleep(150); // ⏱️ Respiro nas variações de nome
             }
 
             return klines;
