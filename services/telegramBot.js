@@ -42,7 +42,7 @@ function parseTimeToCron(timeStr, addMinutes, dias) {
 }
 
 async function initTelegramBot(stateGlobais, configFirebase) {
-    console.log("🤖 General Telegram: MODO STRESS TEST M1 (Pré-Alerta + Disparo) 🚀");
+    console.log("🤖 General Telegram: MODO STRESS TEST (Blindado Anti-Zumbi) 🚀");
     configLocal = configFirebase;
     agendarSessoes(stateGlobais);
     iniciarMotorContinuo(stateGlobais);
@@ -79,7 +79,7 @@ function iniciarSessao(turno) {
     bot.sendMessage(CHAT_ID, msg, { parse_mode: 'Markdown' });
 }
 
-// 🎯 O MOTOR CORRIGIDO (FLUXO EM 2 ETAPAS)
+// 🎯 O MOTOR DE HFT BLINDADO (RODA A CADA 3 SEGUNDOS)
 function iniciarMotorContinuo(stateGlobais) {
     if (motorCacaId) clearInterval(motorCacaId);
 
@@ -90,26 +90,40 @@ function iniciarMotorContinuo(stateGlobais) {
         const sec = agora.getSeconds();
 
         if (estadoSessao.sinalRodando) {
+            const op = estadoSessao.sinalRodando;
             
-            // ETAPA 2: O relógio bateu nos 50 segundos? Hora de enviar o Sinal Oficial!
-            if (estadoSessao.sinalRodando.status === 'PRE_ALERTA') {
-                if (sec >= 50 || min === estadoSessao.sinalRodando.minutoEntrada) {
-                    estadoSessao.sinalRodando.status = 'OPERANDO';
-                    atirarSinalDefinitivo(estadoSessao.sinalRodando);
+            // ETAPA 2: DISPARO DO SINAL
+            if (op.status === 'PRE_ALERTA') {
+                const minAnterior = (op.minutoEntrada - 1 + 60) % 60;
+                // Se bateu nos 50s do minuto anterior à entrada, atira!
+                if ((min === minAnterior && sec >= 50) || min === op.minutoEntrada) {
+                    op.status = 'OPERANDO';
+                    atirarSinalDefinitivo(op);
                 }
             } 
-            // ETAPA 3: Acompanha o resultado após a vela fechar
-            else if (estadoSessao.sinalRodando.status === 'OPERANDO') {
-                if (min === estadoSessao.sinalRodando.minutoVerificacao && sec >= 4 && sec <= 12) {
-                    await conferirResultado(stateGlobais);
+            // ETAPA 3: CONFERÊNCIA DO RESULTADO E PROTEÇÃO DEADLOCK
+            else if (op.status === 'OPERANDO') {
+                if (min === op.minutoVerificacao && sec >= 4 && sec <= 15) {
+                    if (!op.verificando) {
+                        op.verificando = true;
+                        await conferirResultado(stateGlobais);
+                    }
+                }
+                
+                // 🔥 PROTEÇÃO ANTI-TRAVAMENTO (DEADLOCK PREVENTION)
+                // Se passaram 2 minutos além do tempo de verificar e a corretora não respondeu, limpa a memória!
+                const minsPassados = (min - op.minutoVerificacao + 60) % 60;
+                if (minsPassados >= 2 && minsPassados < 50) {
+                    bot.sendMessage(CHAT_ID, `⚠️ *Aviso de Sistema:* A corretora falhou em enviar os dados finais de ${op.nomeAmigavel}. Abortando operação fantasma para proteger a fila.`, { parse_mode: 'Markdown' });
+                    estadoSessao.sinalRodando = null;
                 }
             }
             
         } else if (estadoSessao.permitirSinais) {
-            // ETAPA 1: O Radar procura o Toque para enviar o Pré-Alerta
+            // ETAPA 1: O Radar procura o Toque 
             await cacarOportunidade(stateGlobais);
         }
-    }, 5000); 
+    }, 3000); 
 }
 
 async function cacarOportunidade(state) {
@@ -120,7 +134,7 @@ async function cacarOportunidade(state) {
             if (estadoSessao.ultimoSinalEnviado === `${sym}_${minAtual}`) continue;
 
             const assertividade = await calcularAssertividadeM1(sym, state);
-            if (assertividade < 85) continue; 
+            if (assertividade < 80) continue; // Baixei ligeiramente para garantir o Stress Test
 
             const velas = await puxarVelasM1(sym, state);
             if (!velas || velas.length < 150) continue;
@@ -135,22 +149,21 @@ async function cacarOportunidade(state) {
                 
                 const nomeAmigavel = dicionarioAtivos[sym] || sym;
                 
-                // 🚀 BATEU NA BANDA! ENVIA O PRÉ-ALERTA AGORA!
                 enviarPreAlerta(sym, sinal, nomeAmigavel);
 
-                // Agenda a operação para a virada do minuto
-                const agora = new Date();
-                const dataEntrada = new Date(agora);
-                if (agora.getSeconds() >= 50) { dataEntrada.setMinutes(dataEntrada.getMinutes() + 1); }
+                // Define as exatas coordenadas de entrada (Sempre a virada do próximo minuto)
+                const minEntrada = (minAtual + 1) % 60;
+                const minVerificacao = (minAtual + 2) % 60;
                 
                 estadoSessao.sinalRodando = { 
                     symbol: sym, 
                     type: sinal, 
                     step: 0, 
-                    minutoEntrada: (dataEntrada.getMinutes() + 1) % 60,
-                    minutoVerificacao: (dataEntrada.getMinutes() + 2) % 60,
+                    minutoEntrada: minEntrada,
+                    minutoVerificacao: minVerificacao,
                     status: 'PRE_ALERTA',
-                    nomeAmigavel: nomeAmigavel
+                    nomeAmigavel: nomeAmigavel,
+                    verificando: false
                 };
                 break; 
             }
@@ -158,7 +171,6 @@ async function cacarOportunidade(state) {
     }
 }
 
-// 🎯 TRADUTOR DE VARIÁVEIS MÁGICAS
 function formatarMensagem(template, dados) {
     if (!template) return "";
     return template
@@ -169,29 +181,33 @@ function formatarMensagem(template, dados) {
         .replace(/\\n/g, "\n"); 
 }
 
-// FUNÇÃO 1: O AVISO DE PREPARAÇÃO (PRÉ-ALERTA)
 function enviarPreAlerta(symbol, tipo, nomeAmigavel) {
     const acao = tipo === 'CALL' ? '🟩 Comprar' : '🟥 Vender';
     const templateOriginal = configLocal.msgPre || "⚠️ *PRÉ-ALERTA DE SINAL*\\n\\nPreparem o ativo: *{MOEDA}*\\nPossível Operação: *{DIRECAO}*";
-    
     const msg = formatarMensagem(templateOriginal, { moeda: nomeAmigavel, direcao: acao });
     bot.sendMessage(CHAT_ID, msg, { parse_mode: 'Markdown', disable_web_page_preview: true });
 }
 
-// FUNÇÃO 2: A ORDEM DE ENTRADA (SINAL CONFIRMADO AOS 50 SEGUNDOS)
 function atirarSinalDefinitivo(operacao) {
     const agora = new Date();
-    const dataEntrada = new Date(agora);
+    let hora = agora.getHours();
     
-    // Arredonda para o próximo minuto cheio
-    if (agora.getSeconds() >= 40) dataEntrada.setMinutes(dataEntrada.getMinutes() + 1);
-    dataEntrada.setSeconds(0);
-    
-    const dataGale = new Date(dataEntrada);
-    dataGale.setMinutes(dataEntrada.getMinutes() + 1); 
+    // Tratamento impecável de virada de hora (ex: se é 10:59, a entrada é 11:00)
+    if (agora.getMinutes() === 59 && operacao.minutoEntrada === 0) {
+        hora = (hora + 1) % 24;
+    }
 
-    const horaEntrada = dataEntrada.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' });
-    const horaGale = dataGale.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' });
+    let minGale = (operacao.minutoEntrada + 1) % 60;
+    let hrGale = hora;
+    if (operacao.minutoEntrada === 59) hrGale = (hora + 1) % 24;
+
+    const strHora = hora.toString().padStart(2, '0');
+    const strMin = operacao.minutoEntrada.toString().padStart(2, '0');
+    const strGaleHr = hrGale.toString().padStart(2, '0');
+    const strGaleMin = minGale.toString().padStart(2, '0');
+
+    const horaEntrada = `${strHora}:${strMin}`;
+    const horaGale = `${strGaleHr}:${strGaleMin}`;
 
     const acao = operacao.type === 'CALL' ? '🟩 Comprar' : '🟥 Vender';
     
@@ -212,7 +228,12 @@ async function conferirResultado(state) {
     const agora = new Date();
     
     const velas = await puxarVelasM1(operacao.symbol, state);
-    if (!velas) return;
+    
+    // 🔥 SE A CORRETORA FALHOU NA API, DESTRAVA A VERIFICAÇÃO PARA TENTAR DE NOVO!
+    if (!velas || velas.length < 2) {
+        operacao.verificando = false; 
+        return; 
+    }
 
     const ultimaVelaFechada = velas[velas.length - 2];
     const open = parseFloat(ultimaVelaFechada[1]);
@@ -220,6 +241,7 @@ async function conferirResultado(state) {
 
     const isGreen = close > open;
     const isRed = close < open;
+    // Empate no Forex OTC (Doji) é tratado como Loss para chamar o Gale
     const won = (operacao.type === 'CALL' && isGreen) || (operacao.type === 'PUT' && isRed);
 
     if (won) {
@@ -234,7 +256,10 @@ async function conferirResultado(state) {
             estadoSessao.losses++; estadoSessao.sinalRodando = null; anunciarPlacar(); 
         } else {
             bot.sendMessage(CHAT_ID, `🔄 *ENTRAR NO GALE ${operacao.step}* em ${operacao.nomeAmigavel}!\nMesma direção.`, { parse_mode: 'Markdown' });
+            
+            // Reagenda a verificação do Gale para o próximo minuto!
             operacao.minutoVerificacao = (agora.getMinutes() + 1) % 60;
+            operacao.verificando = false; 
         }
     }
 }

@@ -180,6 +180,7 @@ function checkFifoEmpty() {
     if (!hasItems && emptyMsg) emptyMsg.style.display = 'block';
 }
 
+// 🎯 NOVO SISTEMA DE ABAS (TABS) COM SUPORTE A NÚMEROS DECIMAIS REAIS (PONTO OU VÍRGULA)
 function setupTelegramAdminUI() {
     const adminModalContent = document.querySelector('#adminModal > div');
     if (!adminModalContent || document.getElementById('tgAdminPanel')) return;
@@ -226,7 +227,7 @@ function setupTelegramAdminUI() {
             </div>
             <div style="flex:1;">
                 <label style="font-size:11px; color:#8b949e;">Bollinger (Desvio)</label>
-                <input type="number" id="tgBbDev" class="form-control" style="background:#0d1117; color:#58a6ff; border:1px solid #30363d; font-weight:bold; font-size:14px;" placeholder="2" step="0.1">
+                <input type="text" id="tgBbDev" class="form-control" style="background:#0d1117; color:#58a6ff; border:1px solid #30363d; font-weight:bold; font-size:14px;" placeholder="Ex: 2.5">
             </div>
         </div>
 
@@ -322,12 +323,13 @@ function setupTelegramAdminUI() {
         const config = {
             rsiOver: document.getElementById('tgRsiOver').value,
             rsiUnder: document.getElementById('tgRsiUnder').value,
-            bbDev: document.getElementById('tgBbDev').value,
+            
+            // 🎯 A MÁGICA: Substitui qualquer vírgula por ponto antes de enviar para o servidor!
+            bbDev: document.getElementById('tgBbDev').value.replace(',', '.'),
+            
             horaManha: document.getElementById('tgHoraManha').value,
             horaTarde: document.getElementById('tgHoraTarde').value,
             dias: document.getElementById('tgDias').value,
-            
-            // 🎯 CAIXAS DE MENSAGENS E TEMPLATES
             msgPre: document.getElementById('tgMsgPre').value,
             msgSinal: document.getElementById('tgMsgSinal').value,
             msgDespertar: document.getElementById('tgMsgDespertar').value,
@@ -494,7 +496,7 @@ socket.on('hybrid_login_result', (res) => {
         }).catch(err => { document.getElementById('loginError').innerText = "Erro: " + err.message; document.getElementById('loginError').style.display = 'block'; });
     } else { 
         alert("Conta não encontrada ou credenciais inválidas!\\nVocê será redirecionado para o cadastro oficial da corretora.");
-        window.location.href = "https://joaosilva.top/corretora-vellox"; 
+        window.location.href = "https://velloxbroker.com/register?aff=SEU_CODIGO_AQUI"; 
     }
 });
 
@@ -590,7 +592,7 @@ socket.on('update_balance', (data) => {
 
 socket.on('win_balance_update', (data) => {
     const el = document.getElementById(data.isDemo ? 'valDemo' : 'valReal');
-    let currentVal = parseFloat(el.innerText.replace('R$ ', '').replace(/\\./g, '').replace(',', '.'));
+    let currentVal = parseFloat(el.innerText.replace('R$ ', '').replace(/\./g, '').replace(',', '.'));
     if (!isNaN(currentVal)) {
         el.innerText = `R$ ${(currentVal + data.prize).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
         el.style.color = '#3fb950'; el.style.textShadow = '0 0 15px rgba(63, 185, 80, 0.8)'; setTimeout(() => { el.style.color = data.isDemo ? '#d29922' : '#3fb950'; el.style.textShadow = 'none'; }, 2000);
@@ -741,7 +743,6 @@ if(document.getElementById('btnAdminPanel')) {
         scriptModal.style.display = 'flex'; 
         auth.currentUser.getIdToken().then(token => socket.emit('admin_get_users', token)); 
         
-        // 🎯 PREENCHE OS CAMPOS AO ABRIR O PAINEL ADMIN
         if (window.tempTgConfig) {
             if(document.getElementById('tgRsiOver')) document.getElementById('tgRsiOver').value = window.tempTgConfig.rsiOver || '65';
             if(document.getElementById('tgRsiUnder')) document.getElementById('tgRsiUnder').value = window.tempTgConfig.rsiUnder || '35';
@@ -754,7 +755,6 @@ if(document.getElementById('btnAdminPanel')) {
             if(document.getElementById('tgMsgWin')) document.getElementById('tgMsgWin').value = window.tempTgConfig.msgWin || '';
             if(document.getElementById('tgMsgLoss')) document.getElementById('tgMsgLoss').value = window.tempTgConfig.msgLoss || '';
             
-            // Textos Grandes
             if(document.getElementById('tgMsgPre')) document.getElementById('tgMsgPre').value = window.tempTgConfig.msgPre || '';
             if(document.getElementById('tgMsgSinal')) document.getElementById('tgMsgSinal').value = window.tempTgConfig.msgSinal || '';
         }
