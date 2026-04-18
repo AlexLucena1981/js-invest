@@ -7,16 +7,26 @@ const TOKEN = '8627851942:AAFn2Ze3Nbjb6LbNu7Gk3eEAcpDuzzKGGkM';
 const CHAT_ID = '-1003925714362';
 const bot = new TelegramBot(TOKEN, { polling: false });
 
-const ativosTestes = [
-    'BTCUSDT', 'ETHUSDT', 
-    'EURUSDOTC', 'AUDJPYOTC', 'EURJPYOTC', 'EURAUDOTC', 'AUDCHFOTC', 'GBPJPYOTC', 
-    'CADCHFOTC', 'EURNZDOTC', 'GBPAUDOTC', 'NZDJPYOTC', 'GBPCHFOTC', 'USDCHFOTC', 
-    'EURCADOTC', 'EURCHFOTC',
-    'BTCUSDTOTC', 'ETHUSDTOTC', 'LTCUSDTOTC', 'ADAUSDTOTC', 'BNBUSDTOTC', 'SOLUSDTOTC', 'DOGEUSDTOTC',
-    'AAPLOTC', 'NFLXOTC', 'METAOTC', 'TSLAOTC', 'MSFTOTC', 'PYPLOTC', 'AMZNOTC', 
-    'NVDAOTC', 'SBUXOTC', 'DISOTC', 'MAOTC', 'IBMOTC', 'KOOTC', 'FOTC', 'SPOTOTC', 
-    'NKEOTC', 'INTCOTC', 'VOTC', 'XAUUSDOTC'
-];
+// 📚 O DICIONÁRIO DE NOMES AMIGÁVEIS (Aliases)
+const dicionarioAtivos = {
+    'EURUSDOTC': 'EUR/USD (OTC)', 'AUDJPYOTC': 'AUD/JPY (OTC)', 'EURJPYOTC': 'EUR/JPY (OTC)', 
+    'EURAUDOTC': 'EUR/AUD (OTC)', 'AUDCHFOTC': 'AUD/CHF (OTC)', 'GBPJPYOTC': 'GBP/JPY (OTC)', 
+    'CADCHFOTC': 'CAD/CHF (OTC)', 'EURNZDOTC': 'EUR/NZD (OTC)', 'GBPAUDOTC': 'GBP/AUD (OTC)', 
+    'NZDJPYOTC': 'NZD/JPY (OTC)', 'GBPCHFOTC': 'GBP/CHF (OTC)', 'USDCHFOTC': 'USD/CHF (OTC)', 
+    'EURCADOTC': 'EUR/CAD (OTC)', 'EURCHFOTC': 'EUR/CHF (OTC)', 'BTCUSDTOTC': 'Bitcoin (OTC)', 
+    'ETHUSDTOTC': 'Ethereum (OTC)', 'LTCUSDTOTC': 'Litecoin (OTC)', 'ADAUSDTOTC': 'Cardano (OTC)', 
+    'BNBUSDTOTC': 'Binance Coin (OTC)', 'SOLUSDTOTC': 'Solana (OTC)', 'DOGEUSDTOTC': 'Dogecoin (OTC)',
+    'AAPLOTC': 'Apple (OTC)', 'NFLXOTC': 'Netflix (OTC)', 'METAOTC': 'Meta (OTC)', 'TSLAOTC': 'Tesla (OTC)', 
+    'MSFTOTC': 'Microsoft (OTC)', 'PYPLOTC': 'PayPal (OTC)', 'AMZNOTC': 'Amazon (OTC)', 
+    'NVDAOTC': 'NVIDIA (OTC)', 'SBUXOTC': 'Starbucks (OTC)', 'DISOTC': 'Disney (OTC)', 
+    'MAOTC': 'Mastercard (OTC)', 'IBMOTC': 'IBM (OTC)', 'KOOTC': 'Coca-Cola (OTC)', 
+    'FOTC': 'Ford (OTC)', 'SPOTOTC': 'Spotify (OTC)', 'NKEOTC': 'Nike (OTC)', 'INTCOTC': 'Intel (OTC)', 
+    'VOTC': 'Visa (OTC)', 'XAUUSDOTC': 'Ouro (OTC)',
+    // Mercado Real
+    'BTCUSDT': 'Bitcoin', 'ETHUSDT': 'Ethereum', 'LTCUSDT': 'Litecoin', 'ADAUSDT': 'Cardano'
+};
+
+const ativosTestes = Object.keys(dicionarioAtivos); // O robô vai caçar todos os ativos do dicionário
 
 let estadoSessao = { ativa: false, permitirSinais: false, wins: 0, losses: 0, sinalRodando: null, ultimoSinalEnviado: null };
 let activeCronJobs = [];
@@ -32,7 +42,7 @@ function parseTimeToCron(timeStr, addMinutes, dias) {
 }
 
 async function initTelegramBot(stateGlobais, configFirebase) {
-    console.log("🤖 General Telegram: MODO STRESS TEST M1 (C/ Copywriting Dinâmico) 🚀");
+    console.log("🤖 General Telegram: MODO STRESS TEST M1 (C/ Aliases Amigáveis) 🚀");
     configLocal = configFirebase;
     agendarSessoes(stateGlobais);
     iniciarMotorContinuo(stateGlobais);
@@ -118,13 +128,12 @@ async function cacarOportunidade(state) {
 // 🎯 TRADUTOR DE VARIÁVEIS MÁGICAS
 function formatarMensagem(template, dados) {
     if (!template) return "";
-    // O /g no final significa "Global", ou seja, troca a palavra em todo o texto, mesmo se repetida!
     return template
         .replace(/{MOEDA}/g, dados.moeda || "")
         .replace(/{DIRECAO}/g, dados.direcao || "")
         .replace(/{HORA_ENTRADA}/g, dados.horaEntrada || "")
         .replace(/{HORA_GALE}/g, dados.horaGale || "")
-        .replace(/\\n/g, "\n"); // Troca a quebra de linha invisível por uma quebra real no Telegram
+        .replace(/\\n/g, "\n"); 
 }
 
 function atirarSinalNoToque(sym, tipo) {
@@ -140,12 +149,14 @@ function atirarSinalNoToque(sym, tipo) {
     const horaGale = dataGale.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' });
 
     const acao = tipo === 'CALL' ? '🟩 Comprar' : '🟥 Vender';
+    
+    // 🎯 BUSCA O NOME AMIGÁVEL DO DICIONÁRIO (Alias)
+    const nomeAmigavel = dicionarioAtivos[sym] || sym;
 
-    // 🎯 LÊ O TEMPLATE DO PAINEL ADMIN
     const templateOriginal = configLocal.msgSinal || "⚡ *ALERTA DE TOQUE (OTC/M1)* ⚡\\n\\n💵 Moeda = {MOEDA}\\n⏰ Expiração = 1 Minuto\\n🛎 Entrada = {HORA_ENTRADA}\\n{DIRECAO}\\n\\nGale 1 - {HORA_GALE}\\n\\n👉🏼 Se necessário, fazer 1 Gale.\\n\\n➡️ [Clique aqui para abrir a Vellox](https://velloxbroker.com)";
 
     const msg = formatarMensagem(templateOriginal, {
-        moeda: sym,
+        moeda: nomeAmigavel, // Passa o nome bonito (ex: Tesla (OTC))
         direcao: acao,
         horaEntrada: horaEntrada,
         horaGale: horaGale
@@ -160,11 +171,11 @@ function atirarSinalNoToque(sym, tipo) {
     };
 }
 
-// (Opcional) Função de Pré-alerta mantida e atualizada para caso decida voltar para o M5
 function enviarPreAlerta(symbol, tipo) {
     const acao = tipo === 'CALL' ? '🟩 Comprar' : '🟥 Vender';
+    const nomeAmigavel = dicionarioAtivos[symbol] || symbol;
     const templateOriginal = configLocal.msgPre || "⚠️ *PRÉ-ALERTA DE SINAL*\\n\\nPreparem o ativo: *{MOEDA}*\\nPossível Operação: *{DIRECAO}*";
-    const msg = formatarMensagem(templateOriginal, { moeda: symbol, direcao: acao });
+    const msg = formatarMensagem(templateOriginal, { moeda: nomeAmigavel, direcao: acao });
     bot.sendMessage(CHAT_ID, msg, { parse_mode: 'Markdown' });
 }
 
@@ -183,18 +194,20 @@ async function conferirResultado(state) {
     const isRed = close < open;
     const won = (operacao.type === 'CALL' && isGreen) || (operacao.type === 'PUT' && isRed);
 
+    const nomeAmigavel = dicionarioAtivos[operacao.symbol] || operacao.symbol;
+
     if (won) {
         let msgWin = operacao.step === 0 ? (configLocal.msgWin || "✅ *WIN DE PRIMEIRA!* 🎯") : "✅ *WIN NO GALE 1!* 🎯";
-        bot.sendMessage(CHAT_ID, `${msgWin}\nAtivo: ${operacao.symbol}`, { parse_mode: 'Markdown' });
+        bot.sendMessage(CHAT_ID, `${msgWin}\nAtivo: ${nomeAmigavel}`, { parse_mode: 'Markdown' });
         estadoSessao.wins++; estadoSessao.sinalRodando = null; anunciarPlacar(); 
     } else {
         operacao.step++;
         if (operacao.step > 1) {
             let msgLoss = configLocal.msgLoss || `🔴 *LOSS!* O mercado não respeitou a análise.`;
-            bot.sendMessage(CHAT_ID, `${msgLoss}\nAtivo: ${operacao.symbol}`, { parse_mode: 'Markdown' });
+            bot.sendMessage(CHAT_ID, `${msgLoss}\nAtivo: ${nomeAmigavel}`, { parse_mode: 'Markdown' });
             estadoSessao.losses++; estadoSessao.sinalRodando = null; anunciarPlacar(); 
         } else {
-            bot.sendMessage(CHAT_ID, `🔄 *ENTRAR NO GALE ${operacao.step}* em ${operacao.symbol}!\nMesma direção.`, { parse_mode: 'Markdown' });
+            bot.sendMessage(CHAT_ID, `🔄 *ENTRAR NO GALE ${operacao.step}* em ${nomeAmigavel}!\nMesma direção.`, { parse_mode: 'Markdown' });
             operacao.minutoVerificacao = (agora.getMinutes() + 1) % 60;
         }
     }
