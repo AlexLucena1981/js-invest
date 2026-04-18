@@ -3,14 +3,23 @@ const cron = require('node-cron');
 const axios = require('axios');
 const { evaluateStrategy } = require('../utils/indicators');
 
-// ⚙️ CONFIGURAÇÕES
 const TOKEN = '8627851942:AAFn2Ze3Nbjb6LbNu7Gk3eEAcpDuzzKGGkM';
 const CHAT_ID = '-1003925714362';
 const bot = new TelegramBot(TOKEN, { polling: false });
 
-const ativosMercadoReal = [
-    'BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'ADAUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT',
-    'EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'USDCAD'
+// 💥 LISTA DE TESTE FIM DE SEMANA (OTC + Cripto Real)
+const ativosTestes = [
+    'BTCUSDT', 'ETHUSDT', 
+    // 🔥 Forex OTC
+    'EURUSDOTC', 'AUDJPYOTC', 'EURJPYOTC', 'EURAUDOTC', 'AUDCHFOTC', 'GBPJPYOTC', 
+    'CADCHFOTC', 'EURNZDOTC', 'GBPAUDOTC', 'NZDJPYOTC', 'GBPCHFOTC', 'USDCHFOTC', 
+    'EURCADOTC', 'EURCHFOTC',
+    // 🔥 Criptos OTC
+    'BTCUSDTOTC', 'ETHUSDTOTC', 'LTCUSDTOTC', 'ADAUSDTOTC', 'BNBUSDTOTC', 'SOLUSDTOTC', 'DOGEUSDTOTC',
+    // 🔥 Ações & Ouro OTC
+    'AAPLOTC', 'NFLXOTC', 'METAOTC', 'TSLAOTC', 'MSFTOTC', 'PYPLOTC', 'AMZNOTC', 
+    'NVDAOTC', 'SBUXOTC', 'DISOTC', 'MAOTC', 'IBMOTC', 'KOOTC', 'FOTC', 'SPOTOTC', 
+    'NKEOTC', 'INTCOTC', 'VOTC', 'XAUUSDOTC'
 ];
 
 let estadoSessao = { ativa: false, permitirSinais: false, wins: 0, losses: 0, sinalRodando: null, ultimoSinalEnviado: null };
@@ -27,7 +36,7 @@ function parseTimeToCron(timeStr, addMinutes, dias) {
 }
 
 async function initTelegramBot(stateGlobais, configFirebase) {
-    console.log("🤖 General do Telegram M1 Inicializado! (SNIPER MODE)");
+    console.log("🤖 General Telegram: MODO STRESS TEST M1 (C/ Força Bruta OTC) 🚀");
     configLocal = configFirebase;
     agendarSessoes(stateGlobais);
     iniciarMotorContinuo(stateGlobais);
@@ -39,20 +48,19 @@ function reloadTelegramConfig(novaConfig) {
     agendarSessoes(); 
 }
 
-function agendarSessoes(stateGlobais) {
+function agendarSessoes() {
     activeCronJobs.forEach(job => job.stop());
     activeCronJobs = [];
 
-    const dias = configLocal.dias || '1-5';
+    const dias = configLocal.dias || '0-6'; 
 
-    const cronManhaStart = parseTimeToCron(configLocal.horaManha, 0, dias);
-    const cronTardeStart = parseTimeToCron(configLocal.horaTarde, 0, dias);
+    const cronManhaStart = parseTimeToCron(configLocal.horaManha || '09:00', 0, dias);
+    const cronTardeStart = parseTimeToCron(configLocal.horaTarde || '15:00', 0, dias);
 
     const job1 = cron.schedule(cronManhaStart, () => iniciarSessao("Manhã"), { timezone: "America/Sao_Paulo" });
     const job2 = cron.schedule(cronTardeStart, () => iniciarSessao("Tarde"), { timezone: "America/Sao_Paulo" });
 
     activeCronJobs.push(job1, job2);
-    console.log(`⏰ Relógios reprogramados para ${configLocal.horaManha} e ${configLocal.horaTarde} (Dias: ${dias})`);
 }
 
 function forcarSessaoTelegram(turno) {
@@ -60,12 +68,11 @@ function forcarSessaoTelegram(turno) {
 }
 
 function iniciarSessao(turno) {
-    estadoSessao = { ativa: true, permitirSinais: true, wins: 0, losses: 0, sinalRodando: null, ultimoSinalEnviado: null };
-    let msg = configLocal.msgDespertar || `👨‍💻 *Atenção!* Iniciando análise do mercado para a sessão...`;
+    estadoSessao = { ativa: true, permitirSinais: true, wins: estadoSessao.wins, losses: estadoSessao.losses, sinalRodando: null, ultimoSinalEnviado: null };
+    let msg = `👨‍💻 *INÍCIO DE STRESS TEST (OTC M1)*\n\nModo metralhadora ativado. Sem limites de meta. Vamos validar a estratégia!`;
     bot.sendMessage(CHAT_ID, msg, { parse_mode: 'Markdown' });
 }
 
-// 🎯 MOTOR CONTÍNUO: RODA A CADA 5 SEGUNDOS PARA LER O "TOQUE"
 function iniciarMotorContinuo(stateGlobais) {
     if (motorCacaId) clearInterval(motorCacaId);
 
@@ -76,12 +83,10 @@ function iniciarMotorContinuo(stateGlobais) {
         const sec = agora.getSeconds();
 
         if (estadoSessao.sinalRodando) {
-            // O Robô espera o minuto exato do fechamento para conferir (espera uns 4 a 10 seg após a vela virar para garantir os dados da API)
             if (min === estadoSessao.sinalRodando.minutoVerificacao && sec >= 4 && sec <= 12) {
                 await conferirResultado(stateGlobais);
             }
         } else if (estadoSessao.permitirSinais) {
-            // Caça ativa: Varre o mercado O TEMPO TODO em busca do toque!
             await cacarOportunidade(stateGlobais);
         }
     }, 5000); 
@@ -90,22 +95,19 @@ function iniciarMotorContinuo(stateGlobais) {
 async function cacarOportunidade(state) {
     const minAtual = new Date().getMinutes();
     
-    for (let sym of ativosMercadoReal) {
+    for (let sym of ativosTestes) {
         try {
-            // Se já mandou sinal neste minuto, salta
             if (estadoSessao.ultimoSinalEnviado === `${sym}_${minAtual}`) continue;
 
             const assertividade = await calcularAssertividadeM1(sym, state);
-            if (assertividade < 90) continue; 
+            if (assertividade < 85) continue; 
 
             const velas = await puxarVelasM1(sym, state);
             if (!velas || velas.length < 150) continue;
 
-            // 🎯 LÓGICA DE SNIPER (M1): Passamos a vela viva!
             const closes = velas.map(k => parseFloat(k[4]));
             const strategy = state.strategiesDB.find(s => s.name.toLowerCase().includes('live')) || state.strategiesDB[0];
             
-            // Avalia o último tick (o toque na banda)
             const sinal = evaluateStrategy(closes, strategy);
 
             if (sinal) {
@@ -117,11 +119,8 @@ async function cacarOportunidade(state) {
     }
 }
 
-// 🚀 DISPARO IMEDIATO "ALERTA DE TOQUE"
 function atirarSinalNoToque(sym, tipo) {
     const agora = new Date();
-    
-    // A entrada será sempre na virada do próximo minuto
     const dataEntrada = new Date(agora);
     dataEntrada.setMinutes(dataEntrada.getMinutes() + 1);
     dataEntrada.setSeconds(0);
@@ -134,14 +133,12 @@ function atirarSinalNoToque(sym, tipo) {
 
     const acao = tipo === 'CALL' ? '🟩 Comprar' : '🟥 Vender';
 
-    const msg = `⚡ *ALERTA DE TOQUE (M1)* ⚡\n\n💵 Moeda = ${sym}\n⏰ Expiração = 1 Minuto\n🛎 Entrada = ${horaEntrada}\n${acao}\n\nGale 1 - ${horaGale}\n\n👉🏼 Se necessário, fazer 1 Gale.\n\n➡️ [Clique aqui para abrir a Vellox](https://velloxbroker.com)`;
+    const msg = `⚡ *ALERTA DE TOQUE (OTC/M1)* ⚡\n\n💵 Moeda = ${sym}\n⏰ Expiração = 1 Minuto\n🛎 Entrada = ${horaEntrada}\n${acao}\n\nGale 1 - ${horaGale}\n\n👉🏼 Se necessário, fazer 1 Gale.\n\n➡️ [Clique aqui para abrir a Vellox](https://velloxbroker.com)`;
     
     bot.sendMessage(CHAT_ID, msg, { parse_mode: 'Markdown', disable_web_page_preview: true });
 
     estadoSessao.sinalRodando = { 
-        symbol: sym, 
-        type: tipo, 
-        step: 0, 
+        symbol: sym, type: tipo, step: 0, 
         minutoEntrada: dataEntrada.getMinutes(),
         minutoVerificacao: (dataEntrada.getMinutes() + 1) % 60
     };
@@ -151,13 +148,10 @@ async function conferirResultado(state) {
     const operacao = estadoSessao.sinalRodando;
     const agora = new Date();
     
-    // Puxamos os dados da API
     const velas = await puxarVelasM1(operacao.symbol, state);
     if (!velas) return;
 
-    // A última vela finalizada é a penúltima do array (a última está a nascer agora)
     const ultimaVelaFechada = velas[velas.length - 2];
-    
     const open = parseFloat(ultimaVelaFechada[1]);
     const close = parseFloat(ultimaVelaFechada[4]);
 
@@ -166,63 +160,79 @@ async function conferirResultado(state) {
     const won = (operacao.type === 'CALL' && isGreen) || (operacao.type === 'PUT' && isRed);
 
     if (won) {
-        let msgWin = operacao.step === 0 ? (configLocal.msgWin || "✅ *WIN DE PRIMEIRA!* 🎯") : "✅ *WIN NO GALE 1!* 🎯";
+        let msgWin = operacao.step === 0 ? "✅ *WIN DE PRIMEIRA!* 🎯" : "✅ *WIN NO GALE 1!* 🎯";
         bot.sendMessage(CHAT_ID, `${msgWin}\nAtivo: ${operacao.symbol}`, { parse_mode: 'Markdown' });
-        estadoSessao.wins++; estadoSessao.sinalRodando = null; verificarMeta();
+        estadoSessao.wins++; estadoSessao.sinalRodando = null; anunciarPlacar(); 
     } else {
         operacao.step++;
         if (operacao.step > 1) {
-            let msgLoss = configLocal.msgLoss || `🔴 *LOSS!* O mercado não respeitou a análise.`;
+            let msgLoss = `🔴 *LOSS!* O mercado não respeitou a análise em ${operacao.symbol}.`;
             bot.sendMessage(CHAT_ID, msgLoss, { parse_mode: 'Markdown' });
-            estadoSessao.losses++; estadoSessao.sinalRodando = null; verificarMeta();
+            estadoSessao.losses++; estadoSessao.sinalRodando = null; anunciarPlacar(); 
         } else {
             bot.sendMessage(CHAT_ID, `🔄 *ENTRAR NO GALE ${operacao.step}* em ${operacao.symbol}!\nMesma direção.`, { parse_mode: 'Markdown' });
-            // Agenda para verificar no próximo minuto
             operacao.minutoVerificacao = (agora.getMinutes() + 1) % 60;
         }
     }
 }
 
-function verificarMeta() {
-    let encerrar = false; let msgFinal = "";
-    if (estadoSessao.wins === 2 && estadoSessao.losses === 0) { encerrar = true; msgFinal = "🏆 *META BATIDA! (2x0)*\nFechamos a sessão!"; }
-    else if (estadoSessao.wins === 3 && estadoSessao.losses === 1) { encerrar = true; msgFinal = "🏆 *META BATIDA NA RAÇA! (3x1)*\nSessão encerrada!"; }
-    else if (estadoSessao.losses === 2) { encerrar = true; msgFinal = "🛑 *STOP LOSS ATINGIDO (2 Loss)*\nPreservando o capital."; }
-
-    if (encerrar) {
-        estadoSessao.ativa = false;
-        bot.sendMessage(CHAT_ID, msgFinal, { parse_mode: 'Markdown' });
-    } else {
-        bot.sendMessage(CHAT_ID, `📊 *Placar Parcial:* ${estadoSessao.wins} Win x ${estadoSessao.losses} Loss`, { parse_mode: 'Markdown' });
-    }
+function anunciarPlacar() {
+    bot.sendMessage(CHAT_ID, `📊 *Placar AO VIVO (Teste M1):* ${estadoSessao.wins} Win x ${estadoSessao.losses} Loss\nO radar continua operando...`, { parse_mode: 'Markdown' });
 }
 
 // ==========================================
-// FUNÇÕES DE DADOS PARA M1 (VELAS COMPLETAS)
+// 🛠️ MOTOR DE FORÇA BRUTA OTC (SMART FALLBACK)
 // ==========================================
 async function puxarVelasM1(symbol, state) {
     try {
-        const isCrypto = ['BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'ADAUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT'].includes(symbol.toUpperCase());
+        const symUpper = symbol.toUpperCase();
+        const isCrypto = ['BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'ADAUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT'].includes(symUpper);
+        
         if (isCrypto) {
-            const res = await axios.get(`https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=1m&limit=150`);
+            const res = await axios.get(`https://api.binance.com/api/v3/klines?symbol=${symUpper}&interval=1m&limit=150`);
             if (!res.data) return null;
             return res.data; 
         } else {
-            if(!state.globalDynamicCookie) return null;
-            const to = Math.floor(Date.now() / 1000); const from = to - (150 * 60); 
-            const otcHeaders = { 'accept': '*/*', 'Cookie': state.globalDynamicCookie, 'X-Requested-With': 'XMLHttpRequest', 'referer': 'https://velloxbroker.com/traderoom', 'user-agent': 'Mozilla/5.0' };
-            const res = await axios.get(`https://velloxbroker.com/publicapi/tradingview/udf-history?symbol=${symbol.toUpperCase()}&resolution=1&from=${from}&to=${to}&countback=150&site=velloxbroker.com`, { headers: otcHeaders });
-            if (res.data && res.data.s === 'ok') {
-                let klines = [];
-                for(let i=0; i<res.data.c.length; i++){
-                    // Fake Kline: [Time, Open, High, Low, Close]
-                    klines.push([res.data.t[i]*1000, res.data.o[i], 0, 0, res.data.c[i]]);
-                }
-                return klines;
+            if(!state.globalDynamicCookie) {
+                console.log(`❌ BLOQUEIO: Sem Cookie VIP! Não é possível puxar gráfico de ${symUpper}`);
+                return null;
             }
-            return null;
+            
+            const to = Math.floor(Date.now() / 1000); 
+            const from = to - (150 * 60); 
+            const otcHeaders = { 'accept': '*/*', 'Cookie': state.globalDynamicCookie, 'X-Requested-With': 'XMLHttpRequest', 'referer': 'https://velloxbroker.com/traderoom', 'user-agent': 'Mozilla/5.0' };
+            
+            const baseName = symUpper.replace('OTC', '').replace('-', '').replace('_', ''); 
+            const variacoes = [
+                `${baseName}OTC`,       
+                `${baseName}-OTC`,      
+                `${baseName}_otc`,      
+                `${baseName}_OTC`,      
+                `${baseName.substring(0,3)}/${baseName.substring(3)} (OTC)` 
+            ];
+
+            let klines = null;
+
+            for (let variante of variacoes) {
+                try {
+                    let res = await axios.get(`https://velloxbroker.com/publicapi/tradingview/udf-history?symbol=${variante}&resolution=1&from=${from}&to=${to}&countback=150&site=velloxbroker.com`, { headers: otcHeaders });
+                    
+                    if (res.data && res.data.s === 'ok' && res.data.c && res.data.c.length > 0) {
+                        klines = [];
+                        for(let i=0; i<res.data.c.length; i++){
+                            klines.push([res.data.t[i]*1000, res.data.o[i], res.data.h ? res.data.h[i] : res.data.o[i], res.data.l ? res.data.l[i] : res.data.c[i], res.data.c[i]]);
+                        }
+                        break; 
+                    }
+                } catch(e) {}
+            }
+
+            if (!klines) console.log(`⚠️ API VELLOX REJEITOU ATIVO [${symUpper}] em todos os 5 formatos.`);
+            return klines;
         }
-    } catch (e) { return null; }
+    } catch (e) { 
+        return null; 
+    }
 }
 
 async function calcularAssertividadeM1(symbol, state) {

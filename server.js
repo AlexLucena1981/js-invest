@@ -38,8 +38,8 @@ const state = {
 initEngine(io, state);
 
 let tgConfigGlobal = {
-    dias: '1-5', horaManha: '09:00', horaTarde: '15:00',
-    msgDespertar: "👨‍💻 *Atenção!* Iniciando análise do mercado para a sessão...",
+    dias: '0-6', horaManha: '09:00', horaTarde: '15:00',
+    msgDespertar: "👨‍💻 *Atenção!* Iniciando análise do mercado...",
     msgWin: "✅ *WIN DE PRIMEIRA!* 🎯",
     msgLoss: "🔴 *LOSS!* O mercado não respeitou a análise."
 };
@@ -75,7 +75,19 @@ function loadAvailableCoins() {
         "🔵 Forex (Vellox)": ['EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'USDCAD'],
         "🟣 Ações (Vellox)": ['AAPL', 'TSLA', 'MSFT', 'AMZN', 'META', 'GOOGL', 'NFLX'],
         "🟡 Commodities": ['XAUUSD', 'XAGUSD', 'USOIL'],
-        "🔴 OTC (Fim de Semana)": ['EURUSDOTC', 'GBPUSDOTC', 'USDJPYOTC', 'BTCUSDTOTC']
+        "🔴 Forex (OTC)": [
+            'EURUSDOTC', 'AUDJPYOTC', 'EURJPYOTC', 'EURAUDOTC', 'AUDCHFOTC', 'GBPJPYOTC', 
+            'CADCHFOTC', 'EURNZDOTC', 'GBPAUDOTC', 'NZDJPYOTC', 'GBPCHFOTC', 'USDCHFOTC', 
+            'EURCADOTC', 'EURCHFOTC'
+        ],
+        "🟠 Criptos (OTC)": [
+            'BTCUSDTOTC', 'ETHUSDTOTC', 'LTCUSDTOTC', 'ADAUSDTOTC', 'BNBUSDTOTC', 'SOLUSDTOTC', 'DOGEUSDTOTC'
+        ],
+        "🟣 Ações/Ouro (OTC)": [
+            'AAPLOTC', 'NFLXOTC', 'METAOTC', 'TSLAOTC', 'MSFTOTC', 'PYPLOTC', 'AMZNOTC', 
+            'NVDAOTC', 'SBUXOTC', 'DISOTC', 'MAOTC', 'IBMOTC', 'KOOTC', 'FOTC', 'SPOTOTC', 
+            'NKEOTC', 'INTCOTC', 'VOTC', 'XAUUSDOTC'
+        ]
     };
     io.emit('available_coins', state.availableCoins);
 }
@@ -146,7 +158,6 @@ io.on('connection', (socket) => {
             if (state.activeBrokers[uid]) { 
                 state.activeBrokers[uid].socketId = socket.id; 
                 state.activeBrokers[uid].isPremium = isPremium;
-                // 🔥 TRAVA DE SEGURANÇA: Se ele fez F5 ou reconectou, GARANTIMOS que o robô nasce desligado!
                 state.activeBrokers[uid].autoTradeActive = false; 
             } 
             else { 
@@ -198,9 +209,7 @@ io.on('connection', (socket) => {
     socket.on('admin_get_tg_config', async (token) => {
         try {
             const decodedToken = await admin.auth().verifyIdToken(token);
-            if (decodedToken.uid === 'admin_master') {
-                socket.emit('admin_tg_config_data', tgConfigGlobal);
-            }
+            if (decodedToken.uid === 'admin_master') socket.emit('admin_tg_config_data', tgConfigGlobal);
         } catch(e) {}
     });
 
@@ -211,7 +220,7 @@ io.on('connection', (socket) => {
                 await db.collection('settings').doc('telegram').set(data.config);
                 tgConfigGlobal = data.config;
                 reloadTelegramConfig(tgConfigGlobal);
-                socket.emit('user_creation_result', { success: true, msg: 'Configurações do Telegram atualizadas e Relógios reprogramados com sucesso! ⏰✅' });
+                socket.emit('user_creation_result', { success: true, msg: 'Configurações do Telegram atualizadas! ⏰✅' });
             }
         } catch(e) {}
     });
@@ -221,7 +230,7 @@ io.on('connection', (socket) => {
             const decodedToken = await admin.auth().verifyIdToken(data.token);
             if (decodedToken.uid === 'admin_master') {
                 forcarSessaoTelegram(data.turno);
-                socket.emit('user_creation_result', { success: true, msg: `🔥 SESSÃO FORÇADA INICIADA! O Robô acabou de acordar para a sessão da ${data.turno}!` });
+                socket.emit('user_creation_result', { success: true, msg: `🔥 SESSÃO FORÇADA INICIADA NO TELEGRAM!` });
             }
         } catch(e) {}
     });
@@ -269,12 +278,11 @@ io.on('connection', (socket) => {
         catch (e) { socket.emit('script_injection_result', { success: false, msg: 'Erro: ' + e.message }); }
     });
 
-    // 🔥 VACINA ZUMBI: QUANDO O UTILIZADOR FECHA A ABA, O ROBÔ DELE DESLIGA NA HORA!
     socket.on('disconnect', () => { 
         for (let uid in state.activeBrokers) { 
             if (state.activeBrokers[uid].socketId === socket.id) { 
                 state.activeBrokers[uid].socketId = null; 
-                state.activeBrokers[uid].autoTradeActive = false; // DESLIGA O ROBÔ
+                state.activeBrokers[uid].autoTradeActive = false; 
             } 
         }
     });
@@ -282,4 +290,4 @@ io.on('connection', (socket) => {
 
 loadSystemData();
 loadAvailableCoins();
-server.listen(3000, () => { console.log('🚀 Terminal JS Invest operando. (C/ Trava de Segurança Auto-Trade)'); });
+server.listen(3000, () => { console.log('🚀 Terminal JS Invest operando. (C/ Mega Lista OTC)'); });

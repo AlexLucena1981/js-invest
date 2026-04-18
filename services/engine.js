@@ -10,12 +10,41 @@ const radarLastCandleProcessed = {};
 
 const radarCoins = [
     'BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'ADAUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT', 
-    'EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'USDCAD',                            
-    'EURUSDOTC', 'GBPUSDOTC', 'USDJPYOTC', 'BTCUSDTOTC',                         
-    'AAPL', 'XAUUSD'                                                             
+    'EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'USDCAD', 'AAPL', 'XAUUSD',                           
+    // 🔥 MEGA LISTA OTC
+    'EURUSDOTC', 'AUDJPYOTC', 'EURJPYOTC', 'EURAUDOTC', 'AUDCHFOTC', 'GBPJPYOTC', 
+    'CADCHFOTC', 'EURNZDOTC', 'GBPAUDOTC', 'NZDJPYOTC', 'GBPCHFOTC', 'USDCHFOTC', 
+    'EURCADOTC', 'EURCHFOTC',
+    'BTCUSDTOTC', 'ETHUSDTOTC', 'LTCUSDTOTC', 'ADAUSDTOTC', 'BNBUSDTOTC', 'SOLUSDTOTC', 'DOGEUSDTOTC',
+    'AAPLOTC', 'NFLXOTC', 'METAOTC', 'TSLAOTC', 'MSFTOTC', 'PYPLOTC', 'AMZNOTC', 
+    'NVDAOTC', 'SBUXOTC', 'DISOTC', 'MAOTC', 'IBMOTC', 'KOOTC', 'FOTC', 'SPOTOTC', 
+    'NKEOTC', 'INTCOTC', 'VOTC', 'XAUUSDOTC'                                                             
 ];
 
 const cryptoBinance = ['BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'ADAUSDT', 'BNBUSDT', 'DOGEUSDT', 'SOLUSDT', 'XRPUSDT'];
+
+// 🛠️ O CANIVETE SUÍÇO DO OTC
+async function fetchOtcWithFallback(symbol, resolution, from, to, countback, headers) {
+    const symUpper = symbol.toUpperCase();
+    const baseName = symUpper.replace('OTC', '').replace('-', '').replace('_', ''); 
+    const variacoes = [
+        `${baseName}OTC`,       
+        `${baseName}-OTC`,      
+        `${baseName}_otc`,      
+        `${baseName}_OTC`,      
+        `${baseName.substring(0,3)}/${baseName.substring(3)} (OTC)` 
+    ];
+
+    for (let variante of variacoes) {
+        try {
+            let res = await axios.get(`https://velloxbroker.com/publicapi/tradingview/udf-history?symbol=${variante}&resolution=${resolution}&from=${from}&to=${to}&countback=${countback}&site=velloxbroker.com`, { headers: headers });
+            if (res.data && res.data.s === 'ok' && res.data.c && res.data.c.length > 0) {
+                return res.data; 
+            }
+        } catch(e) {}
+    }
+    return null; 
+}
 
 function initEngine(_io, _state) {
     io = _io;
@@ -62,11 +91,11 @@ function initEngine(_io, _state) {
                             const from = to - (151 * tfMinutes * 60); 
                             const otcHeaders = { 'accept': '*/*', 'Cookie': state.globalDynamicCookie, 'X-Requested-With': 'XMLHttpRequest', 'referer': 'https://velloxbroker.com/traderoom', 'user-agent': 'Mozilla/5.0' };
                             
-                            const res = await axios.get(`https://velloxbroker.com/publicapi/tradingview/udf-history?symbol=${sym.toUpperCase()}&resolution=${resolution}&from=${from}&to=${to}&countback=151&site=velloxbroker.com`, { headers: otcHeaders });
+                            const otcData = await fetchOtcWithFallback(sym, resolution, from, to, 151, otcHeaders);
                             
-                            if (res.data && res.data.s === 'ok') {
-                                const timesArr = res.data.t;
-                                const closesArr = res.data.c;
+                            if (otcData) {
+                                const timesArr = otcData.t;
+                                const closesArr = otcData.c;
                                 lastClosedCandleTime = timesArr[timesArr.length - 2] * 1000;
                                 closes = closesArr.slice(0, -1);
                             } else {
@@ -135,8 +164,9 @@ async function scanRadarHistory() {
                     const resolution = tfMinutes.toString();
                     const to = Math.floor(Date.now() / 1000); const from = to - (500 * tfMinutes * 60); 
                     const otcHeaders = { 'accept': '*/*', 'Cookie': state.globalDynamicCookie, 'X-Requested-With': 'XMLHttpRequest', 'referer': 'https://velloxbroker.com/traderoom', 'user-agent': 'Mozilla/5.0' };
-                    const res = await axios.get(`https://velloxbroker.com/publicapi/tradingview/udf-history?symbol=${sym.toUpperCase()}&resolution=${resolution}&from=${from}&to=${to}&countback=500&site=velloxbroker.com`, { headers: otcHeaders });
-                    if (res.data && res.data.s === 'ok') { timesArr = res.data.t.map(t => t * 1000); closesArr = res.data.c; } else { continue; }
+                    
+                    const otcData = await fetchOtcWithFallback(sym, resolution, from, to, 500, otcHeaders);
+                    if (otcData) { timesArr = otcData.t.map(t => t * 1000); closesArr = otcData.c; } else { continue; }
                 }
                 
                 let tempCloses = [];
@@ -195,13 +225,11 @@ function updateStatus(msg) {
     io.emit('status', { msg });
 }
 
-// 🎯 MATEMÁTICA C/ EXIGÊNCIA DE "BILHETE DE EMBARQUE"
 function updateBrokerProfits(step, isWin, sig) {
     Object.values(state.activeBrokers).forEach(broker => {
         if (sig.isManual) {
             if (sig.brokerUid !== broker.uid) return;
         } else {
-            // BARREIRA DE INTRUSO: O passageiro só recebe o prémio/perda se embarcou neste exato passo!
             if (!sig.firedBrokers || !sig.firedBrokers[step] || !sig.firedBrokers[step].includes(broker.uid)) return; 
         }
         
@@ -256,7 +284,7 @@ function processHistoricalCandle(eng, k_time, k_o, k_c, currentStrategy) {
                 id: k_time, type: newSigType, symbol: eng.symbol.toUpperCase(), timeframe: eng.timeframe,
                 time: new Date(k_time).toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' }),
                 step: 0, status: 'Aguardando...', entryPrice: k_o, isManual: false,
-                firedBrokers: {} // Backtest não dispara
+                firedBrokers: {} 
             };
             eng.activeSignals.push(newSig); 
             eng.signalHistory.unshift(newSig);
@@ -284,12 +312,12 @@ async function handleCandleClose(eng, closedPrice, candleStartTime) {
             else if (sig.step === 1) { sig.status = prefix + 'WIN G1 🎯'; if(!sig.isManual) eng.scoreboard.winG1++; }
             else if (sig.step === 2) { sig.status = prefix + 'WIN G2 🎯'; if(!sig.isManual) eng.scoreboard.winG2++; }
             
-            updateBrokerProfits(sig.step, true, sig); // Cobra o bilhete
+            updateBrokerProfits(sig.step, true, sig); 
             io.emit('signal_result', sig); 
             if (eng.key === state.currentEngineKey) io.emit('scoreboard', eng.scoreboard); 
             signalResolvedThisCandle = true; return false; 
         } else {
-            updateBrokerProfits(sig.step, false, sig); // Cobra o bilhete da perda
+            updateBrokerProfits(sig.step, false, sig); 
             sig.step++; 
             if (sig.step > MAX_GALE_GLOBAL) {
                 sig.status = prefix + 'LOSS 🔴'; if(!sig.isManual) eng.scoreboard.loss++; 
@@ -300,7 +328,6 @@ async function handleCandleClose(eng, closedPrice, candleStartTime) {
                 sig.status = prefix + `Gale ${sig.step}...`; sig.entryPrice = eng.currentGlobalPrice || closedPrice; 
                 io.emit('signal_result', sig);
                 
-                // 🎫 PREPARA O BILHETE DO GALE
                 if (!sig.firedBrokers) sig.firedBrokers = {};
                 sig.firedBrokers[sig.step] = [];
 
@@ -309,13 +336,12 @@ async function handleCandleClose(eng, closedPrice, candleStartTime) {
                         if (sig.brokerUid !== broker.uid) return; 
                     } else {
                         if (!broker.autoTradeActive || !broker.isPremium) return;
-                        // 🛑 SE NÃO ESTAVA NO PASSO 0, NÃO PODE ENTRAR DE PENETRA NO GALE!
                         if (!sig.firedBrokers[0] || !sig.firedBrokers[0].includes(broker.uid)) return;
                     }
                     
                     if (sig.step > broker.config.maxGale) return; 
                     
-                    if (!sig.isManual) sig.firedBrokers[sig.step].push(broker.uid); // Dá o bilhete do Gale
+                    if (!sig.isManual) sig.firedBrokers[sig.step].push(broker.uid); 
                     
                     let valorGale = broker.config.baseAmount * Math.pow(2, sig.step); 
                     let isDemo = broker.config.accountType === 'demo';
@@ -339,7 +365,7 @@ async function handleCandleClose(eng, closedPrice, candleStartTime) {
                 id: Date.now(), type: newSignalType, symbol: eng.symbol.toUpperCase(), timeframe: eng.timeframe, 
                 time: new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' }), 
                 step: 0, status: 'Aguardando Vela...', entryPrice: eng.currentGlobalPrice || closedPrice, isManual: false,
-                firedBrokers: { 0: [] } // 🎫 ABERTURA DA BILHETEIRA
+                firedBrokers: { 0: [] } 
             };
             eng.activeSignals.push(newSig); eng.signalHistory.unshift(newSig); if (eng.signalHistory.length > 20) eng.signalHistory.pop();
             io.emit('new_signal_history', newSig); io.emit('signal', { type: newSignalType, time: newSig.time }); 
@@ -347,7 +373,7 @@ async function handleCandleClose(eng, closedPrice, candleStartTime) {
             Object.values(state.activeBrokers).forEach(async (broker) => {
                 if (!broker.autoTradeActive || !broker.isPremium) return;
                 
-                newSig.firedBrokers[0].push(broker.uid); // 🎫 O Robô ligou a tempo? Toma o bilhete!
+                newSig.firedBrokers[0].push(broker.uid); 
                 
                 let valorInicial = parseFloat(broker.config.baseAmount).toFixed(2).replace('.', ','); 
                 let isDemo = broker.config.accountType === 'demo';
@@ -429,12 +455,13 @@ async function startConnection(symbol, tf) {
             const resolution = tfMinutes.toString();
             const to = Math.floor(Date.now() / 1000); const from = to - (500 * tfMinutes * 60); 
             const otcHeaders = { 'accept': '*/*', 'Cookie': state.globalDynamicCookie, 'X-Requested-With': 'XMLHttpRequest', 'referer': 'https://velloxbroker.com/traderoom', 'user-agent': 'Mozilla/5.0' };
-            const response = await axios.get(`https://velloxbroker.com/publicapi/tradingview/udf-history?symbol=${symbol.toUpperCase()}&resolution=${resolution}&from=${from}&to=${to}&countback=500&site=velloxbroker.com`, { headers: otcHeaders });
+            
+            const otcData = await fetchOtcWithFallback(symbol, resolution, from, to, 500, otcHeaders);
 
             if (myConnectionId !== eng.connectionId) return;
 
-            if (response.data && response.data.s === 'ok') {
-                const opens = response.data.o; const closes = response.data.c; const times = response.data.t;
+            if (otcData) {
+                const opens = otcData.o; const closes = otcData.c; const times = otcData.t;
                 for (let i = 0; i < closes.length - 1; i++) { processHistoricalCandle(eng, times[i] * 1000, opens[i], closes[i], currentStrategy); }
                 eng.lastClosedCandleTime = times[times.length - 2]; 
                 if (eng.key === state.currentEngineKey) { updateStatus(`Analisando Mercado Vivo...`); io.emit('scoreboard', eng.scoreboard); io.emit('history_dump', eng.signalHistory); }
@@ -444,9 +471,11 @@ async function startConnection(symbol, tf) {
                 if (myConnectionId !== eng.connectionId) return;
                 try {
                     const pollTo = Math.floor(Date.now() / 1000); const pollFrom = pollTo - (5 * tfMinutes * 60); 
-                    const pollRes = await axios.get(`https://velloxbroker.com/publicapi/tradingview/udf-history?symbol=${symbol.toUpperCase()}&resolution=${resolution}&from=${pollFrom}&to=${pollTo}&countback=3&site=velloxbroker.com`, { headers: otcHeaders });
-                    if (pollRes.data && pollRes.data.s === 'ok') {
-                        const times = pollRes.data.t; const closes = pollRes.data.c; const latestTime = times[times.length - 1]; const latestClose = closes[closes.length - 1];
+                    
+                    const pollData = await fetchOtcWithFallback(symbol, resolution, pollFrom, pollTo, 3, otcHeaders);
+                    
+                    if (pollData) {
+                        const times = pollData.t; const closes = pollData.c; const latestTime = times[times.length - 1]; const latestClose = closes[closes.length - 1];
                         if (eng.lastClosedCandleTime > 0 && latestTime > eng.lastClosedCandleTime) {
                             const closedTime = times[times.length - 2]; const closedPrice = closes[closes.length - 2];
                             if (closedTime === eng.lastClosedCandleTime) { handleCandleClose(eng, closedPrice, closedTime); } else { eng.lastClosedCandleTime = latestTime; }
