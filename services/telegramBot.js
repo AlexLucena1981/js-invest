@@ -34,7 +34,11 @@ let isProcessing = false;
 
 const activeOtcSuffixes = {};
 
-// ⏱️ FUNÇÃO DE RESPIRO (Evita que a Corretora bloqueie o nosso IP)
+// ⏱️ O RELÓGIO MESTRE: Força o servidor a ler a hora de São Paulo
+function getAgoraSP() {
+    return new Date(new Date().toLocaleString("en-US", {timeZone: "America/Sao_Paulo"}));
+}
+
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 function parseTimeToCron(timeStr, addMinutes, dias) {
@@ -46,7 +50,7 @@ function parseTimeToCron(timeStr, addMinutes, dias) {
 }
 
 async function initTelegramBot(stateGlobais, configFirebase) {
-    console.log("🤖 General Telegram: MODO FANTASMA (Anti-Bloqueio) Ativado! 🚀");
+    console.log("🤖 General Telegram: MODO FANTASMA & RELÓGIO BRASIL Ativados! 🚀");
     configLocal = configFirebase;
     agendarSessoes(stateGlobais);
     iniciarMotorContinuo(stateGlobais);
@@ -65,6 +69,7 @@ function agendarSessoes() {
     const cronManhaStart = parseTimeToCron(configLocal.horaManha || '09:00', 0, dias);
     const cronTardeStart = parseTimeToCron(configLocal.horaTarde || '15:00', 0, dias);
 
+    // O node-cron já aceita o fuso horário nativamente
     const job1 = cron.schedule(cronManhaStart, () => iniciarSessao("Manhã"), { timezone: "America/Sao_Paulo" });
     const job2 = cron.schedule(cronTardeStart, () => iniciarSessao("Tarde"), { timezone: "America/Sao_Paulo" });
 
@@ -89,7 +94,8 @@ function iniciarMotorContinuo(stateGlobais) {
         isProcessing = true;
 
         try {
-            const agora = new Date(); 
+            // 🎯 Lendo a hora brasileira!
+            const agora = getAgoraSP(); 
             const min = agora.getMinutes(); 
             const sec = agora.getSeconds();
 
@@ -130,7 +136,8 @@ function iniciarMotorContinuo(stateGlobais) {
 }
 
 async function cacarOportunidade(state) {
-    const minAtual = new Date().getMinutes();
+    const agora = getAgoraSP();
+    const minAtual = agora.getMinutes();
     const strategy = state.strategiesDB.find(s => s.name.toLowerCase().includes('live')) || state.strategiesDB[0];
     
     for (let sym of ativosTestes) {
@@ -141,12 +148,9 @@ async function cacarOportunidade(state) {
 
             const velas = await puxarVelasM1(sym, state);
             if (!velas || velas.length < 150) {
-                await sleep(200); // ⏱️ Respiro para não ser bloqueado!
+                await sleep(200); 
                 continue;
             }
-
-            // 🔥 TRAVA DE ASSERTIVIDADE DESLIGADA PARA O STRESS TEST (Metralhadora 100% Livre)
-            // Não bloqueamos mais moedas que ficaram horas sem bater na banda.
             
             const closes = velas.map(k => parseFloat(k[4]));
             const sinal = evaluateStrategy(closes, strategy);
@@ -172,7 +176,7 @@ async function cacarOportunidade(state) {
                 };
                 break; 
             }
-            await sleep(200); // ⏱️ Respiro antes de consultar a próxima moeda
+            await sleep(200); 
         } catch (e) {}
     }
 }
@@ -195,7 +199,7 @@ function enviarPreAlerta(symbol, tipo, nomeAmigavel) {
 }
 
 function atirarSinalDefinitivo(operacao) {
-    const agora = new Date();
+    const agora = getAgoraSP(); // 🎯 O RELÓGIO MESTRE EM AÇÃO
     let hora = agora.getHours();
     
     if (agora.getMinutes() === 59 && operacao.minutoEntrada === 0) hora = (hora + 1) % 24;
@@ -222,7 +226,7 @@ function atirarSinalDefinitivo(operacao) {
 
 async function conferirResultado(state) {
     const operacao = estadoSessao.sinalRodando;
-    const agora = new Date();
+    const agora = getAgoraSP();
     
     const velas = await puxarVelasM1(operacao.symbol, state);
     
@@ -310,7 +314,7 @@ async function puxarVelasM1(symbol, state) {
                         break; 
                     }
                 } catch(e) {}
-                await sleep(150); // ⏱️ Respiro nas variações de nome
+                await sleep(150); 
             }
 
             return klines;
