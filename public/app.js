@@ -184,11 +184,52 @@ function setupTelegramAdminUI() {
     const adminModalContent = document.querySelector('#adminModal > div');
     if (!adminModalContent || document.getElementById('tgAdminPanel')) return;
 
+    const oldCloseBtn = document.getElementById('btnCancelAdmin');
+    if (oldCloseBtn) {
+        const parent = oldCloseBtn.parentElement;
+        if (parent && parent.tagName === 'DIV' && parent.children.length === 1) {
+            parent.remove(); 
+        } else {
+            oldCloseBtn.remove();
+        }
+    }
+
+    const systemPanel = document.createElement('div');
+    systemPanel.id = 'systemAdminPanel';
+    
+    while (adminModalContent.firstChild) {
+        systemPanel.appendChild(adminModalContent.firstChild);
+    }
+
+    const tabNav = document.createElement('div');
+    tabNav.style.cssText = 'display:flex; gap:10px; margin-bottom:20px; border-bottom:1px solid #30363d; padding-bottom:15px;';
+    tabNav.innerHTML = `
+        <button id="tabSystem" style="flex:1; background:#1f6feb; color:white; border:none; padding:12px; border-radius:8px; font-weight:bold; cursor:pointer; font-size:14px; transition:0.2s;">👥 Usuários & Corretora</button>
+        <button id="tabTelegram" style="flex:1; background:#21262d; color:#8b949e; border:1px solid #30363d; padding:12px; border-radius:8px; font-weight:bold; cursor:pointer; font-size:14px; transition:0.2s;">🤖 Robô Telegram & HFT</button>
+    `;
+
     const tgPanel = document.createElement('div');
     tgPanel.id = 'tgAdminPanel';
-    tgPanel.style.cssText = 'margin-top: 20px; border-top: 1px solid #30363d; padding-top: 20px;';
+    tgPanel.style.display = 'none';
+    
     tgPanel.innerHTML = `
-        <h3 style="color:#58a6ff; text-align:center; margin-bottom: 15px;">🤖 CENTRO DE COMANDO: TELEGRAM</h3>
+        <h3 style="color:#58a6ff; text-align:center; margin-bottom: 15px; margin-top:0;">⚙️ CONFIGURAÇÃO DO ROBÔ</h3>
+        
+        <div style="display:flex; gap:10px; margin-bottom:15px; background:#161b22; padding:15px; border-radius:8px; border:1px solid #30363d;">
+            <div style="flex:1;">
+                <label style="font-size:11px; color:#8b949e;">RSI Sobrecompra (Put)</label>
+                <input type="number" id="tgRsiOver" class="form-control" style="background:#0d1117; color:#f85149; border:1px solid #30363d; font-weight:bold; font-size:14px;" placeholder="65">
+            </div>
+            <div style="flex:1;">
+                <label style="font-size:11px; color:#8b949e;">RSI Sobrevenda (Call)</label>
+                <input type="number" id="tgRsiUnder" class="form-control" style="background:#0d1117; color:#3fb950; border:1px solid #30363d; font-weight:bold; font-size:14px;" placeholder="35">
+            </div>
+            <div style="flex:1;">
+                <label style="font-size:11px; color:#8b949e;">Bollinger (Desvio)</label>
+                <input type="number" id="tgBbDev" class="form-control" style="background:#0d1117; color:#58a6ff; border:1px solid #30363d; font-weight:bold; font-size:14px;" placeholder="2" step="0.1">
+            </div>
+        </div>
+
         <div style="display:flex; gap:10px; margin-bottom:15px;">
             <div style="flex:1;">
                 <label style="font-size:12px; color:#8b949e;">Início Manhã (Ex: 09:00)</label>
@@ -203,30 +244,92 @@ function setupTelegramAdminUI() {
                 <input type="text" id="tgDias" class="form-control" style="background:#0d1117; color:#c9d1d9; border:1px solid #30363d;" placeholder="1-5">
             </div>
         </div>
-        <div style="margin-bottom:10px;">
-            <label style="font-size:12px; color:#8b949e;">Msg: Despertar do Robô</label>
-            <input type="text" id="tgMsgDespertar" class="form-control" style="background:#0d1117; color:#c9d1d9; border:1px solid #30363d;">
+
+        <div style="margin-bottom:15px; background:#21262d; padding:10px; border-radius:6px; border:1px dashed #3fb950; font-size:11px; color:#c9d1d9;">
+            <b style="color:#58a6ff;">✨ Variáveis Mágicas:</b> Copie e cole nos textos abaixo!<br>
+            <code style="color:#3fb950;">{MOEDA}</code> | <code style="color:#3fb950;">{DIRECAO}</code> | <code style="color:#3fb950;">{HORA_ENTRADA}</code> | <code style="color:#3fb950;">{HORA_GALE}</code>
         </div>
+
         <div style="margin-bottom:10px;">
-            <label style="font-size:12px; color:#8b949e;">Msg: Win de Primeira</label>
-            <input type="text" id="tgMsgWin" class="form-control" style="background:#0d1117; color:#3fb950; border:1px solid #30363d;">
+            <label style="font-size:12px; color:#8b949e;">Template: Pré-Alerta</label>
+            <textarea id="tgMsgPre" class="form-control" style="background:#0d1117; color:#c9d1d9; border:1px solid #30363d; height: 60px; font-family: monospace; font-size: 11px;"></textarea>
         </div>
         <div style="margin-bottom:15px;">
-            <label style="font-size:12px; color:#8b949e;">Msg: Loss Final</label>
-            <input type="text" id="tgMsgLoss" class="form-control" style="background:#0d1117; color:#f85149; border:1px solid #30363d;">
+            <label style="font-size:12px; color:#8b949e;">Template: Sinal de Entrada (Oficial)</label>
+            <textarea id="tgMsgSinal" class="form-control" style="background:#0d1117; color:#c9d1d9; border:1px solid #30363d; height: 100px; font-family: monospace; font-size: 11px;"></textarea>
         </div>
-        <div style="display:flex; justify-content:space-between; gap:10px;">
-            <button id="btnSalvarTg" style="flex:1; background:#2ea043; color:white; border:none; padding:10px; border-radius:6px; font-weight:bold; cursor:pointer;">💾 Salvar Configuração</button>
-            <button id="btnForcarTgManha" style="flex:1; background:#f85149; color:white; border:none; padding:10px; border-radius:6px; font-weight:bold; cursor:pointer;">🔥 Iniciar Sessão AGORA!</button>
+
+        <div style="display:flex; gap:10px; margin-bottom:10px;">
+            <div style="flex:1;">
+                <label style="font-size:12px; color:#8b949e;">Msg: Despertar do Robô</label>
+                <input type="text" id="tgMsgDespertar" class="form-control" style="background:#0d1117; color:#c9d1d9; border:1px solid #30363d; font-size:11px;">
+            </div>
+            <div style="flex:1;">
+                <label style="font-size:12px; color:#8b949e;">Msg: Win de Primeira</label>
+                <input type="text" id="tgMsgWin" class="form-control" style="background:#0d1117; color:#3fb950; border:1px solid #30363d; font-size:11px;">
+            </div>
+        </div>
+        <div style="margin-bottom:20px;">
+            <label style="font-size:12px; color:#8b949e;">Msg: Loss Final</label>
+            <input type="text" id="tgMsgLoss" class="form-control" style="background:#0d1117; color:#f85149; border:1px solid #30363d; font-size:11px;">
+        </div>
+
+        <div style="display:flex; justify-content:space-between; gap:10px; margin-bottom:15px;">
+            <button id="btnSalvarTg" style="flex:1; background:#2ea043; color:white; border:none; padding:12px; border-radius:8px; font-weight:bold; cursor:pointer; font-size:14px; transition:0.2s;">💾 Salvar Configurações</button>
+            <button id="btnForcarTgManha" style="flex:1; background:#da3633; color:white; border:none; padding:12px; border-radius:8px; font-weight:bold; cursor:pointer; font-size:14px; transition:0.2s;">🔥 Iniciar Sessão AGORA!</button>
         </div>
     `;
+
+    adminModalContent.appendChild(tabNav);
+    adminModalContent.appendChild(systemPanel);
     adminModalContent.appendChild(tgPanel);
+
+    const closeContainer = document.createElement('div');
+    closeContainer.style.textAlign = 'center';
+    closeContainer.style.marginTop = '20px';
+    closeContainer.style.paddingTop = '15px';
+    closeContainer.style.borderTop = '1px solid #30363d';
+    closeContainer.innerHTML = `<button id="btnUniversalClose" style="background:#21262d; color:#c9d1d9; border:1px solid #30363d; padding:10px 30px; border-radius:8px; font-weight:bold; cursor:pointer; width:100%; transition:0.2s;">FECHAR PAINEL ADMIN</button>`;
+    adminModalContent.appendChild(closeContainer);
+
+    document.getElementById('tabSystem').addEventListener('click', () => {
+        document.getElementById('systemAdminPanel').style.display = 'block';
+        document.getElementById('tgAdminPanel').style.display = 'none';
+        document.getElementById('tabSystem').style.background = '#1f6feb';
+        document.getElementById('tabSystem').style.color = 'white';
+        document.getElementById('tabSystem').style.border = 'none';
+        document.getElementById('tabTelegram').style.background = '#21262d';
+        document.getElementById('tabTelegram').style.color = '#8b949e';
+        document.getElementById('tabTelegram').style.border = '1px solid #30363d';
+    });
+
+    document.getElementById('tabTelegram').addEventListener('click', () => {
+        document.getElementById('systemAdminPanel').style.display = 'none';
+        document.getElementById('tgAdminPanel').style.display = 'block';
+        document.getElementById('tabTelegram').style.background = '#2ea043'; 
+        document.getElementById('tabTelegram').style.color = 'white';
+        document.getElementById('tabTelegram').style.border = 'none';
+        document.getElementById('tabSystem').style.background = '#21262d';
+        document.getElementById('tabSystem').style.color = '#8b949e';
+        document.getElementById('tabSystem').style.border = '1px solid #30363d';
+    });
+
+    document.getElementById('btnUniversalClose').addEventListener('click', () => {
+        document.getElementById('adminModal').style.display = 'none';
+    });
 
     document.getElementById('btnSalvarTg').addEventListener('click', () => {
         const config = {
+            rsiOver: document.getElementById('tgRsiOver').value,
+            rsiUnder: document.getElementById('tgRsiUnder').value,
+            bbDev: document.getElementById('tgBbDev').value,
             horaManha: document.getElementById('tgHoraManha').value,
             horaTarde: document.getElementById('tgHoraTarde').value,
             dias: document.getElementById('tgDias').value,
+            
+            // 🎯 CAIXAS DE MENSAGENS E TEMPLATES
+            msgPre: document.getElementById('tgMsgPre').value,
+            msgSinal: document.getElementById('tgMsgSinal').value,
             msgDespertar: document.getElementById('tgMsgDespertar').value,
             msgWin: document.getElementById('tgMsgWin').value,
             msgLoss: document.getElementById('tgMsgLoss').value
@@ -386,7 +489,6 @@ socket.on('hybrid_login_result', (res) => {
                 document.getElementById('btnAdminPanel').style.display = 'inline-block'; 
                 document.getElementById('btnOpenModal').style.display = 'inline-block'; 
                 setupTelegramAdminUI(); 
-                // 🎯 AQUI É O SEGREDO: O App pede os dados ANTES de clicar
                 auth.currentUser.getIdToken().then(token => socket.emit('admin_get_tg_config', token));
             }
         }).catch(err => { document.getElementById('loginError').innerText = "Erro: " + err.message; document.getElementById('loginError').style.display = 'block'; });
@@ -396,9 +498,7 @@ socket.on('hybrid_login_result', (res) => {
     }
 });
 
-// 🎯 E AQUI É ONDE ELE PREENCHE. Se a aba do Modal for aberta, os campos já vão ter a informação.
 socket.on('admin_tg_config_data', (config) => {
-    // Como a div só é montada quando clica no botão, vamos salvá-la numa variável global temporária
     window.tempTgConfig = config;
 });
 
@@ -490,7 +590,7 @@ socket.on('update_balance', (data) => {
 
 socket.on('win_balance_update', (data) => {
     const el = document.getElementById(data.isDemo ? 'valDemo' : 'valReal');
-    let currentVal = parseFloat(el.innerText.replace('R$ ', '').replace(/\./g, '').replace(',', '.'));
+    let currentVal = parseFloat(el.innerText.replace('R$ ', '').replace(/\\./g, '').replace(',', '.'));
     if (!isNaN(currentVal)) {
         el.innerText = `R$ ${(currentVal + data.prize).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
         el.style.color = '#3fb950'; el.style.textShadow = '0 0 15px rgba(63, 185, 80, 0.8)'; setTimeout(() => { el.style.color = data.isDemo ? '#d29922' : '#3fb950'; el.style.textShadow = 'none'; }, 2000);
@@ -641,18 +741,25 @@ if(document.getElementById('btnAdminPanel')) {
         scriptModal.style.display = 'flex'; 
         auth.currentUser.getIdToken().then(token => socket.emit('admin_get_users', token)); 
         
-        // 🎯 AQUI PREENCHE O PAINEL DE COMANDO DO TELEGRAM AO ABRIR O MODAL
+        // 🎯 PREENCHE OS CAMPOS AO ABRIR O PAINEL ADMIN
         if (window.tempTgConfig) {
+            if(document.getElementById('tgRsiOver')) document.getElementById('tgRsiOver').value = window.tempTgConfig.rsiOver || '65';
+            if(document.getElementById('tgRsiUnder')) document.getElementById('tgRsiUnder').value = window.tempTgConfig.rsiUnder || '35';
+            if(document.getElementById('tgBbDev')) document.getElementById('tgBbDev').value = window.tempTgConfig.bbDev || '2';
+            
             if(document.getElementById('tgHoraManha')) document.getElementById('tgHoraManha').value = window.tempTgConfig.horaManha || '09:00';
             if(document.getElementById('tgHoraTarde')) document.getElementById('tgHoraTarde').value = window.tempTgConfig.horaTarde || '15:00';
             if(document.getElementById('tgDias')) document.getElementById('tgDias').value = window.tempTgConfig.dias || '1-5';
             if(document.getElementById('tgMsgDespertar')) document.getElementById('tgMsgDespertar').value = window.tempTgConfig.msgDespertar || '';
             if(document.getElementById('tgMsgWin')) document.getElementById('tgMsgWin').value = window.tempTgConfig.msgWin || '';
             if(document.getElementById('tgMsgLoss')) document.getElementById('tgMsgLoss').value = window.tempTgConfig.msgLoss || '';
+            
+            // Textos Grandes
+            if(document.getElementById('tgMsgPre')) document.getElementById('tgMsgPre').value = window.tempTgConfig.msgPre || '';
+            if(document.getElementById('tgMsgSinal')) document.getElementById('tgMsgSinal').value = window.tempTgConfig.msgSinal || '';
         }
     });
 }
-if(document.getElementById('btnCancelAdmin')) document.getElementById('btnCancelAdmin').addEventListener('click', () => { scriptModal.style.display = 'none'; });
 
 const stratModal = document.getElementById('scriptModal');
 if(document.getElementById('btnOpenModal')) document.getElementById('btnOpenModal').addEventListener('click', () => { stratModal.style.display = 'flex'; });

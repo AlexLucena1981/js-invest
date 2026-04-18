@@ -63,6 +63,38 @@ function calculateBollingerBands(data, period, stdDev) {
 function evaluateStrategy(prices, strategyConfig) {
     if (!prices || prices.length < 50) return null;
 
+    // =====================================================================
+    // 🎯 BYPASS DO PAINEL ADMIN (ESTRATÉGIA OFICIAL DA LIVE / STRESS TEST)
+    // =====================================================================
+    if (strategyConfig.name && strategyConfig.name.toLowerCase().includes('live')) {
+        const rsiPeriod = 14; 
+        // Puxa as variáveis vivas que o server.js injetou do Firebase
+        const rsiOverbought = strategyConfig.rsiOverbought || 65; 
+        const rsiOversold = strategyConfig.rsiOversold || 35;   
+        
+        const bbPeriod = 20; 
+        const bbStdDev = strategyConfig.bbStdDev || 2;       
+
+        const currentPrice = prices[prices.length - 1];
+
+        const lastRSI = calculateRSI(prices, rsiPeriod);
+        const lastBB = calculateBollingerBands(prices, bbPeriod, bbStdDev);
+
+        if (lastRSI !== null && lastBB !== null) {
+            // 🟢 COMPRA (CALL): Tocou na banda inferior + RSI Sobrevenda
+            if (currentPrice <= lastBB.lower && lastRSI <= rsiOversold) return 'CALL';
+            
+            // 🔴 VENDA (PUT): Tocou na banda superior + RSI Sobrecompra
+            if (currentPrice >= lastBB.upper && lastRSI >= rsiOverbought) return 'PUT';
+        }
+        
+        return null; // Se não houver gatilho, continua a varrer o mercado
+    }
+
+    // =====================================================================
+    // ⚙️ LÓGICAS ANTIGAS (MANTIDAS INTACTAS PARA O SEU SISTEMA)
+    // =====================================================================
+    
     // Lógica especial para estratégias complexas manuais
     if (strategyConfig.isComplex && strategyConfig.id === 'rei_das_binarias') {
         let buf1 = [];
@@ -84,7 +116,7 @@ function evaluateStrategy(prices, strategyConfig) {
         return null;
     }
 
-    // Lógica para as estratégias criadas dinamicamente no painel
+    // Lógica para as estratégias criadas dinamicamente no painel JSON
     let current = { price: prices[prices.length - 1] }; 
     let prev = { price: prices[prices.length - 2] };
     

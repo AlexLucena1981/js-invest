@@ -7,16 +7,12 @@ const TOKEN = '8627851942:AAFn2Ze3Nbjb6LbNu7Gk3eEAcpDuzzKGGkM';
 const CHAT_ID = '-1003925714362';
 const bot = new TelegramBot(TOKEN, { polling: false });
 
-// 💥 LISTA DE TESTE FIM DE SEMANA (OTC + Cripto Real)
 const ativosTestes = [
     'BTCUSDT', 'ETHUSDT', 
-    // 🔥 Forex OTC
     'EURUSDOTC', 'AUDJPYOTC', 'EURJPYOTC', 'EURAUDOTC', 'AUDCHFOTC', 'GBPJPYOTC', 
     'CADCHFOTC', 'EURNZDOTC', 'GBPAUDOTC', 'NZDJPYOTC', 'GBPCHFOTC', 'USDCHFOTC', 
     'EURCADOTC', 'EURCHFOTC',
-    // 🔥 Criptos OTC
     'BTCUSDTOTC', 'ETHUSDTOTC', 'LTCUSDTOTC', 'ADAUSDTOTC', 'BNBUSDTOTC', 'SOLUSDTOTC', 'DOGEUSDTOTC',
-    // 🔥 Ações & Ouro OTC
     'AAPLOTC', 'NFLXOTC', 'METAOTC', 'TSLAOTC', 'MSFTOTC', 'PYPLOTC', 'AMZNOTC', 
     'NVDAOTC', 'SBUXOTC', 'DISOTC', 'MAOTC', 'IBMOTC', 'KOOTC', 'FOTC', 'SPOTOTC', 
     'NKEOTC', 'INTCOTC', 'VOTC', 'XAUUSDOTC'
@@ -36,14 +32,14 @@ function parseTimeToCron(timeStr, addMinutes, dias) {
 }
 
 async function initTelegramBot(stateGlobais, configFirebase) {
-    console.log("🤖 General Telegram: MODO STRESS TEST M1 (C/ Força Bruta OTC) 🚀");
+    console.log("🤖 General Telegram: MODO STRESS TEST M1 (C/ Copywriting Dinâmico) 🚀");
     configLocal = configFirebase;
     agendarSessoes(stateGlobais);
     iniciarMotorContinuo(stateGlobais);
 }
 
 function reloadTelegramConfig(novaConfig) {
-    console.log("⚙️ Recarregando configurações do Telegram via Painel Admin...");
+    console.log("⚙️ Recarregando Textos e Configurações via Painel Admin...");
     configLocal = novaConfig;
     agendarSessoes(); 
 }
@@ -69,7 +65,7 @@ function forcarSessaoTelegram(turno) {
 
 function iniciarSessao(turno) {
     estadoSessao = { ativa: true, permitirSinais: true, wins: estadoSessao.wins, losses: estadoSessao.losses, sinalRodando: null, ultimoSinalEnviado: null };
-    let msg = `👨‍💻 *INÍCIO DE STRESS TEST (OTC M1)*\n\nModo metralhadora ativado. Sem limites de meta. Vamos validar a estratégia!`;
+    let msg = configLocal.msgDespertar || `👨‍💻 *INÍCIO DE SESSÃO*`;
     bot.sendMessage(CHAT_ID, msg, { parse_mode: 'Markdown' });
 }
 
@@ -119,6 +115,18 @@ async function cacarOportunidade(state) {
     }
 }
 
+// 🎯 TRADUTOR DE VARIÁVEIS MÁGICAS
+function formatarMensagem(template, dados) {
+    if (!template) return "";
+    // O /g no final significa "Global", ou seja, troca a palavra em todo o texto, mesmo se repetida!
+    return template
+        .replace(/{MOEDA}/g, dados.moeda || "")
+        .replace(/{DIRECAO}/g, dados.direcao || "")
+        .replace(/{HORA_ENTRADA}/g, dados.horaEntrada || "")
+        .replace(/{HORA_GALE}/g, dados.horaGale || "")
+        .replace(/\\n/g, "\n"); // Troca a quebra de linha invisível por uma quebra real no Telegram
+}
+
 function atirarSinalNoToque(sym, tipo) {
     const agora = new Date();
     const dataEntrada = new Date(agora);
@@ -133,7 +141,15 @@ function atirarSinalNoToque(sym, tipo) {
 
     const acao = tipo === 'CALL' ? '🟩 Comprar' : '🟥 Vender';
 
-    const msg = `⚡ *ALERTA DE TOQUE (OTC/M1)* ⚡\n\n💵 Moeda = ${sym}\n⏰ Expiração = 1 Minuto\n🛎 Entrada = ${horaEntrada}\n${acao}\n\nGale 1 - ${horaGale}\n\n👉🏼 Se necessário, fazer 1 Gale.\n\n➡️ [Clique aqui para abrir a Vellox](https://velloxbroker.com)`;
+    // 🎯 LÊ O TEMPLATE DO PAINEL ADMIN
+    const templateOriginal = configLocal.msgSinal || "⚡ *ALERTA DE TOQUE (OTC/M1)* ⚡\\n\\n💵 Moeda = {MOEDA}\\n⏰ Expiração = 1 Minuto\\n🛎 Entrada = {HORA_ENTRADA}\\n{DIRECAO}\\n\\nGale 1 - {HORA_GALE}\\n\\n👉🏼 Se necessário, fazer 1 Gale.\\n\\n➡️ [Clique aqui para abrir a Vellox](https://velloxbroker.com)";
+
+    const msg = formatarMensagem(templateOriginal, {
+        moeda: sym,
+        direcao: acao,
+        horaEntrada: horaEntrada,
+        horaGale: horaGale
+    });
     
     bot.sendMessage(CHAT_ID, msg, { parse_mode: 'Markdown', disable_web_page_preview: true });
 
@@ -142,6 +158,14 @@ function atirarSinalNoToque(sym, tipo) {
         minutoEntrada: dataEntrada.getMinutes(),
         minutoVerificacao: (dataEntrada.getMinutes() + 1) % 60
     };
+}
+
+// (Opcional) Função de Pré-alerta mantida e atualizada para caso decida voltar para o M5
+function enviarPreAlerta(symbol, tipo) {
+    const acao = tipo === 'CALL' ? '🟩 Comprar' : '🟥 Vender';
+    const templateOriginal = configLocal.msgPre || "⚠️ *PRÉ-ALERTA DE SINAL*\\n\\nPreparem o ativo: *{MOEDA}*\\nPossível Operação: *{DIRECAO}*";
+    const msg = formatarMensagem(templateOriginal, { moeda: symbol, direcao: acao });
+    bot.sendMessage(CHAT_ID, msg, { parse_mode: 'Markdown' });
 }
 
 async function conferirResultado(state) {
@@ -160,14 +184,14 @@ async function conferirResultado(state) {
     const won = (operacao.type === 'CALL' && isGreen) || (operacao.type === 'PUT' && isRed);
 
     if (won) {
-        let msgWin = operacao.step === 0 ? "✅ *WIN DE PRIMEIRA!* 🎯" : "✅ *WIN NO GALE 1!* 🎯";
+        let msgWin = operacao.step === 0 ? (configLocal.msgWin || "✅ *WIN DE PRIMEIRA!* 🎯") : "✅ *WIN NO GALE 1!* 🎯";
         bot.sendMessage(CHAT_ID, `${msgWin}\nAtivo: ${operacao.symbol}`, { parse_mode: 'Markdown' });
         estadoSessao.wins++; estadoSessao.sinalRodando = null; anunciarPlacar(); 
     } else {
         operacao.step++;
         if (operacao.step > 1) {
-            let msgLoss = `🔴 *LOSS!* O mercado não respeitou a análise em ${operacao.symbol}.`;
-            bot.sendMessage(CHAT_ID, msgLoss, { parse_mode: 'Markdown' });
+            let msgLoss = configLocal.msgLoss || `🔴 *LOSS!* O mercado não respeitou a análise.`;
+            bot.sendMessage(CHAT_ID, `${msgLoss}\nAtivo: ${operacao.symbol}`, { parse_mode: 'Markdown' });
             estadoSessao.losses++; estadoSessao.sinalRodando = null; anunciarPlacar(); 
         } else {
             bot.sendMessage(CHAT_ID, `🔄 *ENTRAR NO GALE ${operacao.step}* em ${operacao.symbol}!\nMesma direção.`, { parse_mode: 'Markdown' });
@@ -180,9 +204,6 @@ function anunciarPlacar() {
     bot.sendMessage(CHAT_ID, `📊 *Placar AO VIVO (Teste M1):* ${estadoSessao.wins} Win x ${estadoSessao.losses} Loss\nO radar continua operando...`, { parse_mode: 'Markdown' });
 }
 
-// ==========================================
-// 🛠️ MOTOR DE FORÇA BRUTA OTC (SMART FALLBACK)
-// ==========================================
 async function puxarVelasM1(symbol, state) {
     try {
         const symUpper = symbol.toUpperCase();
@@ -193,10 +214,7 @@ async function puxarVelasM1(symbol, state) {
             if (!res.data) return null;
             return res.data; 
         } else {
-            if(!state.globalDynamicCookie) {
-                console.log(`❌ BLOQUEIO: Sem Cookie VIP! Não é possível puxar gráfico de ${symUpper}`);
-                return null;
-            }
+            if(!state.globalDynamicCookie) return null;
             
             const to = Math.floor(Date.now() / 1000); 
             const from = to - (150 * 60); 
@@ -227,7 +245,6 @@ async function puxarVelasM1(symbol, state) {
                 } catch(e) {}
             }
 
-            if (!klines) console.log(`⚠️ API VELLOX REJEITOU ATIVO [${symUpper}] em todos os 5 formatos.`);
             return klines;
         }
     } catch (e) { 

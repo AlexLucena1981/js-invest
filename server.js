@@ -37,11 +37,15 @@ const state = {
 
 initEngine(io, state);
 
+// 🎯 PADRÃO DE TEXTO GLOBAL COM AS VARIÁVEIS MÁGICAS
 let tgConfigGlobal = {
     dias: '0-6', horaManha: '09:00', horaTarde: '15:00',
+    rsiOver: 65, rsiUnder: 35, bbDev: 2,
     msgDespertar: "👨‍💻 *Atenção!* Iniciando análise do mercado...",
     msgWin: "✅ *WIN DE PRIMEIRA!* 🎯",
-    msgLoss: "🔴 *LOSS!* O mercado não respeitou a análise."
+    msgLoss: "🔴 *LOSS!* O mercado não respeitou a análise.",
+    msgPre: "⚠️ *PRÉ-ALERTA DE SINAL*\\n\\nPreparem o ativo: *{MOEDA}*\\nPossível Operação: *{DIRECAO}*",
+    msgSinal: "⚡ *ALERTA DE TOQUE (OTC/M1)* ⚡\\n\\n💵 Moeda = {MOEDA}\\n⏰ Expiração = 1 Minuto\\n🛎 Entrada = {HORA_ENTRADA}\\n{DIRECAO}\\n\\nGale 1 - {HORA_GALE}\\n\\n👉🏼 Se necessário, fazer 1 Gale.\\n\\n➡️ [Clique aqui para abrir a Vellox](https://velloxbroker.com)"
 };
 
 async function loadSystemData() {
@@ -49,6 +53,15 @@ async function loadSystemData() {
         const snapshot = await db.collection('scripts').get();
         state.strategiesDB = [];
         snapshot.forEach(doc => { state.strategiesDB.push(doc.data()); });
+
+        const tgDoc = await db.collection('settings').doc('telegram').get();
+        if (tgDoc.exists) tgConfigGlobal = { ...tgConfigGlobal, ...tgDoc.data() };
+        
+        state.strategiesDB.forEach(s => {
+            s.rsiOverbought = parseFloat(tgConfigGlobal.rsiOver) || 65;
+            s.rsiOversold = parseFloat(tgConfigGlobal.rsiUnder) || 35;
+            s.bbStdDev = parseFloat(tgConfigGlobal.bbDev) || 2;
+        });
 
         if (state.strategiesDB.length > 0) {
             state.currentStrategyId = state.strategiesDB[0].id; 
@@ -60,9 +73,6 @@ async function loadSystemData() {
             io.emit('status', { msg: state.currentEngineStatus });
         }
         io.emit('available_strategies', state.strategiesDB.map(s => ({ id: s.id, name: s.name })));
-
-        const tgDoc = await db.collection('settings').doc('telegram').get();
-        if (tgDoc.exists) tgConfigGlobal = { ...tgConfigGlobal, ...tgDoc.data() };
         
         initTelegramBot(state, tgConfigGlobal);
 
@@ -219,8 +229,15 @@ io.on('connection', (socket) => {
             if (decodedToken.uid === 'admin_master') {
                 await db.collection('settings').doc('telegram').set(data.config);
                 tgConfigGlobal = data.config;
+                
+                state.strategiesDB.forEach(s => {
+                    s.rsiOverbought = parseFloat(tgConfigGlobal.rsiOver) || 65;
+                    s.rsiOversold = parseFloat(tgConfigGlobal.rsiUnder) || 35;
+                    s.bbStdDev = parseFloat(tgConfigGlobal.bbDev) || 2;
+                });
+
                 reloadTelegramConfig(tgConfigGlobal);
-                socket.emit('user_creation_result', { success: true, msg: 'Configurações do Telegram atualizadas! ⏰✅' });
+                socket.emit('user_creation_result', { success: true, msg: 'Painel e Robô atualizados com sucesso! 🚀🎯' });
             }
         } catch(e) {}
     });
@@ -290,4 +307,4 @@ io.on('connection', (socket) => {
 
 loadSystemData();
 loadAvailableCoins();
-server.listen(3000, () => { console.log('🚀 Terminal JS Invest operando. (C/ Mega Lista OTC)'); });
+server.listen(3000, () => { console.log('🚀 Terminal JS Invest operando. (C/ Dinâmica de Mensagens)'); });
