@@ -26,7 +26,7 @@ const dicionarioAtivos = {
     'BTCUSDT': 'Bitcoin', 'ETHUSDT': 'Ethereum', 'LTCUSDT': 'Litecoin', 'ADAUSDT': 'Cardano'
 };
 
-const ativosTestes = Object.keys(dicionarioAtivos); // O robô vai caçar todos os ativos do dicionário
+const ativosTestes = Object.keys(dicionarioAtivos); 
 
 let estadoSessao = { ativa: false, permitirSinais: false, wins: 0, losses: 0, sinalRodando: null, ultimoSinalEnviado: null };
 let activeCronJobs = [];
@@ -42,7 +42,7 @@ function parseTimeToCron(timeStr, addMinutes, dias) {
 }
 
 async function initTelegramBot(stateGlobais, configFirebase) {
-    console.log("🤖 General Telegram: MODO STRESS TEST M1 (C/ Aliases Amigáveis) 🚀");
+    console.log("🤖 General Telegram: MODO STRESS TEST M1 (Pré-Alerta + Disparo) 🚀");
     configLocal = configFirebase;
     agendarSessoes(stateGlobais);
     iniciarMotorContinuo(stateGlobais);
@@ -79,6 +79,7 @@ function iniciarSessao(turno) {
     bot.sendMessage(CHAT_ID, msg, { parse_mode: 'Markdown' });
 }
 
+// 🎯 O MOTOR CORRIGIDO (FLUXO EM 2 ETAPAS)
 function iniciarMotorContinuo(stateGlobais) {
     if (motorCacaId) clearInterval(motorCacaId);
 
@@ -89,10 +90,23 @@ function iniciarMotorContinuo(stateGlobais) {
         const sec = agora.getSeconds();
 
         if (estadoSessao.sinalRodando) {
-            if (min === estadoSessao.sinalRodando.minutoVerificacao && sec >= 4 && sec <= 12) {
-                await conferirResultado(stateGlobais);
+            
+            // ETAPA 2: O relógio bateu nos 50 segundos? Hora de enviar o Sinal Oficial!
+            if (estadoSessao.sinalRodando.status === 'PRE_ALERTA') {
+                if (sec >= 50 || min === estadoSessao.sinalRodando.minutoEntrada) {
+                    estadoSessao.sinalRodando.status = 'OPERANDO';
+                    atirarSinalDefinitivo(estadoSessao.sinalRodando);
+                }
+            } 
+            // ETAPA 3: Acompanha o resultado após a vela fechar
+            else if (estadoSessao.sinalRodando.status === 'OPERANDO') {
+                if (min === estadoSessao.sinalRodando.minutoVerificacao && sec >= 4 && sec <= 12) {
+                    await conferirResultado(stateGlobais);
+                }
             }
+            
         } else if (estadoSessao.permitirSinais) {
+            // ETAPA 1: O Radar procura o Toque para enviar o Pré-Alerta
             await cacarOportunidade(stateGlobais);
         }
     }, 5000); 
@@ -118,7 +132,26 @@ async function cacarOportunidade(state) {
 
             if (sinal) {
                 estadoSessao.ultimoSinalEnviado = `${sym}_${minAtual}`;
-                atirarSinalNoToque(sym, sinal);
+                
+                const nomeAmigavel = dicionarioAtivos[sym] || sym;
+                
+                // 🚀 BATEU NA BANDA! ENVIA O PRÉ-ALERTA AGORA!
+                enviarPreAlerta(sym, sinal, nomeAmigavel);
+
+                // Agenda a operação para a virada do minuto
+                const agora = new Date();
+                const dataEntrada = new Date(agora);
+                if (agora.getSeconds() >= 50) { dataEntrada.setMinutes(dataEntrada.getMinutes() + 1); }
+                
+                estadoSessao.sinalRodando = { 
+                    symbol: sym, 
+                    type: sinal, 
+                    step: 0, 
+                    minutoEntrada: (dataEntrada.getMinutes() + 1) % 60,
+                    minutoVerificacao: (dataEntrada.getMinutes() + 2) % 60,
+                    status: 'PRE_ALERTA',
+                    nomeAmigavel: nomeAmigavel
+                };
                 break; 
             }
         } catch (e) {}
@@ -136,10 +169,22 @@ function formatarMensagem(template, dados) {
         .replace(/\\n/g, "\n"); 
 }
 
-function atirarSinalNoToque(sym, tipo) {
+// FUNÇÃO 1: O AVISO DE PREPARAÇÃO (PRÉ-ALERTA)
+function enviarPreAlerta(symbol, tipo, nomeAmigavel) {
+    const acao = tipo === 'CALL' ? '🟩 Comprar' : '🟥 Vender';
+    const templateOriginal = configLocal.msgPre || "⚠️ *PRÉ-ALERTA DE SINAL*\\n\\nPreparem o ativo: *{MOEDA}*\\nPossível Operação: *{DIRECAO}*";
+    
+    const msg = formatarMensagem(templateOriginal, { moeda: nomeAmigavel, direcao: acao });
+    bot.sendMessage(CHAT_ID, msg, { parse_mode: 'Markdown', disable_web_page_preview: true });
+}
+
+// FUNÇÃO 2: A ORDEM DE ENTRADA (SINAL CONFIRMADO AOS 50 SEGUNDOS)
+function atirarSinalDefinitivo(operacao) {
     const agora = new Date();
     const dataEntrada = new Date(agora);
-    dataEntrada.setMinutes(dataEntrada.getMinutes() + 1);
+    
+    // Arredonda para o próximo minuto cheio
+    if (agora.getSeconds() >= 40) dataEntrada.setMinutes(dataEntrada.getMinutes() + 1);
     dataEntrada.setSeconds(0);
     
     const dataGale = new Date(dataEntrada);
@@ -148,35 +193,18 @@ function atirarSinalNoToque(sym, tipo) {
     const horaEntrada = dataEntrada.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' });
     const horaGale = dataGale.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' });
 
-    const acao = tipo === 'CALL' ? '🟩 Comprar' : '🟥 Vender';
+    const acao = operacao.type === 'CALL' ? '🟩 Comprar' : '🟥 Vender';
     
-    // 🎯 BUSCA O NOME AMIGÁVEL DO DICIONÁRIO (Alias)
-    const nomeAmigavel = dicionarioAtivos[sym] || sym;
-
     const templateOriginal = configLocal.msgSinal || "⚡ *ALERTA DE TOQUE (OTC/M1)* ⚡\\n\\n💵 Moeda = {MOEDA}\\n⏰ Expiração = 1 Minuto\\n🛎 Entrada = {HORA_ENTRADA}\\n{DIRECAO}\\n\\nGale 1 - {HORA_GALE}\\n\\n👉🏼 Se necessário, fazer 1 Gale.\\n\\n➡️ [Clique aqui para abrir a Vellox](https://velloxbroker.com)";
 
     const msg = formatarMensagem(templateOriginal, {
-        moeda: nomeAmigavel, // Passa o nome bonito (ex: Tesla (OTC))
+        moeda: operacao.nomeAmigavel, 
         direcao: acao,
         horaEntrada: horaEntrada,
         horaGale: horaGale
     });
     
     bot.sendMessage(CHAT_ID, msg, { parse_mode: 'Markdown', disable_web_page_preview: true });
-
-    estadoSessao.sinalRodando = { 
-        symbol: sym, type: tipo, step: 0, 
-        minutoEntrada: dataEntrada.getMinutes(),
-        minutoVerificacao: (dataEntrada.getMinutes() + 1) % 60
-    };
-}
-
-function enviarPreAlerta(symbol, tipo) {
-    const acao = tipo === 'CALL' ? '🟩 Comprar' : '🟥 Vender';
-    const nomeAmigavel = dicionarioAtivos[symbol] || symbol;
-    const templateOriginal = configLocal.msgPre || "⚠️ *PRÉ-ALERTA DE SINAL*\\n\\nPreparem o ativo: *{MOEDA}*\\nPossível Operação: *{DIRECAO}*";
-    const msg = formatarMensagem(templateOriginal, { moeda: nomeAmigavel, direcao: acao });
-    bot.sendMessage(CHAT_ID, msg, { parse_mode: 'Markdown' });
 }
 
 async function conferirResultado(state) {
@@ -194,20 +222,18 @@ async function conferirResultado(state) {
     const isRed = close < open;
     const won = (operacao.type === 'CALL' && isGreen) || (operacao.type === 'PUT' && isRed);
 
-    const nomeAmigavel = dicionarioAtivos[operacao.symbol] || operacao.symbol;
-
     if (won) {
         let msgWin = operacao.step === 0 ? (configLocal.msgWin || "✅ *WIN DE PRIMEIRA!* 🎯") : "✅ *WIN NO GALE 1!* 🎯";
-        bot.sendMessage(CHAT_ID, `${msgWin}\nAtivo: ${nomeAmigavel}`, { parse_mode: 'Markdown' });
+        bot.sendMessage(CHAT_ID, `${msgWin}\nAtivo: ${operacao.nomeAmigavel}`, { parse_mode: 'Markdown' });
         estadoSessao.wins++; estadoSessao.sinalRodando = null; anunciarPlacar(); 
     } else {
         operacao.step++;
         if (operacao.step > 1) {
             let msgLoss = configLocal.msgLoss || `🔴 *LOSS!* O mercado não respeitou a análise.`;
-            bot.sendMessage(CHAT_ID, `${msgLoss}\nAtivo: ${nomeAmigavel}`, { parse_mode: 'Markdown' });
+            bot.sendMessage(CHAT_ID, `${msgLoss}\nAtivo: ${operacao.nomeAmigavel}`, { parse_mode: 'Markdown' });
             estadoSessao.losses++; estadoSessao.sinalRodando = null; anunciarPlacar(); 
         } else {
-            bot.sendMessage(CHAT_ID, `🔄 *ENTRAR NO GALE ${operacao.step}* em ${nomeAmigavel}!\nMesma direção.`, { parse_mode: 'Markdown' });
+            bot.sendMessage(CHAT_ID, `🔄 *ENTRAR NO GALE ${operacao.step}* em ${operacao.nomeAmigavel}!\nMesma direção.`, { parse_mode: 'Markdown' });
             operacao.minutoVerificacao = (agora.getMinutes() + 1) % 60;
         }
     }
