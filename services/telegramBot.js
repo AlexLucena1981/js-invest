@@ -34,7 +34,6 @@ let isProcessing = false;
 
 const activeOtcSuffixes = {};
 
-// ⏱️ O RELÓGIO MESTRE: Força o servidor a ler a hora de São Paulo
 function getAgoraSP() {
     return new Date(new Date().toLocaleString("en-US", {timeZone: "America/Sao_Paulo"}));
 }
@@ -50,7 +49,7 @@ function parseTimeToCron(timeStr, addMinutes, dias) {
 }
 
 async function initTelegramBot(stateGlobais, configFirebase) {
-    console.log("🤖 General Telegram: MODO FANTASMA & RELÓGIO BRASIL Ativados! 🚀");
+    console.log("🤖 General Telegram: MODO FANTASMA & DESTRAVADO! 🚀");
     configLocal = configFirebase;
     agendarSessoes(stateGlobais);
     iniciarMotorContinuo(stateGlobais);
@@ -69,7 +68,6 @@ function agendarSessoes() {
     const cronManhaStart = parseTimeToCron(configLocal.horaManha || '09:00', 0, dias);
     const cronTardeStart = parseTimeToCron(configLocal.horaTarde || '15:00', 0, dias);
 
-    // O node-cron já aceita o fuso horário nativamente
     const job1 = cron.schedule(cronManhaStart, () => iniciarSessao("Manhã"), { timezone: "America/Sao_Paulo" });
     const job2 = cron.schedule(cronTardeStart, () => iniciarSessao("Tarde"), { timezone: "America/Sao_Paulo" });
 
@@ -94,7 +92,6 @@ function iniciarMotorContinuo(stateGlobais) {
         isProcessing = true;
 
         try {
-            // 🎯 Lendo a hora brasileira!
             const agora = getAgoraSP(); 
             const min = agora.getMinutes(); 
             const sec = agora.getSeconds();
@@ -152,6 +149,9 @@ async function cacarOportunidade(state) {
                 continue;
             }
             
+            // 🔥 FREIO DE MÃO ARRANCADO!
+            // Foi-se a verificação de assertividade! Bateu na banda + RSI, ele atira!
+
             const closes = velas.map(k => parseFloat(k[4]));
             const sinal = evaluateStrategy(closes, strategy);
 
@@ -199,7 +199,7 @@ function enviarPreAlerta(symbol, tipo, nomeAmigavel) {
 }
 
 function atirarSinalDefinitivo(operacao) {
-    const agora = getAgoraSP(); // 🎯 O RELÓGIO MESTRE EM AÇÃO
+    const agora = getAgoraSP();
     let hora = agora.getHours();
     
     if (agora.getMinutes() === 59 && operacao.minutoEntrada === 0) hora = (hora + 1) % 24;
