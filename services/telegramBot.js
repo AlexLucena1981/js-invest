@@ -7,7 +7,6 @@ const TOKEN = '8627851942:AAFn2Ze3Nbjb6LbNu7Gk3eEAcpDuzzKGGkM';
 const CHAT_ID = '-1003925714362';
 const bot = new TelegramBot(TOKEN, { polling: false });
 
-// 📚 O DICIONÁRIO DE NOMES AMIGÁVEIS (Aliases)
 const dicionarioAtivos = {
     'EURUSDOTC': 'EUR/USD (OTC)', 'AUDJPYOTC': 'AUD/JPY (OTC)', 'EURJPYOTC': 'EUR/JPY (OTC)', 
     'EURAUDOTC': 'EUR/AUD (OTC)', 'AUDCHFOTC': 'AUD/CHF (OTC)', 'GBPJPYOTC': 'GBP/JPY (OTC)', 
@@ -22,7 +21,6 @@ const dicionarioAtivos = {
     'MAOTC': 'Mastercard (OTC)', 'IBMOTC': 'IBM (OTC)', 'KOOTC': 'Coca-Cola (OTC)', 
     'FOTC': 'Ford (OTC)', 'SPOTOTC': 'Spotify (OTC)', 'NKEOTC': 'Nike (OTC)', 'INTCOTC': 'Intel (OTC)', 
     'VOTC': 'Visa (OTC)', 'XAUUSDOTC': 'Ouro (OTC)',
-    // Mercado Real
     'BTCUSDT': 'Bitcoin', 'ETHUSDT': 'Ethereum', 'LTCUSDT': 'Litecoin', 'ADAUSDT': 'Cardano'
 };
 
@@ -32,6 +30,10 @@ let estadoSessao = { ativa: false, permitirSinais: false, wins: 0, losses: 0, si
 let activeCronJobs = [];
 let configLocal = {};
 let motorCacaId = null;
+let isProcessing = false; // 🔥 TRAVA ANTI-ENGARRAFAMENTO
+
+// 🔥 MEMÓRIA CACHE DOS ATIVOS OTC (Para não esgotar a API)
+const activeOtcSuffixes = {};
 
 function parseTimeToCron(timeStr, addMinutes, dias) {
     let [h, m] = timeStr.split(':').map(Number);
@@ -42,14 +44,13 @@ function parseTimeToCron(timeStr, addMinutes, dias) {
 }
 
 async function initTelegramBot(stateGlobais, configFirebase) {
-    console.log("🤖 General Telegram: MODO STRESS TEST (Blindado Anti-Zumbi) 🚀");
+    console.log("🤖 General Telegram: MODO STRESS TEST (Cache Memory & Anti-Zumbi) 🚀");
     configLocal = configFirebase;
     agendarSessoes(stateGlobais);
     iniciarMotorContinuo(stateGlobais);
 }
 
 function reloadTelegramConfig(novaConfig) {
-    console.log("⚙️ Recarregando Textos e Configurações via Painel Admin...");
     configLocal = novaConfig;
     agendarSessoes(); 
 }
@@ -59,7 +60,6 @@ function agendarSessoes() {
     activeCronJobs = [];
 
     const dias = configLocal.dias || '0-6'; 
-
     const cronManhaStart = parseTimeToCron(configLocal.horaManha || '09:00', 0, dias);
     const cronTardeStart = parseTimeToCron(configLocal.horaTarde || '15:00', 0, dias);
 
@@ -79,79 +79,86 @@ function iniciarSessao(turno) {
     bot.sendMessage(CHAT_ID, msg, { parse_mode: 'Markdown' });
 }
 
-// 🎯 O MOTOR DE HFT BLINDADO (RODA A CADA 3 SEGUNDOS)
 function iniciarMotorContinuo(stateGlobais) {
     if (motorCacaId) clearInterval(motorCacaId);
 
     motorCacaId = setInterval(async () => {
-        if (!estadoSessao.ativa) return;
-        const agora = new Date(); 
-        const min = agora.getMinutes(); 
-        const sec = agora.getSeconds();
+        // 🔥 Se o motor anterior ainda estiver a ler gráficos lentos, ignora este ciclo!
+        if (!estadoSessao.ativa || isProcessing) return; 
+        isProcessing = true;
 
-        if (estadoSessao.sinalRodando) {
-            const op = estadoSessao.sinalRodando;
-            
-            // ETAPA 2: DISPARO DO SINAL
-            if (op.status === 'PRE_ALERTA') {
-                const minAnterior = (op.minutoEntrada - 1 + 60) % 60;
-                // Se bateu nos 50s do minuto anterior à entrada, atira!
-                if ((min === minAnterior && sec >= 50) || min === op.minutoEntrada) {
-                    op.status = 'OPERANDO';
-                    atirarSinalDefinitivo(op);
-                }
-            } 
-            // ETAPA 3: CONFERÊNCIA DO RESULTADO E PROTEÇÃO DEADLOCK
-            else if (op.status === 'OPERANDO') {
-                if (min === op.minutoVerificacao && sec >= 4 && sec <= 15) {
-                    if (!op.verificando) {
-                        op.verificando = true;
-                        await conferirResultado(stateGlobais);
+        try {
+            const agora = new Date(); 
+            const min = agora.getMinutes(); 
+            const sec = agora.getSeconds();
+
+            if (estadoSessao.sinalRodando) {
+                const op = estadoSessao.sinalRodando;
+                
+                // DISPARO DO SINAL
+                if (op.status === 'PRE_ALERTA') {
+                    const minAnterior = (op.minutoEntrada - 1 + 60) % 60;
+                    if ((min === minAnterior && sec >= 50) || min === op.minutoEntrada) {
+                        op.status = 'OPERANDO';
+                        atirarSinalDefinitivo(op);
+                    }
+                } 
+                // CONFERÊNCIA DO RESULTADO E PROTEÇÃO DEADLOCK
+                else if (op.status === 'OPERANDO') {
+                    if (min === op.minutoVerificacao && sec >= 4 && sec <= 20) {
+                        if (!op.verificando) {
+                            op.verificando = true;
+                            await conferirResultado(stateGlobais);
+                        }
+                    }
+                    
+                    // DEADLOCK: Se passaram 2 minutos e a corretora não deu os dados, limpa a fila!
+                    const minsPassados = (min - op.minutoVerificacao + 60) % 60;
+                    if (minsPassados >= 2 && minsPassados < 50) {
+                        bot.sendMessage(CHAT_ID, `⚠️ *Aviso:* A corretora atrasou os dados finais de ${op.nomeAmigavel}. Cancelando análise fantasma.`, { parse_mode: 'Markdown' });
+                        estadoSessao.sinalRodando = null;
                     }
                 }
                 
-                // 🔥 PROTEÇÃO ANTI-TRAVAMENTO (DEADLOCK PREVENTION)
-                // Se passaram 2 minutos além do tempo de verificar e a corretora não respondeu, limpa a memória!
-                const minsPassados = (min - op.minutoVerificacao + 60) % 60;
-                if (minsPassados >= 2 && minsPassados < 50) {
-                    bot.sendMessage(CHAT_ID, `⚠️ *Aviso de Sistema:* A corretora falhou em enviar os dados finais de ${op.nomeAmigavel}. Abortando operação fantasma para proteger a fila.`, { parse_mode: 'Markdown' });
-                    estadoSessao.sinalRodando = null;
-                }
+            } else if (estadoSessao.permitirSinais) {
+                await cacarOportunidade(stateGlobais);
             }
-            
-        } else if (estadoSessao.permitirSinais) {
-            // ETAPA 1: O Radar procura o Toque 
-            await cacarOportunidade(stateGlobais);
+        } catch (e) {
+            console.error("Erro no motor contínuo:", e);
+        } finally {
+            isProcessing = false; // Liberta a trava para o próximo ciclo
         }
     }, 3000); 
 }
 
 async function cacarOportunidade(state) {
     const minAtual = new Date().getMinutes();
+    const strategy = state.strategiesDB.find(s => s.name.toLowerCase().includes('live')) || state.strategiesDB[0];
     
     for (let sym of ativosTestes) {
+        // Se encontrou um sinal a meio do loop, sai imediatamente!
+        if (estadoSessao.sinalRodando) break; 
+
         try {
             if (estadoSessao.ultimoSinalEnviado === `${sym}_${minAtual}`) continue;
 
-            const assertividade = await calcularAssertividadeM1(sym, state);
-            if (assertividade < 80) continue; // Baixei ligeiramente para garantir o Stress Test
-
+            // 🔥 PUXA AS VELAS APENAS 1 VEZ POR ATIVO!
             const velas = await puxarVelasM1(sym, state);
             if (!velas || velas.length < 150) continue;
 
+            // 🔥 CÁLCULO LOCAL DA ASSERTIVIDADE (Poupa a API da corretora)
+            const assertividade = calcularAssertividadeLocal(velas, strategy);
+            if (assertividade < 80) continue; 
+
             const closes = velas.map(k => parseFloat(k[4]));
-            const strategy = state.strategiesDB.find(s => s.name.toLowerCase().includes('live')) || state.strategiesDB[0];
-            
             const sinal = evaluateStrategy(closes, strategy);
 
             if (sinal) {
                 estadoSessao.ultimoSinalEnviado = `${sym}_${minAtual}`;
-                
                 const nomeAmigavel = dicionarioAtivos[sym] || sym;
                 
                 enviarPreAlerta(sym, sinal, nomeAmigavel);
 
-                // Define as exatas coordenadas de entrada (Sempre a virada do próximo minuto)
                 const minEntrada = (minAtual + 1) % 60;
                 const minVerificacao = (minAtual + 2) % 60;
                 
@@ -165,10 +172,34 @@ async function cacarOportunidade(state) {
                     nomeAmigavel: nomeAmigavel,
                     verificando: false
                 };
-                break; 
+                break; // Achou sinal, trava a busca global!
             }
         } catch (e) {}
     }
+}
+
+// 🎯 FUNÇÃO MESTRA: Calcula assertividade usando a RAM do servidor, sem internet!
+function calcularAssertividadeLocal(velas, strategy) {
+    let wins = 0; let totalSinais = 0;
+    
+    for (let i = 100; i < velas.length - 3; i++) {
+        const histCloses = velas.slice(0, i).map(k => parseFloat(k[4])); 
+        const sig = evaluateStrategy(histCloses, strategy);
+        
+        if (sig) {
+            totalSinais++;
+            const o0 = parseFloat(velas[i][1]); const c0 = parseFloat(velas[i][4]);
+            const o1 = parseFloat(velas[i+1][1]); const c1 = parseFloat(velas[i+1][4]);
+            const o2 = parseFloat(velas[i+2][1]); const c2 = parseFloat(velas[i+2][4]);
+
+            const win0 = (sig === 'CALL' && c0 > o0) || (sig === 'PUT' && c0 < o0);
+            const win1 = (sig === 'CALL' && c1 > o1) || (sig === 'PUT' && c1 < o1);
+            const win2 = (sig === 'CALL' && c2 > o2) || (sig === 'PUT' && c2 < o2);
+            
+            if (win0 || win1 || win2) wins++;
+        }
+    }
+    return totalSinais > 0 ? (wins / totalSinais) * 100 : 0;
 }
 
 function formatarMensagem(template, dados) {
@@ -192,7 +223,6 @@ function atirarSinalDefinitivo(operacao) {
     const agora = new Date();
     let hora = agora.getHours();
     
-    // Tratamento impecável de virada de hora (ex: se é 10:59, a entrada é 11:00)
     if (agora.getMinutes() === 59 && operacao.minutoEntrada === 0) {
         hora = (hora + 1) % 24;
     }
@@ -229,7 +259,6 @@ async function conferirResultado(state) {
     
     const velas = await puxarVelasM1(operacao.symbol, state);
     
-    // 🔥 SE A CORRETORA FALHOU NA API, DESTRAVA A VERIFICAÇÃO PARA TENTAR DE NOVO!
     if (!velas || velas.length < 2) {
         operacao.verificando = false; 
         return; 
@@ -241,7 +270,6 @@ async function conferirResultado(state) {
 
     const isGreen = close > open;
     const isRed = close < open;
-    // Empate no Forex OTC (Doji) é tratado como Loss para chamar o Gale
     const won = (operacao.type === 'CALL' && isGreen) || (operacao.type === 'PUT' && isRed);
 
     if (won) {
@@ -256,8 +284,6 @@ async function conferirResultado(state) {
             estadoSessao.losses++; estadoSessao.sinalRodando = null; anunciarPlacar(); 
         } else {
             bot.sendMessage(CHAT_ID, `🔄 *ENTRAR NO GALE ${operacao.step}* em ${operacao.nomeAmigavel}!\nMesma direção.`, { parse_mode: 'Markdown' });
-            
-            // Reagenda a verificação do Gale para o próximo minuto!
             operacao.minutoVerificacao = (agora.getMinutes() + 1) % 60;
             operacao.verificando = false; 
         }
@@ -284,6 +310,20 @@ async function puxarVelasM1(symbol, state) {
             const from = to - (150 * 60); 
             const otcHeaders = { 'accept': '*/*', 'Cookie': state.globalDynamicCookie, 'X-Requested-With': 'XMLHttpRequest', 'referer': 'https://velloxbroker.com/traderoom', 'user-agent': 'Mozilla/5.0' };
             
+            // 🔥 SISTEMA DE CACHE: Se já soubermos o formato que a corretora aceita, usamos ele direto!
+            if (activeOtcSuffixes[symUpper]) {
+                try {
+                    let res = await axios.get(`https://velloxbroker.com/publicapi/tradingview/udf-history?symbol=${activeOtcSuffixes[symUpper]}&resolution=1&from=${from}&to=${to}&countback=150&site=velloxbroker.com`, { headers: otcHeaders });
+                    if (res.data && res.data.s === 'ok') {
+                        let klines = [];
+                        for(let i=0; i<res.data.c.length; i++){
+                            klines.push([res.data.t[i]*1000, res.data.o[i], res.data.h ? res.data.h[i] : res.data.o[i], res.data.l ? res.data.l[i] : res.data.c[i], res.data.c[i]]);
+                        }
+                        return klines;
+                    }
+                } catch(e) { delete activeOtcSuffixes[symUpper]; } // Se falhar, apaga da cache e tenta buscar de novo
+            }
+
             const baseName = symUpper.replace('OTC', '').replace('-', '').replace('_', ''); 
             const variacoes = [
                 `${baseName}OTC`,       
@@ -300,6 +340,7 @@ async function puxarVelasM1(symbol, state) {
                     let res = await axios.get(`https://velloxbroker.com/publicapi/tradingview/udf-history?symbol=${variante}&resolution=1&from=${from}&to=${to}&countback=150&site=velloxbroker.com`, { headers: otcHeaders });
                     
                     if (res.data && res.data.s === 'ok' && res.data.c && res.data.c.length > 0) {
+                        activeOtcSuffixes[symUpper] = variante; // SALVA NA MEMÓRIA CACHE!
                         klines = [];
                         for(let i=0; i<res.data.c.length; i++){
                             klines.push([res.data.t[i]*1000, res.data.o[i], res.data.h ? res.data.h[i] : res.data.o[i], res.data.l ? res.data.l[i] : res.data.c[i], res.data.c[i]]);
@@ -314,35 +355,6 @@ async function puxarVelasM1(symbol, state) {
     } catch (e) { 
         return null; 
     }
-}
-
-async function calcularAssertividadeM1(symbol, state) {
-    try {
-        const velas = await puxarVelasM1(symbol, state);
-        if (!velas || velas.length < 150) return 0;
-
-        let wins = 0; let totalSinais = 0;
-        const strategy = state.strategiesDB.find(s => s.name.toLowerCase().includes('live')) || state.strategiesDB[0];
-        
-        for (let i = 100; i < velas.length - 3; i++) {
-            const histCloses = velas.slice(0, i).map(k => parseFloat(k[4])); 
-            const sig = evaluateStrategy(histCloses, strategy);
-            
-            if (sig) {
-                totalSinais++;
-                const o0 = parseFloat(velas[i][1]); const c0 = parseFloat(velas[i][4]);
-                const o1 = parseFloat(velas[i+1][1]); const c1 = parseFloat(velas[i+1][4]);
-                const o2 = parseFloat(velas[i+2][1]); const c2 = parseFloat(velas[i+2][4]);
-
-                const win0 = (sig === 'CALL' && c0 > o0) || (sig === 'PUT' && c0 < o0);
-                const win1 = (sig === 'CALL' && c1 > o1) || (sig === 'PUT' && c1 < o1);
-                const win2 = (sig === 'CALL' && c2 > o2) || (sig === 'PUT' && c2 < o2);
-                
-                if (win0 || win1 || win2) wins++;
-            }
-        }
-        return totalSinais > 0 ? (wins / totalSinais) * 100 : 0;
-    } catch (e) { return 0; }
 }
 
 module.exports = { initTelegramBot, reloadTelegramConfig, forcarSessaoTelegram };
