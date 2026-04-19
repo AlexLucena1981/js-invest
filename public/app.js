@@ -180,7 +180,6 @@ function checkFifoEmpty() {
     if (!hasItems && emptyMsg) emptyMsg.style.display = 'block';
 }
 
-// 🎯 NOVO SISTEMA DE ABAS (TABS) COM SUPORTE A NÚMEROS DECIMAIS REAIS (PONTO OU VÍRGULA)
 function setupTelegramAdminUI() {
     const adminModalContent = document.querySelector('#adminModal > div');
     if (!adminModalContent || document.getElementById('tgAdminPanel')) return;
@@ -323,10 +322,7 @@ function setupTelegramAdminUI() {
         const config = {
             rsiOver: document.getElementById('tgRsiOver').value,
             rsiUnder: document.getElementById('tgRsiUnder').value,
-            
-            // 🎯 A MÁGICA: Substitui qualquer vírgula por ponto antes de enviar para o servidor!
             bbDev: document.getElementById('tgBbDev').value.replace(',', '.'),
-            
             horaManha: document.getElementById('tgHoraManha').value,
             horaTarde: document.getElementById('tgHoraTarde').value,
             dias: document.getElementById('tgDias').value,
@@ -496,7 +492,7 @@ socket.on('hybrid_login_result', (res) => {
         }).catch(err => { document.getElementById('loginError').innerText = "Erro: " + err.message; document.getElementById('loginError').style.display = 'block'; });
     } else { 
         alert("Conta não encontrada ou credenciais inválidas!\\nVocê será redirecionado para o cadastro oficial da corretora.");
-        window.location.href = "https://velloxbroker.com/register?aff=SEU_CODIGO_AQUI"; 
+        window.location.href = "https://joaosilva.top/corretora-vellox"; 
     }
 });
 
@@ -627,6 +623,15 @@ function clearUIForLoading() {
     document.getElementById('historyTableBody').innerHTML = `<tr><td colspan="3" style="text-align:center; color:#8b949e; padding: 20px;">Carregando análise histórica...</td></tr>`;
     document.getElementById('scoreWin1').innerText = '-'; document.getElementById('scoreWinG1').innerText = '-'; document.getElementById('scoreWinG2').innerText = '-'; document.getElementById('scoreLoss').innerText = '-'; document.getElementById('totalAccuracy').innerText = '0.0%';
     const alertBox = document.getElementById('alertBox'); alertBox.innerHTML = "Analisando Mercado..."; alertBox.className = "alert-box";
+
+    // 🔥 Limpa o FIFO list de sinais antigos ao mudar de moeda!
+    const fifoList = document.getElementById('fifoList');
+    if(fifoList) {
+        Array.from(fifoList.children).forEach(child => {
+            if (child.id && child.id.startsWith('fifo-sig-')) child.remove();
+        });
+        checkFifoEmpty();
+    }
 }
 
 document.getElementById('coinSelector').addEventListener('change', (e) => { clearUIForLoading(); socket.emit('change_coin', e.target.value); });
@@ -677,6 +682,24 @@ socket.on('history_dump', (historyArr) => {
         let colorClass = 'text-warning'; if (sig.status.includes('WIN')) colorClass = 'text-green'; else if (sig.status.includes('LOSS')) colorClass = 'text-red'; 
         tr.innerHTML = `<td class="text-muted">${sig.time}</td><td class="${isCall ? 'text-green' : 'text-red'}"><span style="font-size:10px; color:#8b949e; display:block;">${sig.symbol || 'BTCUSDT'}</span>${isCall ? '🟢 CALL' : '🔴 PUT'}</td><td id="res-${sig.id}" class="${colorClass}">${sig.status}</td>`;
         historyTableBody.appendChild(tr); 
+
+        // 🔥 CORREÇÃO: Injeta a operação no painel lateral (FIFO) se estiver Aguardando
+        if (!sig.status.includes('WIN') && !sig.status.includes('LOSS')) {
+            let stepText = '';
+            if (sig.status.includes('Gale 1')) stepText = 'Gale 1';
+            else if (sig.status.includes('Gale 2')) stepText = 'Gale 2';
+            else stepText = sig.isManual ? 'Sniper (1ª)' : 'Auto (1ª)';
+
+            manageFifoAlert({
+                id: 'sig-' + sig.id,
+                symbol: sig.symbol,
+                time: sig.time,
+                type: sig.type,
+                stepText: stepText,
+                isEnd: false,
+                isRadar: false
+            });
+        }
     });
 });
 
