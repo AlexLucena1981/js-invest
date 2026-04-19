@@ -34,13 +34,23 @@ let motorCacaId = null;
 let isProcessing = false; 
 const activeOtcSuffixes = {};
 
+// 🛡️ Escudo Anti-Duplo Clique
+let ultimaMensagemSessao = 0; 
+
 function getAgoraSP() {
     return new Date(new Date().toLocaleString("en-US", {timeZone: "America/Sao_Paulo"}));
 }
 
+function getSPDateString() {
+    const d = getAgoraSP();
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+}
+
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-// 🎯 MATEMÁTICA CORRIGIDA: Agora roda o relógio com perfeição (evita hora 16:60)
 function parseTimeToCron(timeStr, addMinutes, dias) {
     let [h, m] = (timeStr || "00:00").split(':').map(Number);
     let totalMin = (h * 60) + m + addMinutes;
@@ -49,11 +59,9 @@ function parseTimeToCron(timeStr, addMinutes, dias) {
     return `${finalM} ${finalH} * * ${dias}`;
 }
 
-// 🎯 SALVA O RESULTADO NO FIREBASE
 async function salvarResultadoNoFirebase(dados) {
     try {
-        const agora = getAgoraSP();
-        const dataDoc = agora.toISOString().split('T')[0]; 
+        const dataDoc = getSPDateString(); 
         
         await db.collection('historico_sinais').add({
             ativo: dados.ativo,
@@ -65,14 +73,14 @@ async function salvarResultadoNoFirebase(dados) {
             timestamp: admin.firestore.FieldValue.serverTimestamp(),
             dataRef: dataDoc
         });
+        
+        console.log(`✅ [DB FIREBASE] Sinal de ${dados.ativo} (${dados.resultado}) gravado em ${dataDoc}!`);
     } catch (e) { console.error("Erro ao salvar histórico:", e); }
 }
 
-// 📊 GERA RELATÓRIO E ENVIA PARA O GRUPO
 async function enviarRelatorioDiario() {
     try {
-        const agora = getAgoraSP();
-        const dataDoc = agora.toISOString().split('T')[0];
+        const dataDoc = getSPDateString();
         const snapshot = await db.collection('historico_sinais').where('dataRef', '==', dataDoc).get();
         
         if (snapshot.empty) return;
@@ -90,6 +98,7 @@ async function enviarRelatorioDiario() {
         });
 
         const assertividade = total > 0 ? ((wins / total) * 100).toFixed(1) : 0;
+        const agora = getAgoraSP();
         
         let msg = `📊 *RELATÓRIO DIÁRIO - JS INVEST* 📊\n`;
         msg += `📅 Data: ${agora.toLocaleDateString('pt-BR')}\n\n`;
@@ -110,7 +119,7 @@ async function enviarRelatorioDiario() {
 }
 
 async function initTelegramBot(stateGlobais, configFirebase) {
-    console.log("🤖 General Telegram: MODO FANTASMA & AUDITORIA ATIVOS! 🚀");
+    console.log("🤖 General Telegram: MODO BLINDADO (Anti-Amnésia) ATIVADO! 🚀");
     configLocal = configFirebase;
     agendarSessoes(stateGlobais);
     iniciarMotorContinuo(stateGlobais);
@@ -128,8 +137,6 @@ function agendarSessoes() {
     const dias = configLocal.dias || '0-6'; 
     const cronManhaStart = parseTimeToCron(configLocal.horaManha || '09:00', 0, dias);
     const cronTardeStart = parseTimeToCron(configLocal.horaTarde || '15:00', 0, dias);
-    
-    // Agenda o relatório para 2 horas após o início do turno da tarde
     const cronRelatorio = parseTimeToCron(configLocal.horaTarde || '15:00', 120, dias); 
 
     activeCronJobs.push(cron.schedule(cronManhaStart, () => iniciarSessao("Manhã"), { timezone: "America/Sao_Paulo" }));
@@ -141,8 +148,21 @@ function forcarSessaoTelegram(turno) {
     iniciarSessao(turno);
 }
 
+// 🎯 BLINDAGEM DE SESSÃO: Nunca mais apaga uma operação em curso!
 function iniciarSessao(turno) {
-    estadoSessao = { ativa: true, permitirSinais: true, wins: estadoSessao.wins, losses: estadoSessao.losses, sinalRodando: null, ultimoSinalEnviado: null };
+    const agoraMs = Date.now();
+    
+    // Escudo Anti-Flood: Impede que cliques seguidos mandem a mensagem várias vezes (10 segundos de trava)
+    if (agoraMs - ultimaMensagemSessao < 10000) return; 
+    ultimaMensagemSessao = agoraMs;
+
+    estadoSessao.ativa = true;
+    estadoSessao.permitirSinais = true;
+    
+    // 🔥 Se não houver placar, inicia a zero. Se houver, MANTÉM OS DADOS!
+    estadoSessao.wins = estadoSessao.wins || 0;
+    estadoSessao.losses = estadoSessao.losses || 0;
+
     let msg = configLocal.msgDespertar || `👨‍💻 *INÍCIO DE SESSÃO*`;
     bot.sendMessage(CHAT_ID, msg, { parse_mode: 'Markdown' });
 }
@@ -162,7 +182,7 @@ function iniciarMotorContinuo(stateGlobais) {
             if (estadoSessao.sinalRodando) {
                 const op = estadoSessao.sinalRodando;
                 
-                if (min === op.minutoVerificacao && sec >= 4 && sec <= 20) {
+                if (min === op.minutoVerificacao && sec >= 4 && sec <= 45) {
                     if (!op.verificando) {
                         op.verificando = true;
                         await conferirResultado(stateGlobais);
@@ -187,9 +207,14 @@ function iniciarMotorContinuo(stateGlobais) {
 }
 
 async function cacarOportunidade(state) {
+    if (!state.strategiesDB || state.strategiesDB.length === 0) return;
+
     const agora = getAgoraSP();
     const minAtual = agora.getMinutes();
-    const strategy = state.strategiesDB.find(s => s.name.toLowerCase().includes('live')) || state.strategiesDB[0];
+    
+    // 🛡️ Proteção contra estratégias corrompidas no Firebase
+    const strategy = state.strategiesDB.find(s => s && s.name && s.name.toLowerCase().includes('live')) || state.strategiesDB[0];
+    if (!strategy) return; 
     
     for (let sym of ativosTestes) {
         if (estadoSessao.sinalRodando) break; 
