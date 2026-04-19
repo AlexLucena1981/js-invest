@@ -15,6 +15,15 @@ function parseBalance(valStr) {
     return isNaN(num) ? 0 : num;
 }
 
+// 🎯 DATA BLINDADA SP: Garante o formato YYYY-MM-DD sem deslizes de fuso UTC
+function getSPDateString() {
+    const d = new Date(new Date().toLocaleString("en-US", {timeZone: "America/Sao_Paulo"}));
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+}
+
 // 🎯 Recebe o IO, o State e as Configs do Telegram diretamente do server.js
 module.exports = function setupSockets(io, state, tgConfigGlobal) {
 
@@ -210,12 +219,13 @@ module.exports = function setupSockets(io, state, tgConfigGlobal) {
             } catch(e) {}
         });
 
+        // 🎯 O servidor agora pede ao Firebase usando a data exata do Brasil!
         socket.on('admin_get_report', async (token) => {
             try {
                 const decodedToken = await admin.auth().verifyIdToken(token);
                 if (decodedToken.uid === 'admin_master' || true) {
-                    const spTime = new Date().toLocaleString("en-US", {timeZone: "America/Sao_Paulo"});
-                    const hoje = new Date(spTime).toISOString().split('T')[0];
+                    
+                    const hoje = getSPDateString(); // Chama a nossa nova função
                     const snapshot = await db.collection('historico_sinais').where('dataRef', '==', hoje).get();
                     
                     let ranking = {};

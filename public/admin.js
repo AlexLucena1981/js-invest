@@ -59,7 +59,9 @@ function setupTelegramAdminUI(auth, socket) {
             <p style="color:#8b949e; margin:0;">Módulo de Auditoria Ativo.</p>
             <p style="font-size:11px; color:#3fb950;">Os sinais estão sendo gravados no Firebase.</p>
         </div>
-        <div id="rankingListContainer" style="margin-top:15px;"><div style="text-align:center; padding:20px; color:#8b949e;">Aguardando dados...</div></div>
+        <div id="rankingListContainer" style="margin-top:15px; max-height:45vh; overflow-y:auto; padding-right:5px;">
+            <div style="text-align:center; padding:20px; color:#8b949e;">Aguardando dados...</div>
+        </div>
     `;
 
     adminModalContent.appendChild(tabNav);
