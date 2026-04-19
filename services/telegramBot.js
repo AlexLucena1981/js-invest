@@ -49,7 +49,7 @@ function parseTimeToCron(timeStr, addMinutes, dias) {
 }
 
 async function initTelegramBot(stateGlobais, configFirebase) {
-    console.log("🤖 General Telegram: MODO FANTASMA & DESTRAVADO! 🚀");
+    console.log("🤖 General Telegram: MODO GATILHO RÁPIDO (Aviso Antecipado)! 🚀");
     configLocal = configFirebase;
     agendarSessoes(stateGlobais);
     iniciarMotorContinuo(stateGlobais);
@@ -99,26 +99,18 @@ function iniciarMotorContinuo(stateGlobais) {
             if (estadoSessao.sinalRodando) {
                 const op = estadoSessao.sinalRodando;
                 
-                if (op.status === 'PRE_ALERTA') {
-                    const minAnterior = (op.minutoEntrada - 1 + 60) % 60;
-                    if ((min === minAnterior && sec >= 50) || min === op.minutoEntrada) {
-                        op.status = 'OPERANDO';
-                        atirarSinalDefinitivo(op);
+                // Apenas aguarda o fechamento da vela para conferir o resultado
+                if (min === op.minutoVerificacao && sec >= 4 && sec <= 20) {
+                    if (!op.verificando) {
+                        op.verificando = true;
+                        await conferirResultado(stateGlobais);
                     }
-                } 
-                else if (op.status === 'OPERANDO') {
-                    if (min === op.minutoVerificacao && sec >= 4 && sec <= 20) {
-                        if (!op.verificando) {
-                            op.verificando = true;
-                            await conferirResultado(stateGlobais);
-                        }
-                    }
-                    
-                    const minsPassados = (min - op.minutoVerificacao + 60) % 60;
-                    if (minsPassados >= 2 && minsPassados < 50) {
-                        bot.sendMessage(CHAT_ID, `⚠️ *Aviso:* A corretora atrasou os dados finais de ${op.nomeAmigavel}. Cancelando análise fantasma.`, { parse_mode: 'Markdown' });
-                        estadoSessao.sinalRodando = null;
-                    }
+                }
+                
+                const minsPassados = (min - op.minutoVerificacao + 60) % 60;
+                if (minsPassados >= 2 && minsPassados < 50) {
+                    bot.sendMessage(CHAT_ID, `⚠️ *Aviso:* A corretora atrasou os dados finais de ${op.nomeAmigavel}. Cancelando análise fantasma.`, { parse_mode: 'Markdown' });
+                    estadoSessao.sinalRodando = null;
                 }
                 
             } else if (estadoSessao.permitirSinais) {
@@ -149,9 +141,6 @@ async function cacarOportunidade(state) {
                 continue;
             }
             
-            // 🔥 FREIO DE MÃO ARRANCADO!
-            // Foi-se a verificação de assertividade! Bateu na banda + RSI, ele atira!
-
             const closes = velas.map(k => parseFloat(k[4]));
             const sinal = evaluateStrategy(closes, strategy);
 
@@ -159,10 +148,11 @@ async function cacarOportunidade(state) {
                 estadoSessao.ultimoSinalEnviado = `${sym}_${minAtual}`;
                 const nomeAmigavel = dicionarioAtivos[sym] || sym;
                 
-                enviarPreAlerta(sym, sinal, nomeAmigavel);
-
                 const minEntrada = (minAtual + 1) % 60;
                 const minVerificacao = (minAtual + 2) % 60;
+
+                // 🔥 DISPARO IMEDIATO! Assim que toca, manda a mensagem final!
+                atirarSinalDefinitivo(sym, sinal, nomeAmigavel, minEntrada);
                 
                 estadoSessao.sinalRodando = { 
                     symbol: sym, 
@@ -170,7 +160,6 @@ async function cacarOportunidade(state) {
                     step: 0, 
                     minutoEntrada: minEntrada,
                     minutoVerificacao: minVerificacao,
-                    status: 'PRE_ALERTA',
                     nomeAmigavel: nomeAmigavel,
                     verificando: false
                 };
@@ -191,36 +180,29 @@ function formatarMensagem(template, dados) {
         .replace(/\\n/g, "\n"); 
 }
 
-function enviarPreAlerta(symbol, tipo, nomeAmigavel) {
-    const acao = tipo === 'CALL' ? '🟩 Comprar' : '🟥 Vender';
-    const templateOriginal = configLocal.msgPre || "⚠️ *PRÉ-ALERTA DE SINAL*\\n\\nPreparem o ativo: *{MOEDA}*\\nPossível Operação: *{DIRECAO}*";
-    const msg = formatarMensagem(templateOriginal, { moeda: nomeAmigavel, direcao: acao });
-    bot.sendMessage(CHAT_ID, msg, { parse_mode: 'Markdown', disable_web_page_preview: true });
-}
-
-function atirarSinalDefinitivo(operacao) {
+function atirarSinalDefinitivo(sym, tipo, nomeAmigavel, minutoEntrada) {
     const agora = getAgoraSP();
     let hora = agora.getHours();
     
-    if (agora.getMinutes() === 59 && operacao.minutoEntrada === 0) hora = (hora + 1) % 24;
+    if (agora.getMinutes() === 59 && minutoEntrada === 0) hora = (hora + 1) % 24;
 
-    let minGale = (operacao.minutoEntrada + 1) % 60;
+    let minGale = (minutoEntrada + 1) % 60;
     let hrGale = hora;
-    if (operacao.minutoEntrada === 59) hrGale = (hora + 1) % 24;
+    if (minutoEntrada === 59) hrGale = (hora + 1) % 24;
 
     const strHora = hora.toString().padStart(2, '0');
-    const strMin = operacao.minutoEntrada.toString().padStart(2, '0');
+    const strMin = minutoEntrada.toString().padStart(2, '0');
     const strGaleHr = hrGale.toString().padStart(2, '0');
     const strGaleMin = minGale.toString().padStart(2, '0');
 
     const horaEntrada = `${strHora}:${strMin}`;
     const horaGale = `${strGaleHr}:${strGaleMin}`;
 
-    const acao = operacao.type === 'CALL' ? '🟩 Comprar' : '🟥 Vender';
+    const acao = tipo === 'CALL' ? '🟩 Comprar' : '🟥 Vender';
     
-    const templateOriginal = configLocal.msgSinal || "⚡ *ALERTA DE TOQUE (OTC/M1)* ⚡\\n\\n💵 Moeda = {MOEDA}\\n⏰ Expiração = 1 Minuto\\n🛎 Entrada = {HORA_ENTRADA}\\n{DIRECAO}\\n\\nGale 1 - {HORA_GALE}\\n\\n👉🏼 Se necessário, fazer 1 Gale.\\n\\n➡️ [Clique aqui para abrir a Vellox](https://velloxbroker.com)";
+    const templateOriginal = configLocal.msgSinal || "⚡ *ALERTA DE TOQUE (OTC/M1)* ⚡\n\n💵 Moeda = {MOEDA}\n⏰ Expiração = 1 Minuto\n🛎 Entrada = {HORA_ENTRADA}\n{DIRECAO}\n\nGale 1 - {HORA_GALE}\n\n👉🏼 Se necessário, fazer 1 Gale.\n\n➡️ [Clique aqui para abrir a Vellox](https://velloxbroker.com)";
 
-    const msg = formatarMensagem(templateOriginal, { moeda: operacao.nomeAmigavel, direcao: acao, horaEntrada: horaEntrada, horaGale: horaGale });
+    const msg = formatarMensagem(templateOriginal, { moeda: nomeAmigavel, direcao: acao, horaEntrada: horaEntrada, horaGale: horaGale });
     bot.sendMessage(CHAT_ID, msg, { parse_mode: 'Markdown', disable_web_page_preview: true });
 }
 
