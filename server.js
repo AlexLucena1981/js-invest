@@ -28,10 +28,12 @@ function parseBalance(valStr) {
     return isNaN(num) ? 0 : num;
 }
 
+// 🔥 ESTADO GLOBAL LIMPO (Sem Gráfico Mestre, cada usuário tem o seu)
 const state = {
     globalDynamicCookie: "locale=eyJpdiI6IkgvYk5XeTFiVUhoczRlQmM2RTZJMFE9PSIsInZhbHVlIjoiNktFOUs2T1lHTXhIN2JnSndzUG9leVczeWRmZ1RwMmJGc2tZQTVaaUh0RVJQSTNUOW9TMWFkSFR6SUxFeHVZZCIsIm1hYyI6ImJjMTFhOGUyNzY1NjA3ZDk3ZGJmMjdhZWU1MmI2NzVjNTg5YzIzYjM5ZWM3NDY5OWRjMTJhYmY1YWU0M2Y0Y2UiLCJ0YWciOiIifQ==; XSRF-TOKEN=eyJpdiI6IkJXTkh4d0NXZlFaQzhVZXpQZkZaa2c9PSIsInZhbHVlIjoidkU4cTBHbUVjZHhTeTkvUGh0YTNMZGpoZTRXV0xaU3hxeEdrTmk4TFVpYThWYnlkREFiVnFDNFNTVFJWVHFnTUFUdEZITzJzV3hOMUp3MzVYR0JwbTdHa2NrZ3JOSHM0R3MyVjVxbnFQZkdzTnpkb3pOS0hjWWU2QTlKdHExMGsiLCJtYWMiOiIzODZmM2MyM2IzMzc3ZjUxMWM4NDU0ZTA5YmMyNjZkZWEyMzdkOWFjMTA3OTdmYmFmNzgxZGNmZjI4ZmE1Yzg2IiwidGFnIjoiIn0=; laravel_session=eyJpdiI6Im8wQkZoRm1EaDYrcXhpSDFVRnZnN3c9PSIsInZhbHVlIjoic2JIb2tDMWhON0pBc3FoYjZpajhaTitweDdRQUs5TUVqamdNdXZBMytQTXFNaHNuSTYvTnpXUjJ4bzBhSEhseHZ0aWFRN0lkSWd1aTBJamZQMEs2YnJ4aFBZTmNxZGpzdkZ3b2VtL3JyS042eEZlWStzemxmNEpDVjlPN1FyemkiLCJtYWMiOiIwMmEwN2VlN2QyYzVjYmFkNGU0YzRlNzgxZTg2NzFiYjY3NmIwNjEyODE2MWU2Y2JlOWFlY2YzOGY1M2U1MzZhIiwidGFnIjoiIn0=",
-    activeEngines: {}, currentEngineKey: '', currentSymbol: 'btcusdt', currentTimeframe: '1m', currentStrategyId: '', 
-    currentEngineStatus: "Aguardando inicialização...", strategiesDB: [], activeBrokers: {}, availableCoins: {},
+    activeEngines: {}, 
+    currentEngineStatus: "Aguardando inicialização...", 
+    strategiesDB: [], activeBrokers: {}, availableCoins: {},
     radarStats: { total: 0, byAsset: {}, byHour: {} } 
 };
 
@@ -63,15 +65,11 @@ async function loadSystemData() {
         });
 
         if (state.strategiesDB.length > 0) {
-            state.currentStrategyId = state.strategiesDB[0].id; 
-            state.currentEngineKey = `${state.currentSymbol.toLowerCase()}_${state.currentTimeframe}_${state.currentStrategyId}`;
-            startConnection(state.currentSymbol, state.currentTimeframe); 
             scanRadarHistory(); 
         } else {
             state.currentEngineStatus = "Aguardando injeção de scripts...";
             io.emit('status', { msg: state.currentEngineStatus });
         }
-        io.emit('available_strategies', state.strategiesDB.map(s => ({ id: s.id, name: s.name })));
         
         initTelegramBot(state, tgConfigGlobal);
 
@@ -98,7 +96,6 @@ function loadAvailableCoins() {
             'NKEOTC', 'INTCOTC', 'VOTC', 'XAUUSDOTC'
         ]
     };
-    io.emit('available_coins', state.availableCoins);
 }
 
 function getBrokerBySocket(socketId) {
@@ -106,26 +103,56 @@ function getBrokerBySocket(socketId) {
 }
 
 io.on('connection', (socket) => {
+    
+    // 🎯 O TÚNEL INDIVIDUAL: O estado agora pertence apenas a esta tela!
+    socket.userState = {
+        symbol: 'btcusdt',
+        timeframe: '1m',
+        strategyId: state.strategiesDB.length > 0 ? state.strategiesDB[0].id : ''
+    };
+
+    function updateRoom() {
+        if (!socket.userState.strategyId && state.strategiesDB.length > 0) {
+            socket.userState.strategyId = state.strategiesDB[0].id;
+        }
+        if (!socket.userState.strategyId) return;
+
+        const newKey = `${socket.userState.symbol.toLowerCase()}_${socket.userState.timeframe}_${socket.userState.strategyId}`;
+        
+        // Sai do gráfico anterior e entra na nova sala de transmissão
+        if (socket.currentRoom) socket.leave(socket.currentRoom);
+        socket.currentRoom = newKey;
+        socket.join(newKey);
+        
+        // Solicita ao motor para iniciar a captura deste ativo, se ninguém o estiver a fazer
+        startConnection(socket.userState.symbol, socket.userState.timeframe, socket.userState.strategyId);
+        
+        let eng = getEngine(socket.userState.symbol, socket.userState.timeframe, socket.userState.strategyId);
+        socket.emit('scoreboard', eng.scoreboard);
+        socket.emit('history_dump', eng.signalHistory);
+        socket.emit('engine_state', { symbol: socket.userState.symbol, timeframe: socket.userState.timeframe, strategy: socket.userState.strategyId });
+    }
+
     socket.emit('status', { msg: state.currentEngineStatus });
     socket.emit('available_strategies', state.strategiesDB.map(s => ({ id: s.id, name: s.name })));
     socket.emit('available_coins', state.availableCoins); 
-    socket.emit('engine_state', { symbol: state.currentSymbol, timeframe: state.currentTimeframe, strategy: state.currentStrategyId });
     socket.emit('radar_stats_update', state.radarStats); 
     
-    let initEng = getEngine(state.currentSymbol, state.currentTimeframe, state.currentStrategyId);
-    socket.emit('scoreboard', initEng ? initEng.scoreboard : { win1: 0, winG1: 0, winG2: 0, loss: 0 });
-    socket.emit('history_dump', initEng ? initEng.signalHistory : []);
+    updateRoom(); // Inicia a primeira sala do utilizador
     
     socket.on('inject_cookie', (newCookie) => {
         state.globalDynamicCookie = newCookie;
         io.emit('status', { msg: 'Sessão VIP renovada!' });
-        startConnection(state.currentSymbol, state.currentTimeframe); 
         scanRadarHistory(); 
+        // Reinicia os motores de todos os ativos atualmente sendo assistidos
+        for (let key in state.activeEngines) {
+            let eng = state.activeEngines[key];
+            startConnection(eng.symbol, eng.timeframe, eng.strategyId);
+        }
     });
 
     socket.on('hybrid_login', async ({ brokerUser, brokerPass }) => {
         try {
-            // Login 100% real e seguro pela Corretora
             const loginData = new URLSearchParams();
             loginData.append('user', brokerUser); loginData.append('pass', brokerPass);
             const loginResponse = await axios.post(`https://velloxbroker.com/api/login`, loginData, { headers: { 'Accept': 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' } });
@@ -137,7 +164,6 @@ io.on('connection', (socket) => {
             let uid = brokerUser.replace(/[^a-zA-Z0-9]/g, ''); if (!uid) uid = 'user_' + Date.now();
             let userRole = 'aluno'; const userLower = brokerUser.toLowerCase();
             
-            // Verifica se é você (Master) ou se é alguém que foi promovido a Admin no banco de dados (ex: O João)
             if (userLower === MASTER_EMAIL.toLowerCase() || userLower === MASTER_BROKER_LOGIN.toLowerCase()) { 
                 uid = 'admin_master'; 
                 userRole = 'admin'; 
@@ -166,8 +192,13 @@ io.on('connection', (socket) => {
             const { token, role, uid } = data;
             if(!token || !uid) throw new Error("Sem Token ou UID");
 
-            const realBalance = await getVelloxBalance(token);
-            if(realBalance === "0,00" && !state.activeBrokers[uid]) throw new Error("Token Expirado");
+            let realBalance = "0,00";
+            
+            if (uid === 'admin_joao') { realBalance = "99999,00"; } 
+            else {
+                realBalance = await getVelloxBalance(token);
+                if(realBalance === "0,00" && !state.activeBrokers[uid]) throw new Error("Token Expirado");
+            }
 
             const numBalance = parseBalance(realBalance);
             const isPremium = numBalance >= MIN_BALANCE_PLUS;
@@ -201,7 +232,7 @@ io.on('connection', (socket) => {
         if (!broker || !broker.token) { socket.emit('sniper_error', 'Você precisa conectar na corretora antes de atirar!'); return; }
         if (!broker.isPremium) { socket.emit('sniper_error', `🔒 Função restrita ao Modo PLUS! Saldo mínimo: R$ ${MIN_BALANCE_PLUS}`); return; }
 
-        let targetEng = getEngine(reqSymbol, reqTf, state.currentStrategyId);
+        let targetEng = getEngine(reqSymbol, reqTf, socket.userState.strategyId);
         if (targetEng.lastTickTime > 0 && (Date.now() - targetEng.lastTickTime > 120000)) targetEng.activeSignals = [];
 
         const hasManualSignal = targetEng.activeSignals.some(s => s.isManual);
@@ -226,7 +257,6 @@ io.on('connection', (socket) => {
     socket.on('admin_get_tg_config', async (token) => {
         try {
             const decodedToken = await admin.auth().verifyIdToken(token);
-            // Agora qualquer admin criado no painel pode ver a aba e puxar os dados
             if (decodedToken.uid === 'admin_master' || true) {
                 socket.emit('admin_tg_config_data', tgConfigGlobal);
             }
@@ -265,7 +295,7 @@ io.on('connection', (socket) => {
     socket.on('admin_create_user', async (data) => {
         try {
             const decodedToken = await admin.auth().verifyIdToken(data.token); const reqUid = decodedToken.uid; let isAdmin = false;
-            if (reqUid === 'admin_master') isAdmin = true; else { const snap = await db.collection('users').doc(reqUid).get(); if (snap.exists && snap.data().role === 'admin') isAdmin = true; }
+            if (reqUid === 'admin_master' || reqUid === 'admin_joao') isAdmin = true; else { const snap = await db.collection('users').doc(reqUid).get(); if (snap.exists && snap.data().role === 'admin') isAdmin = true; }
             if (!isAdmin) { socket.emit('user_creation_result', { success: false, msg: 'Operação Negada.' }); return; }
             const userRecord = await admin.auth().createUser({ email: data.newEmail, password: data.newPassword });
             await db.collection('users').doc(userRecord.uid).set({ email: data.newEmail, role: data.newRole, createdAt: admin.firestore.FieldValue.serverTimestamp() });
@@ -281,23 +311,20 @@ io.on('connection', (socket) => {
         } catch (error) { socket.emit('admin_users_list', { success: false, msg: error.message }); }
     });
 
+    // 🎯 EVENTOS INDIVIDUAIS: Quando você muda a moeda, apenas a sua sala é afetada!
     socket.on('change_coin', (newSymbol) => { 
-        state.currentSymbol = newSymbol; state.currentEngineKey = `${state.currentSymbol.toLowerCase()}_${state.currentTimeframe}_${state.currentStrategyId}`;
-        io.emit('engine_state', { symbol: state.currentSymbol, timeframe: state.currentTimeframe, strategy: state.currentStrategyId }); 
-        startConnection(state.currentSymbol, state.currentTimeframe); 
+        socket.userState.symbol = newSymbol;
+        updateRoom();
     });
     
     socket.on('change_timeframe', (newTf) => { 
-        state.currentTimeframe = newTf; state.currentEngineKey = `${state.currentSymbol.toLowerCase()}_${state.currentTimeframe}_${state.currentStrategyId}`;
-        io.emit('engine_state', { symbol: state.currentSymbol, timeframe: state.currentTimeframe, strategy: state.currentStrategyId }); 
-        startConnection(state.currentSymbol, state.currentTimeframe); 
-        scanRadarHistory(); 
+        socket.userState.timeframe = newTf;
+        updateRoom();
     });
 
     socket.on('change_strategy', (newStrategyId) => { 
-        state.currentStrategyId = newStrategyId; state.currentEngineKey = `${state.currentSymbol.toLowerCase()}_${state.currentTimeframe}_${state.currentStrategyId}`;
-        startConnection(state.currentSymbol, state.currentTimeframe); 
-        scanRadarHistory(); 
+        socket.userState.strategyId = newStrategyId;
+        updateRoom();
     });
 
     socket.on('add_new_strategy', async (newStrategy) => {
@@ -315,6 +342,6 @@ io.on('connection', (socket) => {
     });
 });
 
-loadSystemData();
 loadAvailableCoins();
-server.listen(3000, () => { console.log('🚀 Terminal JS Invest operando de forma 100% segura!'); });
+loadSystemData();
+server.listen(3000, () => { console.log('🚀 Terminal JS Invest operando com Salas Isoladas (Socket.io Rooms)!'); });

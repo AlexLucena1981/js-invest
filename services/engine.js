@@ -22,7 +22,6 @@ const radarCoins = [
 
 const cryptoBinance = ['BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'ADAUSDT', 'BNBUSDT', 'DOGEUSDT', 'SOLUSDT', 'XRPUSDT'];
 
-// ⏱️ FUNÇÃO DE RESPIRO
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 async function fetchOtcWithFallback(symbol, resolution, from, to, countback, headers) {
@@ -39,7 +38,7 @@ async function fetchOtcWithFallback(symbol, resolution, from, to, countback, hea
                 return res.data; 
             }
         } catch(e) {}
-        await sleep(150); // ⏱️ Respiro
+        await sleep(150); 
     }
     return null; 
 }
@@ -55,7 +54,11 @@ function initEngine(_io, _state) {
             if (eng.lastTickTime > 0 && (now - eng.lastTickTime > 120000)) {
                 if (eng.activeSignals.length > 0) eng.activeSignals = [];
             }
-            if (key !== state.currentEngineKey && eng.activeSignals.length === 0) {
+            
+            // 🎯 O GOLPE DE MESTRE (Garbage Collector):
+            // Se não há NINGUÉM na sala (aba fechada ou noutro ativo), desliga a API!
+            const roomSize = io.sockets.adapter.rooms.get(key)?.size || 0;
+            if (roomSize === 0 && eng.activeSignals.length === 0) {
                 if (eng.ws) { eng.ws.removeAllListeners(); eng.ws.on('error', () => {}); eng.ws.terminate(); eng.ws = null; }
                 if (eng.otcInterval) { clearInterval(eng.otcInterval); eng.otcInterval = null; }
                 delete state.activeEngines[key];
@@ -64,11 +67,11 @@ function initEngine(_io, _state) {
 
         try {
             let radarStrat = state.strategiesDB.find(s => s.name && s.name.toLowerCase().includes('live'));
-            if (!radarStrat && state.strategiesDB.length > 0) radarStrat = state.strategiesDB.find(s => s.id === state.currentStrategyId);
+            if (!radarStrat && state.strategiesDB.length > 0) radarStrat = state.strategiesDB[0];
             
             if (radarStrat) {
-                const tf = state.currentTimeframe || '1m';
-                const tfMinutes = parseInt(tf.replace('m', ''));
+                const tf = '1m';
+                const tfMinutes = 1;
                 
                 for (let sym of radarCoins) {
                     try {
@@ -127,11 +130,12 @@ function initEngine(_io, _state) {
                             }
                             assetData.lastTime = curDate.getTime();
 
+                            // O Radar continua global porque o painel FIFO lateral precisa de ser atualizado em todas as telas
                             io.emit('radar_alert', { symbol: sym, type: signal });
                             io.emit('radar_stats_update', state.radarStats);
                         }
                     } catch(e) {} 
-                    await sleep(200); // ⏱️ Respiro entre cada ativo do Radar
+                    await sleep(200); 
                 }
             }
         } catch(err) {}
@@ -144,11 +148,11 @@ async function scanRadarHistory() {
         for (let key in radarLastCandleProcessed) delete radarLastCandleProcessed[key];
 
         let radarStrat = state.strategiesDB.find(s => s.name && s.name.toLowerCase().includes('live'));
-        if (!radarStrat && state.strategiesDB.length > 0) radarStrat = state.strategiesDB.find(s => s.id === state.currentStrategyId);
+        if (!radarStrat && state.strategiesDB.length > 0) radarStrat = state.strategiesDB[0];
         if (!radarStrat) return;
 
-        const tf = state.currentTimeframe || '1m';
-        const tfMinutes = parseInt(tf.replace('m', ''));
+        const tf = '1m';
+        const tfMinutes = 1;
 
         for (let sym of radarCoins) {
             try {
@@ -202,7 +206,7 @@ async function scanRadarHistory() {
                     }
                 }
             } catch(e) {}
-            await sleep(200); // ⏱️ Respiro anti-bloqueio histórico
+            await sleep(200); 
         }
         io.emit('radar_stats_update', state.radarStats);
     } catch(err) {}
@@ -314,8 +318,8 @@ async function handleCandleClose(eng, closedPrice, candleStartTime) {
             else if (sig.step === 2) { sig.status = prefix + 'WIN G2 🎯'; if(!sig.isManual) eng.scoreboard.winG2++; }
             
             updateBrokerProfits(sig.step, true, sig); 
-            io.emit('signal_result', sig); 
-            if (eng.key === state.currentEngineKey) io.emit('scoreboard', eng.scoreboard); 
+            io.emit('signal_result', sig); // O FIFO precisa receber para mostrar em todas as telas
+            io.to(eng.key).emit('scoreboard', eng.scoreboard); // O Placar atualiza só para quem está a ver esta sala
             signalResolvedThisCandle = true; return false; 
         } else {
             updateBrokerProfits(sig.step, false, sig); 
@@ -323,7 +327,7 @@ async function handleCandleClose(eng, closedPrice, candleStartTime) {
             if (sig.step > MAX_GALE_GLOBAL) {
                 sig.status = prefix + 'LOSS 🔴'; if(!sig.isManual) eng.scoreboard.loss++; 
                 io.emit('signal_result', sig); 
-                if (eng.key === state.currentEngineKey) io.emit('scoreboard', eng.scoreboard); 
+                io.to(eng.key).emit('scoreboard', eng.scoreboard); 
                 signalResolvedThisCandle = true; return false; 
             } else {
                 sig.status = prefix + `Gale ${sig.step}...`; sig.entryPrice = eng.currentGlobalPrice || closedPrice; 
@@ -357,8 +361,8 @@ async function handleCandleClose(eng, closedPrice, candleStartTime) {
 
     if (signalResolvedThisCandle) eng.lastResolvedCandleTime = candleStartTime;
 
-    if (eng.activeSignals.length === 0 && candleStartTime !== eng.lastResolvedCandleTime && eng.key === state.currentEngineKey) {
-        const currentStrategy = state.strategiesDB.find(s => s.id === state.currentStrategyId);
+    if (eng.activeSignals.length === 0 && candleStartTime !== eng.lastResolvedCandleTime) {
+        const currentStrategy = state.strategiesDB.find(s => s.id === eng.strategyId);
         const newSignalType = evaluateStrategy(eng.closePrices, currentStrategy);
         
         if (newSignalType) {
@@ -369,7 +373,9 @@ async function handleCandleClose(eng, closedPrice, candleStartTime) {
                 firedBrokers: { 0: [] } 
             };
             eng.activeSignals.push(newSig); eng.signalHistory.unshift(newSig); if (eng.signalHistory.length > 20) eng.signalHistory.pop();
-            io.emit('new_signal_history', newSig); io.emit('signal', { type: newSignalType, time: newSig.time }); 
+            
+            io.emit('new_signal_history', newSig); 
+            io.to(eng.key).emit('signal', { type: newSignalType, time: newSig.time }); // Só alerta na tela quem está na sala
             
             Object.values(state.activeBrokers).forEach(async (broker) => {
                 if (!broker.autoTradeActive || !broker.isPremium) return;
@@ -390,28 +396,29 @@ function handleCandleTick(eng, currentPrice, isCandleClosed, candleStartTime) {
     eng.currentGlobalPrice = currentPrice;
     eng.lastTickTime = Date.now(); 
     
-    if (eng.key === state.currentEngineKey) {
-        const tfMinutes = parseInt(eng.timeframe.replace('m', '')); const now = new Date();
-        const secondsLeft = (tfMinutes * 60) - ((now.getMinutes() % tfMinutes) * 60 + now.getSeconds());
-        let currentActive = eng.activeSignals.length > 0 ? eng.activeSignals[0] : null;
-        io.emit('price_update', { price: currentPrice, secondsLeft: secondsLeft, activeSignal: currentActive });
+    const tfMinutes = parseInt(eng.timeframe.replace('m', '')); const now = new Date();
+    const secondsLeft = (tfMinutes * 60) - ((now.getMinutes() % tfMinutes) * 60 + now.getSeconds());
+    let currentActive = eng.activeSignals.length > 0 ? eng.activeSignals[0] : null;
+    
+    // 🎯 Emite a subida/descida do gráfico APENAS para os utilizadores na sala do ativo
+    io.to(eng.key).emit('price_update', { price: currentPrice, secondsLeft: secondsLeft, activeSignal: currentActive });
 
-        if (eng.closePrices.length > 50 && !isCandleClosed && candleStartTime !== eng.lastResolvedCandleTime) {
-            if (eng.activeSignals.length === 0) {
-                let tempPrices = [...eng.closePrices, currentPrice]; if (tempPrices.length > 150) tempPrices.shift();
-                const currentStrategy = state.strategiesDB.find(s => s.id === state.currentStrategyId);
-                const tempSignal = evaluateStrategy(tempPrices, currentStrategy);
-                if (tempSignal === 'CALL') io.emit('pre_alert', { call: true, put: false });
-                else if (tempSignal === 'PUT') io.emit('pre_alert', { call: false, put: true });
-                else io.emit('pre_alert', { call: false, put: false }); 
-            } else { io.emit('pre_alert', { call: false, put: false }); }
-        }
+    if (eng.closePrices.length > 50 && !isCandleClosed && candleStartTime !== eng.lastResolvedCandleTime) {
+        if (eng.activeSignals.length === 0) {
+            let tempPrices = [...eng.closePrices, currentPrice]; if (tempPrices.length > 150) tempPrices.shift();
+            const currentStrategy = state.strategiesDB.find(s => s.id === eng.strategyId);
+            const tempSignal = evaluateStrategy(tempPrices, currentStrategy);
+            if (tempSignal === 'CALL') io.to(eng.key).emit('pre_alert', { call: true, put: false });
+            else if (tempSignal === 'PUT') io.to(eng.key).emit('pre_alert', { call: false, put: true });
+            else io.to(eng.key).emit('pre_alert', { call: false, put: false }); 
+        } else { io.to(eng.key).emit('pre_alert', { call: false, put: false }); }
     }
+    
     if (isCandleClosed) handleCandleClose(eng, currentPrice, candleStartTime);
 }
 
-async function startConnection(symbol, tf) {
-    let eng = getEngine(symbol, tf, state.currentStrategyId);
+async function startConnection(symbol, tf, stratId) {
+    let eng = getEngine(symbol, tf, stratId);
     
     const isStale = eng.lastTickTime > 0 && (Date.now() - eng.lastTickTime > 120000);
 
@@ -422,12 +429,7 @@ async function startConnection(symbol, tf) {
     }
 
     if (!isStale && (eng.ws || eng.otcInterval) && eng.closePrices.length > 0) {
-        if (eng.key === state.currentEngineKey) {
-            io.emit('price_update', { price: eng.currentGlobalPrice, secondsLeft: 0, activeSignal: eng.activeSignals.length > 0 ? eng.activeSignals[0] : null });
-            io.emit('history_dump', eng.signalHistory);
-            io.emit('scoreboard', eng.scoreboard);
-        }
-        return; 
+        return; // O motor já está quente e rodando. Quem entrou na sala já recebe os updates automáticos!
     }
 
     eng.connectionId++; const myConnectionId = eng.connectionId;
@@ -438,20 +440,19 @@ async function startConnection(symbol, tf) {
     eng.signalHistory = []; eng.scoreboard = { win1: 0, winG1: 0, winG2: 0, loss: 0 };
     eng.lastTickTime = Date.now(); 
 
-    if (eng.key === state.currentEngineKey) {
-        io.emit('price_update', { price: 0, secondsLeft: 0, activeSignal: null });
-        io.emit('scoreboard', eng.scoreboard); io.emit('history_dump', eng.signalHistory); io.emit('pre_alert', { call: false, put: false });
-        io.emit('engine_state', { symbol: state.currentSymbol, timeframe: state.currentTimeframe, strategy: state.currentStrategyId });
-    }
+    // Limpa a tela de quem acabou de entrar na sala
+    io.to(eng.key).emit('price_update', { price: 0, secondsLeft: 0, activeSignal: null });
+    io.to(eng.key).emit('scoreboard', eng.scoreboard); 
+    io.to(eng.key).emit('history_dump', eng.signalHistory); 
+    io.to(eng.key).emit('pre_alert', { call: false, put: false });
     
     const tfMinutes = parseInt(tf.replace('m', ''));
-    const currentStrategy = state.strategiesDB.find(s => s.id === state.currentStrategyId);
+    const currentStrategy = state.strategiesDB.find(s => s.id === stratId);
     if (!currentStrategy) return;
 
     const useBinance = cryptoBinance.includes(symbol.toUpperCase());
 
     if (!useBinance) { 
-        if (eng.key === state.currentEngineKey) updateStatus(`Carregando análise (500 velas)...`);
         try {
             const resolution = tfMinutes.toString();
             const to = Math.floor(Date.now() / 1000); const from = to - (500 * tfMinutes * 60); 
@@ -465,7 +466,8 @@ async function startConnection(symbol, tf) {
                 const opens = otcData.o; const closes = otcData.c; const times = otcData.t;
                 for (let i = 0; i < closes.length - 1; i++) { processHistoricalCandle(eng, times[i] * 1000, opens[i], closes[i], currentStrategy); }
                 eng.lastClosedCandleTime = times[times.length - 2]; 
-                if (eng.key === state.currentEngineKey) { updateStatus(`Analisando Mercado Vivo...`); io.emit('scoreboard', eng.scoreboard); io.emit('history_dump', eng.signalHistory); }
+                io.to(eng.key).emit('scoreboard', eng.scoreboard); 
+                io.to(eng.key).emit('history_dump', eng.signalHistory); 
             } 
 
             eng.otcInterval = setInterval(async () => {
@@ -486,10 +488,9 @@ async function startConnection(symbol, tf) {
                 } catch (e) {} 
             }, 1500);
 
-        } catch (error) { if (myConnectionId === eng.connectionId) setTimeout(() => startConnection(symbol, tf), 5000); }
+        } catch (error) { if (myConnectionId === eng.connectionId) setTimeout(() => startConnection(symbol, tf, stratId), 5000); }
 
     } else {
-        if (eng.key === state.currentEngineKey) updateStatus(`Carregando análise Binance (500 velas)...`);
         try {
             const response = await axios.get(`https://api.binance.com/api/v3/klines?symbol=${symbol.toUpperCase()}&interval=${tf}&limit=500`);
             if (myConnectionId !== eng.connectionId) return; 
@@ -497,13 +498,14 @@ async function startConnection(symbol, tf) {
             const klines = response.data;
             for (let i = 0; i < klines.length - 1; i++) { processHistoricalCandle(eng, klines[i][0], parseFloat(klines[i][1]), parseFloat(klines[i][4]), currentStrategy); }
             
-            if (eng.key === state.currentEngineKey) { updateStatus(`Analisando Mercado Binance...`); io.emit('scoreboard', eng.scoreboard); io.emit('history_dump', eng.signalHistory); }
+            io.to(eng.key).emit('scoreboard', eng.scoreboard); 
+            io.to(eng.key).emit('history_dump', eng.signalHistory); 
             
             eng.ws = new WebSocket(`wss://stream.binance.com:9443/ws/${symbol.toLowerCase()}@kline_${tf}`);
             eng.ws.on('message', (data) => { if (myConnectionId !== eng.connectionId) return; try { const kline = JSON.parse(data).k; handleCandleTick(eng, parseFloat(kline.c), kline.x, kline.t); } catch (e) { } });
-            eng.ws.on('error', () => { if (myConnectionId === eng.connectionId) setTimeout(() => startConnection(symbol, tf), 5000); });
-            eng.ws.on('close', () => { if (myConnectionId === eng.connectionId) setTimeout(() => startConnection(symbol, tf), 5000); });
-        } catch (error) { if (myConnectionId === eng.connectionId) setTimeout(() => startConnection(symbol, tf), 5000); }
+            eng.ws.on('error', () => { if (myConnectionId === eng.connectionId) setTimeout(() => startConnection(symbol, tf, stratId), 5000); });
+            eng.ws.on('close', () => { if (myConnectionId === eng.connectionId) setTimeout(() => startConnection(symbol, tf, stratId), 5000); });
+        } catch (error) { if (myConnectionId === eng.connectionId) setTimeout(() => startConnection(symbol, tf, stratId), 5000); }
     }
 }
 
