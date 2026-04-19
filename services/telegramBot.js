@@ -1,6 +1,7 @@
 const TelegramBot = require('node-telegram-bot-api');
 const cron = require('node-cron');
 const axios = require('axios');
+const { db, admin } = require('../config/firebase'); 
 const { evaluateStrategy } = require('../utils/indicators');
 
 const TOKEN = '8627851942:AAFn2Ze3Nbjb6LbNu7Gk3eEAcpDuzzKGGkM';
@@ -31,7 +32,6 @@ let activeCronJobs = [];
 let configLocal = {};
 let motorCacaId = null;
 let isProcessing = false; 
-
 const activeOtcSuffixes = {};
 
 function getAgoraSP() {
@@ -40,16 +40,77 @@ function getAgoraSP() {
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+// 🎯 MATEMÁTICA CORRIGIDA: Agora roda o relógio com perfeição (evita hora 16:60)
 function parseTimeToCron(timeStr, addMinutes, dias) {
-    let [h, m] = timeStr.split(':').map(Number);
-    m += addMinutes;
-    if (m >= 60) { m -= 60; h += 1; }
-    if (h >= 24) h -= 24;
-    return `${m} ${h} * * ${dias}`;
+    let [h, m] = (timeStr || "00:00").split(':').map(Number);
+    let totalMin = (h * 60) + m + addMinutes;
+    let finalH = Math.floor(totalMin / 60) % 24;
+    let finalM = totalMin % 60;
+    return `${finalM} ${finalH} * * ${dias}`;
+}
+
+// 🎯 SALVA O RESULTADO NO FIREBASE
+async function salvarResultadoNoFirebase(dados) {
+    try {
+        const agora = getAgoraSP();
+        const dataDoc = agora.toISOString().split('T')[0]; 
+        
+        await db.collection('historico_sinais').add({
+            ativo: dados.ativo,
+            direcao: dados.direcao,
+            horaEntrada: dados.horaEntrada,
+            horaGale: dados.horaGale || 'N/A',
+            resultado: dados.resultado, 
+            galeUsado: dados.galeUsado, 
+            timestamp: admin.firestore.FieldValue.serverTimestamp(),
+            dataRef: dataDoc
+        });
+    } catch (e) { console.error("Erro ao salvar histórico:", e); }
+}
+
+// 📊 GERA RELATÓRIO E ENVIA PARA O GRUPO
+async function enviarRelatorioDiario() {
+    try {
+        const agora = getAgoraSP();
+        const dataDoc = agora.toISOString().split('T')[0];
+        const snapshot = await db.collection('historico_sinais').where('dataRef', '==', dataDoc).get();
+        
+        if (snapshot.empty) return;
+
+        let total = 0, wins = 0, losses = 0;
+        let ranking = {};
+
+        snapshot.forEach(doc => {
+            const d = doc.data();
+            total++;
+            if (d.resultado === 'WIN') wins++; else losses++;
+            
+            if (!ranking[d.ativo]) ranking[d.ativo] = { w: 0, l: 0 };
+            if (d.resultado === 'WIN') ranking[d.ativo].w++; else ranking[d.ativo].l++;
+        });
+
+        const assertividade = total > 0 ? ((wins / total) * 100).toFixed(1) : 0;
+        
+        let msg = `📊 *RELATÓRIO DIÁRIO - JS INVEST* 📊\n`;
+        msg += `📅 Data: ${agora.toLocaleDateString('pt-BR')}\n\n`;
+        msg += `✅ Total Wins: *${wins}*\n`;
+        msg += `🔴 Total Loss: *${losses}*\n`;
+        msg += `🎯 Assertividade: *${assertividade}%*\n\n`;
+        msg += `🏆 *TOP ATIVOS DE HOJE:* \n`;
+
+        const sortedRanking = Object.entries(ranking).sort((a, b) => b[1].w - a[1].w).slice(0, 5);
+        sortedRanking.forEach(([ativo, score]) => {
+            msg += `• ${ativo}: ${score.w}W - ${score.l}L\n`;
+        });
+
+        msg += `\n🚀 *O robô nunca para. Amanhã tem mais!*`;
+        
+        bot.sendMessage(CHAT_ID, msg, { parse_mode: 'Markdown' });
+    } catch (e) { console.error("Erro relatório:", e); }
 }
 
 async function initTelegramBot(stateGlobais, configFirebase) {
-    console.log("🤖 General Telegram: MODO GATILHO RÁPIDO (Aviso Antecipado)! 🚀");
+    console.log("🤖 General Telegram: MODO FANTASMA & AUDITORIA ATIVOS! 🚀");
     configLocal = configFirebase;
     agendarSessoes(stateGlobais);
     iniciarMotorContinuo(stateGlobais);
@@ -67,11 +128,13 @@ function agendarSessoes() {
     const dias = configLocal.dias || '0-6'; 
     const cronManhaStart = parseTimeToCron(configLocal.horaManha || '09:00', 0, dias);
     const cronTardeStart = parseTimeToCron(configLocal.horaTarde || '15:00', 0, dias);
+    
+    // Agenda o relatório para 2 horas após o início do turno da tarde
+    const cronRelatorio = parseTimeToCron(configLocal.horaTarde || '15:00', 120, dias); 
 
-    const job1 = cron.schedule(cronManhaStart, () => iniciarSessao("Manhã"), { timezone: "America/Sao_Paulo" });
-    const job2 = cron.schedule(cronTardeStart, () => iniciarSessao("Tarde"), { timezone: "America/Sao_Paulo" });
-
-    activeCronJobs.push(job1, job2);
+    activeCronJobs.push(cron.schedule(cronManhaStart, () => iniciarSessao("Manhã"), { timezone: "America/Sao_Paulo" }));
+    activeCronJobs.push(cron.schedule(cronTardeStart, () => iniciarSessao("Tarde"), { timezone: "America/Sao_Paulo" }));
+    activeCronJobs.push(cron.schedule(cronRelatorio, () => { estadoSessao.ativa = false; enviarRelatorioDiario(); }, { timezone: "America/Sao_Paulo" }));
 }
 
 function forcarSessaoTelegram(turno) {
@@ -99,7 +162,6 @@ function iniciarMotorContinuo(stateGlobais) {
             if (estadoSessao.sinalRodando) {
                 const op = estadoSessao.sinalRodando;
                 
-                // Apenas aguarda o fechamento da vela para conferir o resultado
                 if (min === op.minutoVerificacao && sec >= 4 && sec <= 20) {
                     if (!op.verificando) {
                         op.verificando = true;
@@ -151,8 +213,7 @@ async function cacarOportunidade(state) {
                 const minEntrada = (minAtual + 1) % 60;
                 const minVerificacao = (minAtual + 2) % 60;
 
-                // 🔥 DISPARO IMEDIATO! Assim que toca, manda a mensagem final!
-                atirarSinalDefinitivo(sym, sinal, nomeAmigavel, minEntrada);
+                const horas = atirarSinalDefinitivo(sym, sinal, nomeAmigavel, minEntrada);
                 
                 estadoSessao.sinalRodando = { 
                     symbol: sym, 
@@ -161,6 +222,8 @@ async function cacarOportunidade(state) {
                     minutoEntrada: minEntrada,
                     minutoVerificacao: minVerificacao,
                     nomeAmigavel: nomeAmigavel,
+                    horaEntradaStr: horas.horaEntrada,
+                    horaGaleStr: horas.horaGale,
                     verificando: false
                 };
                 break; 
@@ -204,6 +267,8 @@ function atirarSinalDefinitivo(sym, tipo, nomeAmigavel, minutoEntrada) {
 
     const msg = formatarMensagem(templateOriginal, { moeda: nomeAmigavel, direcao: acao, horaEntrada: horaEntrada, horaGale: horaGale });
     bot.sendMessage(CHAT_ID, msg, { parse_mode: 'Markdown', disable_web_page_preview: true });
+
+    return { horaEntrada, horaGale };
 }
 
 async function conferirResultado(state) {
@@ -228,12 +293,24 @@ async function conferirResultado(state) {
     if (won) {
         let msgWin = operacao.step === 0 ? (configLocal.msgWin || "✅ *WIN DE PRIMEIRA!* 🎯") : "✅ *WIN NO GALE 1!* 🎯";
         bot.sendMessage(CHAT_ID, `${msgWin}\nAtivo: ${operacao.nomeAmigavel}`, { parse_mode: 'Markdown' });
+        
+        await salvarResultadoNoFirebase({
+            ativo: operacao.nomeAmigavel, direcao: operacao.type, resultado: 'WIN', galeUsado: operacao.step, 
+            horaEntrada: operacao.horaEntradaStr, horaGale: operacao.horaGaleStr
+        });
+
         estadoSessao.wins++; estadoSessao.sinalRodando = null; anunciarPlacar(); 
     } else {
         operacao.step++;
         if (operacao.step > 1) {
             let msgLoss = configLocal.msgLoss || `🔴 *LOSS!* O mercado não respeitou a análise.`;
             bot.sendMessage(CHAT_ID, `${msgLoss}\nAtivo: ${operacao.nomeAmigavel}`, { parse_mode: 'Markdown' });
+            
+            await salvarResultadoNoFirebase({
+                ativo: operacao.nomeAmigavel, direcao: operacao.type, resultado: 'LOSS', galeUsado: 1, 
+                horaEntrada: operacao.horaEntradaStr, horaGale: operacao.horaGaleStr
+            });
+
             estadoSessao.losses++; estadoSessao.sinalRodando = null; anunciarPlacar(); 
         } else {
             bot.sendMessage(CHAT_ID, `🔄 *ENTRAR NO GALE ${operacao.step}* em ${operacao.nomeAmigavel}!\nMesma direção.`, { parse_mode: 'Markdown' });
@@ -281,29 +358,24 @@ async function puxarVelasM1(symbol, state) {
                 `${baseName}OTC`, `${baseName}-OTC`, `${baseName}_otc`, `${baseName}_OTC`, `${baseName.substring(0,3)}/${baseName.substring(3)} (OTC)` 
             ];
 
-            let klines = null;
-
             for (let variante of variacoes) {
                 try {
                     let res = await axios.get(`https://velloxbroker.com/publicapi/tradingview/udf-history?symbol=${variante}&resolution=1&from=${from}&to=${to}&countback=150&site=velloxbroker.com`, { headers: otcHeaders });
                     
                     if (res.data && res.data.s === 'ok' && res.data.c && res.data.c.length > 0) {
                         activeOtcSuffixes[symUpper] = variante; 
-                        klines = [];
+                        let klines = [];
                         for(let i=0; i<res.data.c.length; i++){
                             klines.push([res.data.t[i]*1000, res.data.o[i], res.data.h ? res.data.h[i] : res.data.o[i], res.data.l ? res.data.l[i] : res.data.c[i], res.data.c[i]]);
                         }
-                        break; 
+                        return klines; 
                     }
                 } catch(e) {}
                 await sleep(150); 
             }
-
-            return klines;
+            return null;
         }
-    } catch (e) { 
-        return null; 
-    }
+    } catch (e) { return null; }
 }
 
 module.exports = { initTelegramBot, reloadTelegramConfig, forcarSessaoTelegram };
