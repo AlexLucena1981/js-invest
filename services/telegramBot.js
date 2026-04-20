@@ -8,7 +8,25 @@ const TOKEN = '8627851942:AAFn2Ze3Nbjb6LbNu7Gk3eEAcpDuzzKGGkM';
 const CHAT_ID = '-1003925714362';
 const bot = new TelegramBot(TOKEN, { polling: false });
 
+// 🎯 DICIONÁRIO EXPANDIDO (Mercado Aberto Completo + OTC Histórico)
 const dicionarioAtivos = {
+    // 🟠 Criptomoedas (Binance)
+    'BTCUSDT': 'Bitcoin', 'ETHUSDT': 'Ethereum', 'LTCUSDT': 'Litecoin', 
+    'ADAUSDT': 'Cardano', 'BNBUSDT': 'Binance Coin', 'SOLUSDT': 'Solana', 
+    'DOGEUSDT': 'Dogecoin', 'XRPUSDT': 'Ripple',
+    
+    // 🔵 Forex (Vellox)
+    'EURUSD': 'EUR/USD', 'GBPUSD': 'GBP/USD', 'USDJPY': 'USD/JPY', 
+    'AUDUSD': 'AUD/USD', 'USDCAD': 'USD/CAD',
+    
+    // 🟣 Ações (Vellox)
+    'AAPL': 'Apple', 'TSLA': 'Tesla', 'MSFT': 'Microsoft', 
+    'AMZN': 'Amazon', 'META': 'Meta', 'GOOGL': 'Google', 'NFLX': 'Netflix',
+    
+    // 🟡 Commodities (Vellox)
+    'XAUUSD': 'Ouro', 'XAGUSD': 'Prata', 'USOIL': 'Petróleo',
+
+    // 🔴 Mercado OTC (Será sumariamente cortado pelo filtro do robô)
     'EURUSDOTC': 'EUR/USD (OTC)', 'AUDJPYOTC': 'AUD/JPY (OTC)', 'EURJPYOTC': 'EUR/JPY (OTC)', 
     'EURAUDOTC': 'EUR/AUD (OTC)', 'AUDCHFOTC': 'AUD/CHF (OTC)', 'GBPJPYOTC': 'GBP/JPY (OTC)', 
     'CADCHFOTC': 'CAD/CHF (OTC)', 'EURNZDOTC': 'EUR/NZD (OTC)', 'GBPAUDOTC': 'GBP/AUD (OTC)', 
@@ -21,11 +39,11 @@ const dicionarioAtivos = {
     'NVDAOTC': 'NVIDIA (OTC)', 'SBUXOTC': 'Starbucks (OTC)', 'DISOTC': 'Disney (OTC)', 
     'MAOTC': 'Mastercard (OTC)', 'IBMOTC': 'IBM (OTC)', 'KOOTC': 'Coca-Cola (OTC)', 
     'FOTC': 'Ford (OTC)', 'SPOTOTC': 'Spotify (OTC)', 'NKEOTC': 'Nike (OTC)', 'INTCOTC': 'Intel (OTC)', 
-    'VOTC': 'Visa (OTC)', 'XAUUSDOTC': 'Ouro (OTC)',
-    'BTCUSDT': 'Bitcoin', 'ETHUSDT': 'Ethereum', 'LTCUSDT': 'Litecoin', 'ADAUSDT': 'Cardano'
+    'VOTC': 'Visa (OTC)', 'XAUUSDOTC': 'Ouro (OTC)'
 };
 
-const ativosTestes = Object.keys(dicionarioAtivos); 
+// 🔥 FILTRO SNIPER: Se tem 'OTC' no nome, o robô ignora sumariamente!
+const ativosTestes = Object.keys(dicionarioAtivos).filter(sym => !sym.includes('OTC')); 
 
 let estadoSessao = { ativa: false, permitirSinais: false, wins: 0, losses: 0, sinalRodando: null, ultimoSinalEnviado: null };
 let activeCronJobs = [];
@@ -34,7 +52,6 @@ let motorCacaId = null;
 let isProcessing = false; 
 const activeOtcSuffixes = {};
 
-// 🛡️ Escudo Anti-Duplo Clique
 let ultimaMensagemSessao = 0; 
 
 function getAgoraSP() {
@@ -88,11 +105,16 @@ async function enviarRelatorioDiario() {
         let total = 0, wins = 0, losses = 0;
         let ranking = {};
 
-        snapshot.forEach(doc => {
-            const d = doc.data();
+        let sinaisHoje = [];
+        snapshot.forEach(doc => sinaisHoje.push(doc.data()));
+        sinaisHoje.sort((a, b) => b.timestamp - a.timestamp);
+        
+        // Pega apenas os 2 últimos sinais que representam a sessão atual
+        const sinaisDestaSessao = sinaisHoje.slice(0, 2);
+
+        sinaisDestaSessao.forEach(d => {
             total++;
             if (d.resultado === 'WIN') wins++; else losses++;
-            
             if (!ranking[d.ativo]) ranking[d.ativo] = { w: 0, l: 0 };
             if (d.resultado === 'WIN') ranking[d.ativo].w++; else ranking[d.ativo].l++;
         });
@@ -100,26 +122,26 @@ async function enviarRelatorioDiario() {
         const assertividade = total > 0 ? ((wins / total) * 100).toFixed(1) : 0;
         const agora = getAgoraSP();
         
-        let msg = `📊 *RELATÓRIO DIÁRIO - JS INVEST* 📊\n`;
+        let msg = `🏁 *RELATÓRIO DE SESSÃO (MERCADO ABERTO)* 🏁\n`;
         msg += `📅 Data: ${agora.toLocaleDateString('pt-BR')}\n\n`;
         msg += `✅ Total Wins: *${wins}*\n`;
         msg += `🔴 Total Loss: *${losses}*\n`;
         msg += `🎯 Assertividade: *${assertividade}%*\n\n`;
-        msg += `🏆 *TOP ATIVOS DE HOJE:* \n`;
+        msg += `🏆 *RESUMO DOS ATIVOS:* \n`;
 
-        const sortedRanking = Object.entries(ranking).sort((a, b) => b[1].w - a[1].w).slice(0, 5);
+        const sortedRanking = Object.entries(ranking).sort((a, b) => b[1].w - a[1].w);
         sortedRanking.forEach(([ativo, score]) => {
             msg += `• ${ativo}: ${score.w}W - ${score.l}L\n`;
         });
 
-        msg += `\n🚀 *O robô nunca para. Amanhã tem mais!*`;
+        msg += `\n🚀 *Missão cumprida! Sniper recarregando...*`;
         
         bot.sendMessage(CHAT_ID, msg, { parse_mode: 'Markdown' });
     } catch (e) { console.error("Erro relatório:", e); }
 }
 
 async function initTelegramBot(stateGlobais, configFirebase) {
-    console.log("🤖 General Telegram: MODO BLINDADO (Anti-Amnésia) ATIVADO! 🚀");
+    console.log("🤖 Telegram: MODO MERCADO ABERTO INTEGRAL (Seg a Sex | Max 2 Sinais) 🚀");
     configLocal = configFirebase;
     agendarSessoes(stateGlobais);
     iniciarMotorContinuo(stateGlobais);
@@ -134,36 +156,31 @@ function agendarSessoes() {
     activeCronJobs.forEach(job => job.stop());
     activeCronJobs = [];
 
-    const dias = configLocal.dias || '0-6'; 
-    const cronManhaStart = parseTimeToCron(configLocal.horaManha || '09:00', 0, dias);
-    const cronTardeStart = parseTimeToCron(configLocal.horaTarde || '15:00', 0, dias);
-    const cronRelatorio = parseTimeToCron(configLocal.horaTarde || '15:00', 120, dias); 
+    const dias = configLocal.dias || '1-5'; 
+    const cronManhaStart = parseTimeToCron(configLocal.horaManha || '09:30', 0, dias);
+    const cronTardeStart = parseTimeToCron(configLocal.horaTarde || '15:30', 0, dias);
 
     activeCronJobs.push(cron.schedule(cronManhaStart, () => iniciarSessao("Manhã"), { timezone: "America/Sao_Paulo" }));
     activeCronJobs.push(cron.schedule(cronTardeStart, () => iniciarSessao("Tarde"), { timezone: "America/Sao_Paulo" }));
-    activeCronJobs.push(cron.schedule(cronRelatorio, () => { estadoSessao.ativa = false; enviarRelatorioDiario(); }, { timezone: "America/Sao_Paulo" }));
 }
 
 function forcarSessaoTelegram(turno) {
     iniciarSessao(turno);
 }
 
-// 🎯 BLINDAGEM DE SESSÃO: Nunca mais apaga uma operação em curso!
 function iniciarSessao(turno) {
     const agoraMs = Date.now();
-    
-    // Escudo Anti-Flood: Impede que cliques seguidos mandem a mensagem várias vezes (10 segundos de trava)
     if (agoraMs - ultimaMensagemSessao < 10000) return; 
     ultimaMensagemSessao = agoraMs;
 
     estadoSessao.ativa = true;
     estadoSessao.permitirSinais = true;
     
-    // 🔥 Se não houver placar, inicia a zero. Se houver, MANTÉM OS DADOS!
-    estadoSessao.wins = estadoSessao.wins || 0;
-    estadoSessao.losses = estadoSessao.losses || 0;
+    estadoSessao.wins = 0;
+    estadoSessao.losses = 0;
+    estadoSessao.sinalRodando = null;
 
-    let msg = configLocal.msgDespertar || `👨‍💻 *INÍCIO DE SESSÃO*`;
+    let msg = configLocal.msgDespertar || `👨‍💻 *INÍCIO DE SESSÃO: MERCADO ABERTO*`;
     bot.sendMessage(CHAT_ID, msg, { parse_mode: 'Markdown' });
 }
 
@@ -191,8 +208,9 @@ function iniciarMotorContinuo(stateGlobais) {
                 
                 const minsPassados = (min - op.minutoVerificacao + 60) % 60;
                 if (minsPassados >= 2 && minsPassados < 50) {
-                    bot.sendMessage(CHAT_ID, `⚠️ *Aviso:* A corretora atrasou os dados finais de ${op.nomeAmigavel}. Cancelando análise fantasma.`, { parse_mode: 'Markdown' });
+                    bot.sendMessage(CHAT_ID, `⚠️ *Aviso:* A corretora atrasou os dados finais de ${op.nomeAmigavel}. Cancelando análise.`, { parse_mode: 'Markdown' });
                     estadoSessao.sinalRodando = null;
+                    verificarFimDeSessao(); 
                 }
                 
             } else if (estadoSessao.permitirSinais) {
@@ -211,8 +229,6 @@ async function cacarOportunidade(state) {
 
     const agora = getAgoraSP();
     const minAtual = agora.getMinutes();
-    
-    // 🛡️ Proteção contra estratégias corrompidas no Firebase
     const strategy = state.strategiesDB.find(s => s && s.name && s.name.toLowerCase().includes('live')) || state.strategiesDB[0];
     if (!strategy) return; 
     
@@ -288,12 +304,27 @@ function atirarSinalDefinitivo(sym, tipo, nomeAmigavel, minutoEntrada) {
 
     const acao = tipo === 'CALL' ? '🟩 Comprar' : '🟥 Vender';
     
-    const templateOriginal = configLocal.msgSinal || "⚡ *ALERTA DE TOQUE (OTC/M1)* ⚡\n\n💵 Moeda = {MOEDA}\n⏰ Expiração = 1 Minuto\n🛎 Entrada = {HORA_ENTRADA}\n{DIRECAO}\n\nGale 1 - {HORA_GALE}\n\n👉🏼 Se necessário, fazer 1 Gale.\n\n➡️ [Clique aqui para abrir a Vellox](https://velloxbroker.com)";
+    const templateOriginal = configLocal.msgSinal || "⚡ *ALERTA DE TOQUE (M1)* ⚡\n\n💵 Moeda = {MOEDA}\n⏰ Expiração = 1 Minuto\n🛎 Entrada = {HORA_ENTRADA}\n{DIRECAO}\n\nGale 1 - {HORA_GALE}\n\n👉🏼 Se necessário, fazer 1 Gale.\n\n➡️ [Clique aqui para abrir a Vellox](https://velloxbroker.com)";
 
     const msg = formatarMensagem(templateOriginal, { moeda: nomeAmigavel, direcao: acao, horaEntrada: horaEntrada, horaGale: horaGale });
     bot.sendMessage(CHAT_ID, msg, { parse_mode: 'Markdown', disable_web_page_preview: true });
 
     return { horaEntrada, horaGale };
+}
+
+function verificarFimDeSessao() {
+    const totalSinais = estadoSessao.wins + estadoSessao.losses;
+    
+    if (totalSinais >= 2) {
+        estadoSessao.ativa = false;
+        estadoSessao.permitirSinais = false;
+        
+        bot.sendMessage(CHAT_ID, `🔒 *META ATINGIDA!* 2 Sinais concluídos. Encerrando sessão do Mercado Aberto...`, { parse_mode: 'Markdown' });
+        
+        setTimeout(() => {
+            enviarRelatorioDiario();
+        }, 3000);
+    }
 }
 
 async function conferirResultado(state) {
@@ -324,7 +355,8 @@ async function conferirResultado(state) {
             horaEntrada: operacao.horaEntradaStr, horaGale: operacao.horaGaleStr
         });
 
-        estadoSessao.wins++; estadoSessao.sinalRodando = null; anunciarPlacar(); 
+        estadoSessao.wins++; estadoSessao.sinalRodando = null; 
+        verificarFimDeSessao(); 
     } else {
         operacao.step++;
         if (operacao.step > 1) {
@@ -336,7 +368,8 @@ async function conferirResultado(state) {
                 horaEntrada: operacao.horaEntradaStr, horaGale: operacao.horaGaleStr
             });
 
-            estadoSessao.losses++; estadoSessao.sinalRodando = null; anunciarPlacar(); 
+            estadoSessao.losses++; estadoSessao.sinalRodando = null; 
+            verificarFimDeSessao(); 
         } else {
             bot.sendMessage(CHAT_ID, `🔄 *ENTRAR NO GALE ${operacao.step}* em ${operacao.nomeAmigavel}!\nMesma direção.`, { parse_mode: 'Markdown' });
             operacao.minutoVerificacao = (agora.getMinutes() + 1) % 60;
@@ -345,14 +378,11 @@ async function conferirResultado(state) {
     }
 }
 
-function anunciarPlacar() {
-    bot.sendMessage(CHAT_ID, `📊 *Placar AO VIVO (Teste M1):* ${estadoSessao.wins} Win x ${estadoSessao.losses} Loss\nO radar continua operando...`, { parse_mode: 'Markdown' });
-}
-
 async function puxarVelasM1(symbol, state) {
     try {
         const symUpper = symbol.toUpperCase();
-        const isCrypto = ['BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'ADAUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT'].includes(symUpper);
+        // Incluídas todas as criptos Binance para operar com precisão de API nativa
+        const isCrypto = ['BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'ADAUSDT', 'BNBUSDT', 'SOLUSDT', 'DOGEUSDT', 'XRPUSDT'].includes(symUpper);
         
         if (isCrypto) {
             const res = await axios.get(`https://api.binance.com/api/v3/klines?symbol=${symUpper}&interval=1m&limit=150`);
@@ -379,7 +409,11 @@ async function puxarVelasM1(symbol, state) {
             }
 
             const baseName = symUpper.replace('OTC', '').replace('-', '').replace('_', ''); 
+            
+            // O bot tenta primeiro o nome exato (ex: AAPL), perfeito para mercado aberto!
             const variacoes = [
+                symUpper, 
+                baseName,
                 `${baseName}OTC`, `${baseName}-OTC`, `${baseName}_otc`, `${baseName}_OTC`, `${baseName.substring(0,3)}/${baseName.substring(3)} (OTC)` 
             ];
 
