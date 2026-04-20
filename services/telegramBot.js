@@ -8,7 +8,6 @@ const TOKEN = '8627851942:AAFn2Ze3Nbjb6LbNu7Gk3eEAcpDuzzKGGkM';
 const CHAT_ID = '-1003925714362';
 const bot = new TelegramBot(TOKEN, { polling: false });
 
-// 🎯 DICIONÁRIO EXPANDIDO (Mercado Aberto Completo + OTC Histórico)
 const dicionarioAtivos = {
     // 🟠 Criptomoedas (Binance)
     'BTCUSDT': 'Bitcoin', 'ETHUSDT': 'Ethereum', 'LTCUSDT': 'Litecoin', 
@@ -26,7 +25,7 @@ const dicionarioAtivos = {
     // 🟡 Commodities (Vellox)
     'XAUUSD': 'Ouro', 'XAGUSD': 'Prata', 'USOIL': 'Petróleo',
 
-    // 🔴 Mercado OTC (Será sumariamente cortado pelo filtro do robô)
+    // 🔴 Mercado OTC
     'EURUSDOTC': 'EUR/USD (OTC)', 'AUDJPYOTC': 'AUD/JPY (OTC)', 'EURJPYOTC': 'EUR/JPY (OTC)', 
     'EURAUDOTC': 'EUR/AUD (OTC)', 'AUDCHFOTC': 'AUD/CHF (OTC)', 'GBPJPYOTC': 'GBP/JPY (OTC)', 
     'CADCHFOTC': 'CAD/CHF (OTC)', 'EURNZDOTC': 'EUR/NZD (OTC)', 'GBPAUDOTC': 'GBP/AUD (OTC)', 
@@ -109,7 +108,6 @@ async function enviarRelatorioDiario() {
         snapshot.forEach(doc => sinaisHoje.push(doc.data()));
         sinaisHoje.sort((a, b) => b.timestamp - a.timestamp);
         
-        // Pega apenas os 2 últimos sinais que representam a sessão atual
         const sinaisDestaSessao = sinaisHoje.slice(0, 2);
 
         sinaisDestaSessao.forEach(d => {
@@ -141,7 +139,7 @@ async function enviarRelatorioDiario() {
 }
 
 async function initTelegramBot(stateGlobais, configFirebase) {
-    console.log("🤖 Telegram: MODO MERCADO ABERTO INTEGRAL (Seg a Sex | Max 2 Sinais) 🚀");
+    console.log("🤖 Telegram: MODO MERCADO ABERTO INTEGRAL (Seg a Sex | Max 2 Sinais | Alta Precisão) 🚀");
     configLocal = configFirebase;
     agendarSessoes(stateGlobais);
     iniciarMotorContinuo(stateGlobais);
@@ -239,7 +237,8 @@ async function cacarOportunidade(state) {
             if (estadoSessao.ultimoSinalEnviado === `${sym}_${minAtual}`) continue;
 
             const velas = await puxarVelasM1(sym, state);
-            if (!velas || velas.length < 150) {
+            // 🔥 ALTA PRECISÃO: O bot agora exige um histórico profundo (500 velas) para o RSI ser perfeito
+            if (!velas || velas.length < 400) {
                 await sleep(200); 
                 continue;
             }
@@ -381,23 +380,24 @@ async function conferirResultado(state) {
 async function puxarVelasM1(symbol, state) {
     try {
         const symUpper = symbol.toUpperCase();
-        // Incluídas todas as criptos Binance para operar com precisão de API nativa
         const isCrypto = ['BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'ADAUSDT', 'BNBUSDT', 'SOLUSDT', 'DOGEUSDT', 'XRPUSDT'].includes(symUpper);
         
         if (isCrypto) {
-            const res = await axios.get(`https://api.binance.com/api/v3/klines?symbol=${symUpper}&interval=1m&limit=150`);
+            // 🔥 ALTA PRECISÃO: Puxa 500 velas para a Binance
+            const res = await axios.get(`https://api.binance.com/api/v3/klines?symbol=${symUpper}&interval=1m&limit=500`);
             if (!res.data) return null;
             return res.data; 
         } else {
             if(!state.globalDynamicCookie) return null;
             
             const to = Math.floor(Date.now() / 1000); 
-            const from = to - (150 * 60); 
+            // 🔥 ALTA PRECISÃO: Puxa 500 velas para a Vellox
+            const from = to - (500 * 60); 
             const otcHeaders = { 'accept': '*/*', 'Cookie': state.globalDynamicCookie, 'X-Requested-With': 'XMLHttpRequest', 'referer': 'https://velloxbroker.com/traderoom', 'user-agent': 'Mozilla/5.0' };
             
             if (activeOtcSuffixes[symUpper]) {
                 try {
-                    let res = await axios.get(`https://velloxbroker.com/publicapi/tradingview/udf-history?symbol=${activeOtcSuffixes[symUpper]}&resolution=1&from=${from}&to=${to}&countback=150&site=velloxbroker.com`, { headers: otcHeaders });
+                    let res = await axios.get(`https://velloxbroker.com/publicapi/tradingview/udf-history?symbol=${activeOtcSuffixes[symUpper]}&resolution=1&from=${from}&to=${to}&countback=500&site=velloxbroker.com`, { headers: otcHeaders });
                     if (res.data && res.data.s === 'ok') {
                         let klines = [];
                         for(let i=0; i<res.data.c.length; i++){
@@ -410,7 +410,6 @@ async function puxarVelasM1(symbol, state) {
 
             const baseName = symUpper.replace('OTC', '').replace('-', '').replace('_', ''); 
             
-            // O bot tenta primeiro o nome exato (ex: AAPL), perfeito para mercado aberto!
             const variacoes = [
                 symUpper, 
                 baseName,
@@ -419,7 +418,7 @@ async function puxarVelasM1(symbol, state) {
 
             for (let variante of variacoes) {
                 try {
-                    let res = await axios.get(`https://velloxbroker.com/publicapi/tradingview/udf-history?symbol=${variante}&resolution=1&from=${from}&to=${to}&countback=150&site=velloxbroker.com`, { headers: otcHeaders });
+                    let res = await axios.get(`https://velloxbroker.com/publicapi/tradingview/udf-history?symbol=${variante}&resolution=1&from=${from}&to=${to}&countback=500&site=velloxbroker.com`, { headers: otcHeaders });
                     
                     if (res.data && res.data.s === 'ok' && res.data.c && res.data.c.length > 0) {
                         activeOtcSuffixes[symUpper] = variante; 
