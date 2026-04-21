@@ -44,7 +44,8 @@ const dicionarioAtivos = {
 // 🔥 FILTRO SNIPER: Se tem 'OTC' no nome, o robô ignora sumariamente!
 const ativosTestes = Object.keys(dicionarioAtivos).filter(sym => !sym.includes('OTC')); 
 
-let estadoSessao = { ativa: false, permitirSinais: false, wins: 0, losses: 0, sinalRodando: null, ultimoSinalEnviado: null };
+// 🎯 lastGaleMsgId atua como lixeiro para manter o chat limpo
+let estadoSessao = { ativa: false, permitirSinais: false, wins: 0, losses: 0, sinalRodando: null, ultimoSinalEnviado: null, lastGaleMsgId: null };
 let activeCronJobs = [];
 let configLocal = {};
 let motorCacaId = null;
@@ -73,6 +74,17 @@ function parseTimeToCron(timeStr, addMinutes, dias) {
     let finalH = Math.floor(totalMin / 60) % 24;
     let finalM = totalMin % 60;
     return `${finalM} ${finalH} * * ${dias}`;
+}
+
+async function enviarSticker(stickerId) {
+    if (!stickerId) return null;
+    try {
+        const msg = await bot.sendSticker(CHAT_ID, stickerId);
+        return msg.message_id;
+    } catch (e) {
+        console.error("Erro ao enviar sticker (ID inválido?):", e.message);
+        return null;
+    }
 }
 
 async function salvarResultadoNoFirebase(dados) {
@@ -108,7 +120,8 @@ async function enviarRelatorioDiario() {
         snapshot.forEach(doc => sinaisHoje.push(doc.data()));
         sinaisHoje.sort((a, b) => b.timestamp - a.timestamp);
         
-        const sinaisDestaSessao = sinaisHoje.slice(0, 2);
+        const metaSinais = parseInt(configLocal.maxSinais) || 2;
+        const sinaisDestaSessao = sinaisHoje.slice(0, metaSinais);
 
         sinaisDestaSessao.forEach(d => {
             total++;
@@ -120,7 +133,7 @@ async function enviarRelatorioDiario() {
         const assertividade = total > 0 ? ((wins / total) * 100).toFixed(1) : 0;
         const agora = getAgoraSP();
         
-        let msg = `🏁 *RELATÓRIO DE SESSÃO (MERCADO ABERTO)* 🏁\n`;
+        let msg = `🏁 *RELATÓRIO DE SESSÃO* 🏁\n`;
         msg += `📅 Data: ${agora.toLocaleDateString('pt-BR')}\n\n`;
         msg += `✅ Total Wins: *${wins}*\n`;
         msg += `🔴 Total Loss: *${losses}*\n`;
@@ -139,7 +152,7 @@ async function enviarRelatorioDiario() {
 }
 
 async function initTelegramBot(stateGlobais, configFirebase) {
-    console.log("🤖 Telegram: MODO MERCADO ABERTO INTEGRAL (Seg a Sex | Max 2 Sinais | Alta Precisão) 🚀");
+    console.log("🤖 Telegram: MODO STICKERS ATIVADO (Gale 1 Limpo) 🚀");
     configLocal = configFirebase;
     agendarSessoes(stateGlobais);
     iniciarMotorContinuo(stateGlobais);
@@ -166,20 +179,23 @@ function forcarSessaoTelegram(turno) {
     iniciarSessao(turno);
 }
 
-function iniciarSessao(turno) {
+async function iniciarSessao(turno) {
     const agoraMs = Date.now();
     if (agoraMs - ultimaMensagemSessao < 10000) return; 
     ultimaMensagemSessao = agoraMs;
 
     estadoSessao.ativa = true;
     estadoSessao.permitirSinais = true;
-    
     estadoSessao.wins = 0;
     estadoSessao.losses = 0;
     estadoSessao.sinalRodando = null;
+    estadoSessao.lastGaleMsgId = null;
 
-    let msg = configLocal.msgDespertar || `👨‍💻 *INÍCIO DE SESSÃO: MERCADO ABERTO*`;
-    bot.sendMessage(CHAT_ID, msg, { parse_mode: 'Markdown' });
+    if (configLocal.stkStart) {
+        await enviarSticker(configLocal.stkStart);
+    } else {
+        bot.sendMessage(CHAT_ID, `👨‍💻 *INÍCIO DE SESSÃO: MERCADO ABERTO*`, { parse_mode: 'Markdown' });
+    }
 }
 
 function iniciarMotorContinuo(stateGlobais) {
@@ -237,7 +253,6 @@ async function cacarOportunidade(state) {
             if (estadoSessao.ultimoSinalEnviado === `${sym}_${minAtual}`) continue;
 
             const velas = await puxarVelasM1(sym, state);
-            // 🔥 ALTA PRECISÃO: O bot agora exige um histórico profundo (500 velas) para o RSI ser perfeito
             if (!velas || velas.length < 400) {
                 await sleep(200); 
                 continue;
@@ -311,14 +326,19 @@ function atirarSinalDefinitivo(sym, tipo, nomeAmigavel, minutoEntrada) {
     return { horaEntrada, horaGale };
 }
 
-function verificarFimDeSessao() {
+async function verificarFimDeSessao() {
     const totalSinais = estadoSessao.wins + estadoSessao.losses;
+    const metaSinais = parseInt(configLocal.maxSinais) || 2;
     
-    if (totalSinais >= 2) {
+    if (totalSinais >= metaSinais) {
         estadoSessao.ativa = false;
         estadoSessao.permitirSinais = false;
         
-        bot.sendMessage(CHAT_ID, `🔒 *META ATINGIDA!* 2 Sinais concluídos. Encerrando sessão do Mercado Aberto...`, { parse_mode: 'Markdown' });
+        if (configLocal.stkEnd) {
+            await enviarSticker(configLocal.stkEnd);
+        } else {
+            bot.sendMessage(CHAT_ID, `🔒 *META ATINGIDA!* Encerrando sessão...`, { parse_mode: 'Markdown' });
+        }
         
         setTimeout(() => {
             enviarRelatorioDiario();
@@ -346,8 +366,17 @@ async function conferirResultado(state) {
     const won = (operacao.type === 'CALL' && isGreen) || (operacao.type === 'PUT' && isRed);
 
     if (won) {
-        let msgWin = operacao.step === 0 ? (configLocal.msgWin || "✅ *WIN DE PRIMEIRA!* 🎯") : "✅ *WIN NO GALE 1!* 🎯";
-        bot.sendMessage(CHAT_ID, `${msgWin}\nAtivo: ${operacao.nomeAmigavel}`, { parse_mode: 'Markdown' });
+        // 🔥 Limpa a mensagem TEXTO do Gale 1 (se existir)
+        if (estadoSessao.lastGaleMsgId) {
+            try { await bot.deleteMessage(CHAT_ID, estadoSessao.lastGaleMsgId); } catch(e) {}
+            estadoSessao.lastGaleMsgId = null;
+        }
+
+        if (configLocal.stkWin) {
+            await enviarSticker(configLocal.stkWin);
+        } else {
+            bot.sendMessage(CHAT_ID, `✅ *WIN!* 🎯`, { parse_mode: 'Markdown' });
+        }
         
         await salvarResultadoNoFirebase({
             ativo: operacao.nomeAmigavel, direcao: operacao.type, resultado: 'WIN', galeUsado: operacao.step, 
@@ -358,9 +387,18 @@ async function conferirResultado(state) {
         verificarFimDeSessao(); 
     } else {
         operacao.step++;
-        if (operacao.step > 1) {
-            let msgLoss = configLocal.msgLoss || `🔴 *LOSS!* O mercado não respeitou a análise.`;
-            bot.sendMessage(CHAT_ID, `${msgLoss}\nAtivo: ${operacao.nomeAmigavel}`, { parse_mode: 'Markdown' });
+        if (operacao.step > 1) { // LOSS
+            // 🔥 Limpa a mensagem TEXTO do Gale 1
+            if (estadoSessao.lastGaleMsgId) {
+                try { await bot.deleteMessage(CHAT_ID, estadoSessao.lastGaleMsgId); } catch(e) {}
+                estadoSessao.lastGaleMsgId = null;
+            }
+
+            if (configLocal.stkLoss) {
+                await enviarSticker(configLocal.stkLoss);
+            } else {
+                bot.sendMessage(CHAT_ID, `🔴 *LOSS!*`, { parse_mode: 'Markdown' });
+            }
             
             await salvarResultadoNoFirebase({
                 ativo: operacao.nomeAmigavel, direcao: operacao.type, resultado: 'LOSS', galeUsado: 1, 
@@ -369,8 +407,11 @@ async function conferirResultado(state) {
 
             estadoSessao.losses++; estadoSessao.sinalRodando = null; 
             verificarFimDeSessao(); 
-        } else {
-            bot.sendMessage(CHAT_ID, `🔄 *ENTRAR NO GALE ${operacao.step}* em ${operacao.nomeAmigavel}!\nMesma direção.`, { parse_mode: 'Markdown' });
+        } else { // GALE 1 (Apenas TEXTO, mas o ID é salvo para deleção posterior!)
+            
+            const msgSent = await bot.sendMessage(CHAT_ID, `🔄 *ENTRAR NO GALE ${operacao.step}* em ${operacao.nomeAmigavel}!\nMesma direção.`, { parse_mode: 'Markdown' });
+            estadoSessao.lastGaleMsgId = msgSent.message_id;
+            
             operacao.minutoVerificacao = (agora.getMinutes() + 1) % 60;
             operacao.verificando = false; 
         }
@@ -383,7 +424,6 @@ async function puxarVelasM1(symbol, state) {
         const isCrypto = ['BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'ADAUSDT', 'BNBUSDT', 'SOLUSDT', 'DOGEUSDT', 'XRPUSDT'].includes(symUpper);
         
         if (isCrypto) {
-            // 🔥 ALTA PRECISÃO: Puxa 500 velas para a Binance
             const res = await axios.get(`https://api.binance.com/api/v3/klines?symbol=${symUpper}&interval=1m&limit=500`);
             if (!res.data) return null;
             return res.data; 
@@ -391,7 +431,6 @@ async function puxarVelasM1(symbol, state) {
             if(!state.globalDynamicCookie) return null;
             
             const to = Math.floor(Date.now() / 1000); 
-            // 🔥 ALTA PRECISÃO: Puxa 500 velas para a Vellox
             const from = to - (500 * 60); 
             const otcHeaders = { 'accept': '*/*', 'Cookie': state.globalDynamicCookie, 'X-Requested-With': 'XMLHttpRequest', 'referer': 'https://velloxbroker.com/traderoom', 'user-agent': 'Mozilla/5.0' };
             

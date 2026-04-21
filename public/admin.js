@@ -27,23 +27,36 @@ function setupTelegramAdminUI(auth, socket) {
     tgPanel.style.display = 'none';
     tgPanel.innerHTML = `
         <h3 style="color:#58a6ff; text-align:center; margin-bottom: 15px; margin-top:0;">⚙️ CONFIGURAÇÃO DO ROBÔ</h3>
+        
         <div style="display:flex; gap:10px; margin-bottom:15px; background:#161b22; padding:15px; border-radius:8px; border:1px solid #30363d;">
             <div style="flex:1;"><label style="font-size:11px; color:#8b949e;">RSI Sobrecompra</label><input type="number" id="tgRsiOver" class="form-control" style="background:#0d1117; color:#f85149; border:1px solid #30363d; font-weight:bold; font-size:14px;"></div>
             <div style="flex:1;"><label style="font-size:11px; color:#8b949e;">RSI Sobrevenda</label><input type="number" id="tgRsiUnder" class="form-control" style="background:#0d1117; color:#3fb950; border:1px solid #30363d; font-weight:bold; font-size:14px;"></div>
             <div style="flex:1;"><label style="font-size:11px; color:#8b949e;">Bollinger</label><input type="text" id="tgBbDev" class="form-control" style="background:#0d1117; color:#58a6ff; border:1px solid #30363d; font-weight:bold; font-size:14px;"></div>
         </div>
+
         <div style="display:flex; gap:10px; margin-bottom:15px;">
             <div style="flex:1;"><label style="font-size:12px; color:#8b949e;">Início Manhã</label><input type="time" id="tgHoraManha" class="form-control" style="background:#0d1117; color:#c9d1d9; border:1px solid #30363d;"></div>
             <div style="flex:1;"><label style="font-size:12px; color:#8b949e;">Início Tarde</label><input type="time" id="tgHoraTarde" class="form-control" style="background:#0d1117; color:#c9d1d9; border:1px solid #30363d;"></div>
             <div style="flex:1;"><label style="font-size:12px; color:#8b949e;">Dias</label><input type="text" id="tgDias" class="form-control" style="background:#0d1117; color:#c9d1d9; border:1px solid #30363d;"></div>
         </div>
-        <div style="margin-bottom:10px;"><label style="font-size:12px; color:#8b949e;">Template: Pré-Alerta</label><textarea id="tgMsgPre" class="form-control" style="background:#0d1117; color:#c9d1d9; border:1px solid #30363d; height: 60px; font-family: monospace; font-size: 11px;"></textarea></div>
-        <div style="margin-bottom:15px;"><label style="font-size:12px; color:#8b949e;">Template: Sinal Oficial</label><textarea id="tgMsgSinal" class="form-control" style="background:#0d1117; color:#c9d1d9; border:1px solid #30363d; height: 100px; font-family: monospace; font-size: 11px;"></textarea></div>
-        <div style="display:flex; gap:10px; margin-bottom:10px;">
-            <div style="flex:1;"><label style="font-size:12px; color:#8b949e;">Msg: Despertar</label><input type="text" id="tgMsgDespertar" class="form-control" style="background:#0d1117; color:#c9d1d9; border:1px solid #30363d; font-size:11px;"></div>
-            <div style="flex:1;"><label style="font-size:12px; color:#8b949e;">Msg: Win</label><input type="text" id="tgMsgWin" class="form-control" style="background:#0d1117; color:#3fb950; border:1px solid #30363d; font-size:11px;"></div>
+
+        <div style="margin-bottom:15px; background:#161b22; padding:10px; border-radius:8px; border:1px solid #30363d;">
+             <label style="font-size:11px; color:#8b949e; display:block; margin-bottom:5px;">Qtd Sinais/Sessão (Meta de Stop)</label>
+             <input type="number" id="tgMaxSinais" class="form-control" style="background:#0d1117; color:#58a6ff; border:1px solid #30363d; font-weight:bold; font-size:14px; width:100%;">
         </div>
-        <div style="margin-bottom:20px;"><label style="font-size:12px; color:#8b949e;">Msg: Loss Final</label><input type="text" id="tgMsgLoss" class="form-control" style="background:#0d1117; color:#f85149; border:1px solid #30363d; font-size:11px;"></div>
+
+        <div style="display:flex; gap:10px; margin-bottom:10px;">
+            <div style="flex:1;"><label style="font-size:11px; color:#8b949e;">ID Sticker: Início</label><input type="text" id="tgStkStart" class="form-control" style="background:#0d1117; color:#c9d1d9; border:1px solid #30363d; font-size:12px;"></div>
+            <div style="flex:1;"><label style="font-size:11px; color:#8b949e;">ID Sticker: Fim</label><input type="text" id="tgStkEnd" class="form-control" style="background:#0d1117; color:#c9d1d9; border:1px solid #30363d; font-size:12px;"></div>
+        </div>
+
+        <div style="display:flex; gap:10px; margin-bottom:15px;">
+            <div style="flex:1;"><label style="font-size:11px; color:#8b949e;">ID Sticker: WIN</label><input type="text" id="tgStkWin" class="form-control" style="background:#0d1117; color:#3fb950; border:1px solid #30363d; font-size:12px;"></div>
+            <div style="flex:1;"><label style="font-size:11px; color:#8b949e;">ID Sticker: LOSS</label><input type="text" id="tgStkLoss" class="form-control" style="background:#0d1117; color:#f85149; border:1px solid #30363d; font-size:12px;"></div>
+        </div>
+
+        <div style="margin-bottom:15px;"><label style="font-size:12px; color:#8b949e;">Template: Sinal Oficial</label><textarea id="tgMsgSinal" class="form-control" style="background:#0d1117; color:#c9d1d9; border:1px solid #30363d; height: 80px; font-family: monospace; font-size: 11px;"></textarea></div>
+
         <div style="display:flex; justify-content:space-between; gap:10px; margin-bottom:15px;">
             <button id="btnSalvarTg" style="flex:1; background:#2ea043; color:white; border:none; padding:12px; border-radius:8px; font-weight:bold; cursor:pointer; font-size:14px;">💾 Salvar</button>
             <button id="btnForcarTgManha" style="flex:1; background:#da3633; color:white; border:none; padding:12px; border-radius:8px; font-weight:bold; cursor:pointer; font-size:14px;">🔥 Iniciar Sessão</button>
@@ -102,7 +115,9 @@ function setupTelegramAdminUI(auth, socket) {
         const config = {
             rsiOver: document.getElementById('tgRsiOver').value, rsiUnder: document.getElementById('tgRsiUnder').value, bbDev: document.getElementById('tgBbDev').value.replace(',', '.'),
             horaManha: document.getElementById('tgHoraManha').value, horaTarde: document.getElementById('tgHoraTarde').value, dias: document.getElementById('tgDias').value,
-            msgPre: document.getElementById('tgMsgPre').value, msgSinal: document.getElementById('tgMsgSinal').value, msgDespertar: document.getElementById('tgMsgDespertar').value, msgWin: document.getElementById('tgMsgWin').value, msgLoss: document.getElementById('tgMsgLoss').value
+            maxSinais: document.getElementById('tgMaxSinais').value,
+            stkStart: document.getElementById('tgStkStart').value, stkEnd: document.getElementById('tgStkEnd').value, stkWin: document.getElementById('tgStkWin').value, stkLoss: document.getElementById('tgStkLoss').value,
+            msgSinal: document.getElementById('tgMsgSinal').value
         };
         auth.currentUser.getIdToken().then(token => socket.emit('admin_save_tg_config', { token, config }));
     });

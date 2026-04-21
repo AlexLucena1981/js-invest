@@ -17,7 +17,7 @@ let isBotActive = false;
 // 🚀 INICIALIZAÇÃO VISUAL (Chama as funções de ui.js)
 // ==========================================
 window.addEventListener('DOMContentLoaded', () => {
-    initChart(); // Cria o gráfico global
+    initChart(); 
     
     const amtInput = document.getElementById('riskAmount');
     if (amtInput && !document.getElementById('riskPayout')) {
@@ -53,11 +53,9 @@ window.addEventListener('DOMContentLoaded', () => {
     radarDiv.innerHTML = `<div style="font-size:24px; margin-bottom:10px;">🚨 <b style="color:#c9d1d9;">RADAR DETECTOU!</b> 🚨</div><div id="radarMsg" style="font-size:18px; color:#8b949e; font-weight:bold;">Aguardando...</div>`;
     document.body.appendChild(radarDiv);
 
-    // Auto-Login
     const savedBrokerToken = localStorage.getItem('jsInvestBrokerToken'); const savedRole = localStorage.getItem('jsInvestUserRole'); const savedUid = localStorage.getItem('jsInvestUid');
     if (savedBrokerToken && savedUid) { document.getElementById('btnLogin').innerText = "Acessando Painel..."; socket.emit('auto_reconnect', { token: savedBrokerToken, role: savedRole, uid: savedUid }); }
 
-    // Eventos de Botões do Modal Admin (Abre o Radar)
     document.getElementById('btnOpenStats').addEventListener('click', () => { renderStats(radarGlobalStats); document.getElementById('statsModal').style.display = 'flex'; });
 });
 
@@ -84,7 +82,7 @@ socket.on('hybrid_login_result', (res) => {
             if (!res.isPremium) { setTimeout(() => { mostrarPopupBloqueioFreemium(); }, 1500); }
             if (res.role === 'admin') { 
                 document.getElementById('btnAdminPanel').style.display = 'inline-block'; document.getElementById('btnOpenModal').style.display = 'inline-block'; 
-                setupTelegramAdminUI(auth, socket); // Injeta o Admin Panel de admin.js
+                setupTelegramAdminUI(auth, socket); 
                 auth.currentUser.getIdToken().then(token => socket.emit('admin_get_tg_config', token)); 
             }
         }).catch(err => { document.getElementById('loginError').innerText = "Erro: " + err.message; document.getElementById('loginError').style.display = 'block'; });
@@ -98,7 +96,7 @@ socket.on('auto_reconnect_result', (res) => {
         if (!res.isPremium) { setTimeout(() => { mostrarPopupBloqueioFreemium(); }, 1500); }
         if (res.role === 'admin') { 
             document.getElementById('btnAdminPanel').style.display = 'inline-block'; document.getElementById('btnOpenModal').style.display = 'inline-block'; 
-            setupTelegramAdminUI(auth, socket); // Injeta o Admin Panel
+            setupTelegramAdminUI(auth, socket); 
             auth.currentUser.getIdToken().then(token => socket.emit('admin_get_tg_config', token)); 
         }
     } else { localStorage.removeItem('jsInvestBrokerToken'); localStorage.removeItem('jsInvestUserRole'); localStorage.removeItem('jsInvestUid'); document.getElementById('btnLogin').innerText = "Acessar Sistema"; }
@@ -229,7 +227,26 @@ if(document.getElementById('btnCancelScript')) document.getElementById('btnCance
 if(document.getElementById('btnSaveScript')) { document.getElementById('btnSaveScript').addEventListener('click', () => { try { const newStrategyJSON = JSON.parse(document.getElementById('jsonInput').value); document.getElementById('btnSaveScript').innerText = 'Gravando...'; socket.emit('add_new_strategy', newStrategyJSON); } catch (error) { alert("❌ Erro: Formato JSON inválido!"); document.getElementById('btnSaveScript').innerText = 'Salvar & Injetar'; } }); }
 
 const adminModal = document.getElementById('adminModal');
-if(document.getElementById('btnAdminPanel')) { document.getElementById('btnAdminPanel').addEventListener('click', () => { adminModal.style.display = 'flex'; auth.currentUser.getIdToken().then(token => socket.emit('admin_get_users', token)); if (window.tempTgConfig) { if(document.getElementById('tgRsiOver')) document.getElementById('tgRsiOver').value = window.tempTgConfig.rsiOver || '65'; if(document.getElementById('tgRsiUnder')) document.getElementById('tgRsiUnder').value = window.tempTgConfig.rsiUnder || '35'; if(document.getElementById('tgBbDev')) document.getElementById('tgBbDev').value = window.tempTgConfig.bbDev || '2'; if(document.getElementById('tgHoraManha')) document.getElementById('tgHoraManha').value = window.tempTgConfig.horaManha || '09:00'; if(document.getElementById('tgHoraTarde')) document.getElementById('tgHoraTarde').value = window.tempTgConfig.horaTarde || '15:00'; if(document.getElementById('tgDias')) document.getElementById('tgDias').value = window.tempTgConfig.dias || '1-5'; if(document.getElementById('tgMsgDespertar')) document.getElementById('tgMsgDespertar').value = window.tempTgConfig.msgDespertar || ''; if(document.getElementById('tgMsgWin')) document.getElementById('tgMsgWin').value = window.tempTgConfig.msgWin || ''; if(document.getElementById('tgMsgLoss')) document.getElementById('tgMsgLoss').value = window.tempTgConfig.msgLoss || ''; if(document.getElementById('tgMsgPre')) document.getElementById('tgMsgPre').value = window.tempTgConfig.msgPre || ''; if(document.getElementById('tgMsgSinal')) document.getElementById('tgMsgSinal').value = window.tempTgConfig.msgSinal || ''; } }); }
+if(document.getElementById('btnAdminPanel')) { 
+    document.getElementById('btnAdminPanel').addEventListener('click', () => { 
+        adminModal.style.display = 'flex'; 
+        auth.currentUser.getIdToken().then(token => socket.emit('admin_get_users', token)); 
+        if (window.tempTgConfig) { 
+            if(document.getElementById('tgRsiOver')) document.getElementById('tgRsiOver').value = window.tempTgConfig.rsiOver || '65'; 
+            if(document.getElementById('tgRsiUnder')) document.getElementById('tgRsiUnder').value = window.tempTgConfig.rsiUnder || '35'; 
+            if(document.getElementById('tgBbDev')) document.getElementById('tgBbDev').value = window.tempTgConfig.bbDev || '2'; 
+            if(document.getElementById('tgHoraManha')) document.getElementById('tgHoraManha').value = window.tempTgConfig.horaManha || '09:30'; 
+            if(document.getElementById('tgHoraTarde')) document.getElementById('tgHoraTarde').value = window.tempTgConfig.horaTarde || '15:30'; 
+            if(document.getElementById('tgDias')) document.getElementById('tgDias').value = window.tempTgConfig.dias || '1-5'; 
+            if(document.getElementById('tgMaxSinais')) document.getElementById('tgMaxSinais').value = window.tempTgConfig.maxSinais || '2'; 
+            if(document.getElementById('tgStkStart')) document.getElementById('tgStkStart').value = window.tempTgConfig.stkStart || ''; 
+            if(document.getElementById('tgStkEnd')) document.getElementById('tgStkEnd').value = window.tempTgConfig.stkEnd || ''; 
+            if(document.getElementById('tgStkWin')) document.getElementById('tgStkWin').value = window.tempTgConfig.stkWin || ''; 
+            if(document.getElementById('tgStkLoss')) document.getElementById('tgStkLoss').value = window.tempTgConfig.stkLoss || ''; 
+            if(document.getElementById('tgMsgSinal')) document.getElementById('tgMsgSinal').value = window.tempTgConfig.msgSinal || ''; 
+        } 
+    }); 
+}
 if(document.getElementById('btnCreateUser')) { document.getElementById('btnCreateUser').addEventListener('click', () => { const newEmail = document.getElementById('newUserEmail').value; const newPassword = document.getElementById('newUserPassword').value; const newRole = document.getElementById('newUserRole').value; document.getElementById('btnCreateUser').innerText = '...'; auth.currentUser.getIdToken().then(token => socket.emit('admin_create_user', { token, newEmail, newPassword, newRole })); }); }
 if(document.getElementById('btnInjectCookie')) { document.getElementById('btnInjectCookie').addEventListener('click', () => { const cookieVal = document.getElementById('adminCookieInput').value; if(cookieVal.length > 20) { socket.emit('inject_cookie', cookieVal); document.getElementById('adminCookieInput').value = ''; document.getElementById('btnInjectCookie').innerText = 'Injetado! ✅'; setTimeout(() => { document.getElementById('btnInjectCookie').innerText = 'Injetar'; }, 3000); } else { alert('❌ Cookie inválido!'); } }); }
 
