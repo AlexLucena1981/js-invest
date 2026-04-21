@@ -8,7 +8,6 @@ let state;
 
 const radarLastCandleProcessed = {}; 
 
-// 🎯 OTC REMOVIDO: O servidor agora roda leve e focado no mercado oficial!
 const radarCoins = [
     'BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'ADAUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT', 
     'EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'USDCAD', 'AAPL', 'XAUUSD'
@@ -21,8 +20,13 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 async function fetchOtcWithFallback(symbol, resolution, from, to, countback, headers) {
     const symUpper = symbol.toUpperCase();
     const baseName = symUpper.replace('OTC', '').replace('-', '').replace('_', ''); 
+
+    // 🎯 CORREÇÃO DA CIRURGIA: Agora ele procura o Mercado Aberto PRIMEIRO!
     const variacoes = [
-        `${baseName}OTC`, `${baseName}-OTC`, `${baseName}_otc`, `${baseName}_OTC`, `${baseName.substring(0,3)}/${baseName.substring(3)} (OTC)` 
+        symUpper, 
+        baseName,
+        `${baseName.substring(0,3)}/${baseName.substring(3)}`, // Formato com barra ex: EUR/USD
+        `${baseName}OTC` // Fallback caso a corretora mude
     ];
 
     for (let variante of variacoes) {
