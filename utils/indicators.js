@@ -1,10 +1,12 @@
+// 🧠 INDICATORS ENGINE - CÉREBRO MATEMÁTICO DO JS INVEST
+
 function calculateSMA(data, period) {
     if (data.length < period) return null;
     const sum = data.slice(-period).reduce((a, b) => a + b, 0);
     return sum / period;
 }
 
-// 🎯 FÓRMULA ADICIONADA: Média Móvel Exponencial (EMA)
+// 🎯 NOVA FÓRMULA: Média Móvel Exponencial (EMA)
 function calculateEMA(data, period) {
     if (data.length < period) return null;
     const k = 2 / (period + 1);
@@ -74,16 +76,15 @@ function calculateBollingerBands(data, period, stdDev) {
 function evaluateStrategy(prices, strategyConfig) {
     if (!prices || prices.length < 50) return null;
 
+    // 1. BYPASS ESTRATÉGIA DAS LIVES (Configuração via Painel Admin)
     if (strategyConfig.name && strategyConfig.name.toLowerCase().includes('live')) {
         const rsiPeriod = 14; 
         const rsiOverbought = strategyConfig.rsiOverbought || 65; 
         const rsiOversold = strategyConfig.rsiOversold || 35;   
-        
         const bbPeriod = 20; 
         const bbStdDev = strategyConfig.bbStdDev || 2;       
 
         const currentPrice = prices[prices.length - 1];
-
         const lastRSI = calculateRSI(prices, rsiPeriod);
         const lastBB = calculateBollingerBands(prices, bbPeriod, bbStdDev);
 
@@ -91,30 +92,10 @@ function evaluateStrategy(prices, strategyConfig) {
             if (currentPrice <= lastBB.lower && lastRSI <= rsiOversold) return 'CALL';
             if (currentPrice >= lastBB.upper && lastRSI >= rsiOverbought) return 'PUT';
         }
-        
         return null; 
     }
     
-    if (strategyConfig.isComplex && strategyConfig.id === 'rei_das_binarias') {
-        let buf1 = [];
-        for (let i = 10; i >= 0; i--) {
-            let slice = prices.slice(0, prices.length - i);
-            let sma1 = calculateSMA(slice, 1); 
-            let sma34 = calculateSMA(slice, 34);
-            if (sma1 === null || sma34 === null) return null;
-            buf1.push(sma1 - sma34);
-        }
-        
-        const currentB1 = buf1[10]; 
-        const prevB1 = buf1[9];
-        const currentB2 = calculateWMA(buf1.slice(-5), 5); 
-        const prevB2 = calculateWMA(buf1.slice(-6, -1), 5);
-
-        if (currentB1 > currentB2 && prevB1 < prevB2) return 'CALL';
-        if (currentB1 < currentB2 && prevB1 > prevB2) return 'PUT';
-        return null;
-    }
-
+    // 2. LÓGICA DINÂMICA VIA JSON (Para o Expert V10 e outros)
     let current = { price: prices[prices.length - 1] }; 
     let prev = { price: prices[prices.length - 2] };
     
@@ -124,7 +105,7 @@ function evaluateStrategy(prices, strategyConfig) {
             if (type === 'SMA') {
                 current[key] = calculateSMA(prices, config.period); 
                 prev[key] = calculateSMA(prices.slice(0, -1), config.period);
-            } else if (type === 'EMA') { // 🎯 LEITOR DE EMA ADICIONADO!
+            } else if (type === 'EMA') { // 🎯 AGORA ELE SABE LER EMA!
                 current[key] = calculateEMA(prices, config.period); 
                 prev[key] = calculateEMA(prices.slice(0, -1), config.period);
             } else if (type === 'RSI') { 
@@ -137,6 +118,7 @@ function evaluateStrategy(prices, strategyConfig) {
         }
     }
     
+    // Verifica se todos os indicadores foram calculados com sucesso
     if (Object.values(current).includes(null)) return null;
 
     try {
