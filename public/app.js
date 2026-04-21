@@ -13,34 +13,40 @@ let currentEntryPrice = 0;
 let radarGlobalStats = null; 
 let isBotActive = false; 
 
-// ==========================================
-// 🚀 INICIALIZAÇÃO VISUAL (Chama as funções de ui.js)
-// ==========================================
 window.addEventListener('DOMContentLoaded', () => {
     initChart(); 
     
     const amtInput = document.getElementById('riskAmount');
-    if (amtInput && !document.getElementById('riskPayout')) {
+    if (amtInput) {
+        amtInput.type = 'text';
+        amtInput.value = '1% da Banca';
+        amtInput.setAttribute('readonly', 'true');
+        const label = amtInput.parentElement.querySelector('label');
+        if (label) label.innerText = 'ENTRADA (1%)';
+        
         const amtCol = amtInput.parentElement;
         const contaCol = document.getElementById('riskAccount').parentElement;
-        if (amtCol.classList.contains('col-6')) { amtCol.classList.remove('col-6'); amtCol.classList.add('col-4'); }
-        if (contaCol && contaCol.classList.contains('col-6')) { contaCol.classList.remove('col-6'); contaCol.classList.add('col-4'); }
-        
-        const payoutWrapper = document.createElement('div'); payoutWrapper.className = amtCol.className;
-        payoutWrapper.innerHTML = `<label class="form-label text-muted" style="font-size: 10px; font-weight: bold; margin-bottom: 2px;">PAYOUT (%)</label><input type="number" id="riskPayout" class="form-control" style="background-color: #0d1117; color: #c9d1d9; border: 1px solid #30363d;" value="85">`;
-        amtCol.insertAdjacentElement('afterend', payoutWrapper);
+        if (amtCol.classList.contains('col-4')) { amtCol.classList.remove('col-4'); amtCol.classList.add('col-6'); }
+        if (contaCol && contaCol.classList.contains('col-4')) { contaCol.classList.remove('col-4'); contaCol.classList.add('col-6'); }
     }
 
-    ['riskAccount', 'riskAmount', 'riskPayout', 'riskGale', 'riskWin', 'riskLoss'].forEach(id => { const el = document.getElementById(id); if(el) el.addEventListener('change', saveRiskConfig); });
+    const riskGale = document.getElementById('riskGale');
+    if (riskGale && riskGale.parentElement) {
+        riskGale.parentElement.style.display = 'none';
+    }
+
+    const btnAddScript = document.getElementById('btnOpenModal');
+    if (btnAddScript) {
+        btnAddScript.style.display = 'none';
+    }
+
+    ['riskAccount', 'riskWin', 'riskLoss'].forEach(id => { const el = document.getElementById(id); if(el) el.addEventListener('change', saveRiskConfig); });
 
     togglePremiumUI(false);
 
     const savedConfig = JSON.parse(localStorage.getItem('jsInvestConfig'));
     if (savedConfig) {
         if(document.getElementById('riskAccount')) document.getElementById('riskAccount').value = savedConfig.accountType || 'demo'; 
-        if(document.getElementById('riskAmount')) document.getElementById('riskAmount').value = savedConfig.baseAmount || 5;
-        if(document.getElementById('riskPayout')) document.getElementById('riskPayout').value = savedConfig.payout || 85;
-        if(document.getElementById('riskGale')) document.getElementById('riskGale').value = savedConfig.maxGale || 2; 
         if(document.getElementById('riskWin')) document.getElementById('riskWin').value = savedConfig.stopWin || 50; 
         if(document.getElementById('riskLoss')) document.getElementById('riskLoss').value = savedConfig.stopLoss || 50;
     }
@@ -59,9 +65,6 @@ window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btnOpenStats').addEventListener('click', () => { renderStats(radarGlobalStats); document.getElementById('statsModal').style.display = 'flex'; });
 });
 
-// ==========================================
-// 🔌 COMUNICAÇÃO COM O SERVIDOR (Socket.io)
-// ==========================================
 socket.on('radar_alert', (data) => {
     const agora = new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', second: '2-digit' });
     manageFifoAlert({ id: 'radar-' + data.symbol, symbol: data.symbol, time: agora, type: data.type, stepText: 'Radar (Análise)', isEnd: false, isRadar: true });
@@ -81,7 +84,7 @@ socket.on('hybrid_login_result', (res) => {
             togglePremiumUI(res.isPremium);
             if (!res.isPremium) { setTimeout(() => { mostrarPopupBloqueioFreemium(); }, 1500); }
             if (res.role === 'admin') { 
-                document.getElementById('btnAdminPanel').style.display = 'inline-block'; document.getElementById('btnOpenModal').style.display = 'inline-block'; 
+                document.getElementById('btnAdminPanel').style.display = 'inline-block';
                 setupTelegramAdminUI(auth, socket); 
                 auth.currentUser.getIdToken().then(token => socket.emit('admin_get_tg_config', token)); 
             }
@@ -95,7 +98,7 @@ socket.on('auto_reconnect_result', (res) => {
         togglePremiumUI(res.isPremium);
         if (!res.isPremium) { setTimeout(() => { mostrarPopupBloqueioFreemium(); }, 1500); }
         if (res.role === 'admin') { 
-            document.getElementById('btnAdminPanel').style.display = 'inline-block'; document.getElementById('btnOpenModal').style.display = 'inline-block'; 
+            document.getElementById('btnAdminPanel').style.display = 'inline-block';
             setupTelegramAdminUI(auth, socket); 
             auth.currentUser.getIdToken().then(token => socket.emit('admin_get_tg_config', token)); 
         }
@@ -103,6 +106,37 @@ socket.on('auto_reconnect_result', (res) => {
 });
 
 socket.on('admin_tg_config_data', (config) => { window.tempTgConfig = config; });
+
+socket.on('admin_strategies_list', (res) => {
+    const listDiv = document.getElementById('adminStratList');
+    if (!listDiv) return;
+    if (res.success) {
+        window.adminStrats = res.strategies;
+        let html = '';
+        res.strategies.forEach(s => {
+            let desc = "Estratégia institucional JS Invest.";
+            if (s.conditions && s.conditions.call) desc = s.conditions.call.substring(0, 45) + "...";
+            if (s.name.includes('Live')) desc = "Gatilhos de Reversão/Retração (RSI + BB).";
+            else if (s.indicators && s.indicators.ema) desc = "Filtro de Tendência MME + Gatilhos.";
+            
+            html += `
+            <div style="background:#0d1117; border:1px solid #30363d; padding:10px; border-radius:6px; margin-bottom:8px; display:flex; flex-direction:column; gap:5px;">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <b style="color:#58a6ff; font-size:12px;">[ ${s.id} ] - ${s.name}</b>
+                    <div>
+                        <button onclick="viewStrat('${s.id}')" style="background:#1f6feb; border:none; color:white; padding:4px 8px; border-radius:4px; font-size:10px; cursor:pointer;">Ver JSON</button>
+                        <button onclick="deleteStrat('${s.id}')" style="background:#da3633; border:none; color:white; padding:4px 8px; border-radius:4px; font-size:10px; cursor:pointer;">🗑 Excluir</button>
+                    </div>
+                </div>
+                <span style="color:#8b949e; font-size:10px;">${desc}</span>
+            </div>`;
+        });
+        listDiv.innerHTML = html || '<div style="text-align:center; color:#8b949e;">Nenhuma estratégia ativa.</div>';
+    }
+});
+
+window.viewStrat = (id) => { const s = window.adminStrats.find(x => x.id === id); if (s) alert(JSON.stringify(s, null, 2)); };
+window.deleteStrat = (id) => { if (confirm('🚨 Tem a certeza que deseja excluir esta estratégia permanentemente?')) { auth.currentUser.getIdToken().then(token => socket.emit('admin_delete_strategy', { token, id })); } };
 
 socket.on('admin_report_data', (res) => {
     const container = document.getElementById('rankingListContainer');
@@ -196,11 +230,37 @@ socket.on('admin_users_list', (res) => {
 });
 
 socket.on('user_creation_result', (res) => { alert(res.msg); if(document.getElementById('btnCreateUser')) document.getElementById('btnCreateUser').innerText = 'Cadastrar'; if(res.success) { if(document.getElementById('newUserEmail')) document.getElementById('newUserEmail').value = ''; if(document.getElementById('newUserPassword')) document.getElementById('newUserPassword').value = ''; auth.currentUser.getIdToken().then(token => socket.emit('admin_get_users', token)); } });
-socket.on('script_injection_result', (res) => { const scriptModal = document.getElementById('scriptModal'); if(document.getElementById('btnSaveScript')) document.getElementById('btnSaveScript').innerText = 'Salvar & Injetar'; if (res.success) { alert("✅ " + res.msg); if(scriptModal) scriptModal.style.display = 'none'; setTimeout(() => { document.getElementById('strategySelector').value = res.id; socket.emit('change_strategy', res.id); }, 500); } else { alert("❌ Erro:\n" + res.msg); } });
 
-// ==========================================
-// 🖱️ LISTENERS DE CLIQUE E FORMULÁRIOS
-// ==========================================
+function getInstitutionalRiskConfig() {
+    const isDemo = document.getElementById('riskAccount').value === 'demo';
+    const uid = localStorage.getItem('jsInvestUid');
+    
+    const realBalStr = document.getElementById('valReal').innerText;
+    const realBalNum = parseFloat(realBalStr.replace('R$ ', '').replace(/\./g, '').replace(',', '.'));
+    
+    if (!isDemo && uid !== 'admin_master' && realBalNum < 500) {
+        alert("⚠️ GESTÃO INSTITUCIONAL: SALDO INSUFICIENTE\n\nA sua entrada é fixada em 1% da banca. O seu saldo é menor que R$ 500,00, o que geraria uma entrada abaixo do mínimo permitido pela corretora (R$ 5,00).\n\n👉 Use a Conta Demo;\n👉 Deposite até atingir R$ 500,00;\n👉 Ou use o modo FREE (apenas com Sinais).");
+        return null; 
+    }
+
+    const demoBalStr = document.getElementById('valDemo').innerText;
+    const demoBalNum = parseFloat(demoBalStr.replace('R$ ', '').replace(/\./g, '').replace(',', '.'));
+    const targetBalance = isDemo ? demoBalNum : realBalNum;
+    
+    let calculatedAmount = targetBalance * 0.01;
+    if (calculatedAmount < 5) calculatedAmount = 5; 
+    if (uid === 'admin_master') calculatedAmount = 5; 
+    
+    return {
+        accountType: isDemo ? 'demo' : 'real',
+        baseAmount: calculatedAmount, 
+        payout: 85, 
+        maxGale: 2, 
+        stopWin: parseFloat(document.getElementById('riskWin').value),
+        stopLoss: parseFloat(document.getElementById('riskLoss').value)
+    };
+}
+
 document.getElementById('btnLogin').addEventListener('click', () => {
     const btn = document.getElementById('btnLogin'); btn.innerText = "Autenticando..."; document.getElementById('loginError').style.display = 'none';
     socket.emit('hybrid_login', { brokerUser: document.getElementById('brokerLoginInput').value, brokerPass: document.getElementById('brokerPassInput').value });
@@ -209,22 +269,31 @@ document.getElementById('btnLogin').addEventListener('click', () => {
 document.getElementById('btnLogout').addEventListener('click', () => { localStorage.removeItem('jsInvestBrokerToken'); localStorage.removeItem('jsInvestUserRole'); localStorage.removeItem('jsInvestUid'); auth.signOut().then(() => { window.location.reload(); }); });
 
 document.getElementById('btnToggleBot').addEventListener('click', () => {
+    const config = getInstitutionalRiskConfig();
+    if (!config) return; 
+
     isBotActive = !isBotActive; saveRiskConfig(); 
-    const config = { active: isBotActive, accountType: document.getElementById('riskAccount').value, baseAmount: parseFloat(document.getElementById('riskAmount').value), payout: parseFloat(document.getElementById('riskPayout') ? document.getElementById('riskPayout').value : 85), maxGale: parseInt(document.getElementById('riskGale').value), stopWin: parseFloat(document.getElementById('riskWin').value), stopLoss: parseFloat(document.getElementById('riskLoss').value) };
+    config.active = isBotActive;
     socket.emit('setup_auto_trade', config);
 });
 
-document.getElementById('btnManualCall').addEventListener('click', () => { saveRiskConfig(); const config = { accountType: document.getElementById('riskAccount').value, baseAmount: parseFloat(document.getElementById('riskAmount').value), payout: parseFloat(document.getElementById('riskPayout') ? document.getElementById('riskPayout').value : 85), maxGale: parseInt(document.getElementById('riskGale').value) }; socket.emit('manual_trade', { direction: 'CALL', config: config, symbol: document.getElementById('coinSelector').value, timeframe: document.getElementById('timeframeSelector').value }); });
-document.getElementById('btnManualPut').addEventListener('click', () => { saveRiskConfig(); const config = { accountType: document.getElementById('riskAccount').value, baseAmount: parseFloat(document.getElementById('riskAmount').value), payout: parseFloat(document.getElementById('riskPayout') ? document.getElementById('riskPayout').value : 85), maxGale: parseInt(document.getElementById('riskGale').value) }; socket.emit('manual_trade', { direction: 'PUT', config: config, symbol: document.getElementById('coinSelector').value, timeframe: document.getElementById('timeframeSelector').value }); });
+document.getElementById('btnManualCall').addEventListener('click', () => { 
+    const config = getInstitutionalRiskConfig();
+    if (!config) return;
+    saveRiskConfig(); 
+    socket.emit('manual_trade', { direction: 'CALL', config: config, symbol: document.getElementById('coinSelector').value, timeframe: document.getElementById('timeframeSelector').value }); 
+});
+
+document.getElementById('btnManualPut').addEventListener('click', () => { 
+    const config = getInstitutionalRiskConfig();
+    if (!config) return;
+    saveRiskConfig(); 
+    socket.emit('manual_trade', { direction: 'PUT', config: config, symbol: document.getElementById('coinSelector').value, timeframe: document.getElementById('timeframeSelector').value }); 
+});
 
 document.getElementById('coinSelector').addEventListener('change', (e) => { clearUIForLoading(); socket.emit('change_coin', e.target.value); });
 document.getElementById('strategySelector').addEventListener('change', (e) => { clearUIForLoading(); socket.emit('change_strategy', e.target.value); });
 document.getElementById('timeframeSelector').addEventListener('change', (e) => { clearUIForLoading(); socket.emit('change_timeframe', e.target.value); });
-
-const scriptModal = document.getElementById('scriptModal');
-if(document.getElementById('btnOpenModal')) document.getElementById('btnOpenModal').addEventListener('click', () => { scriptModal.style.display = 'flex'; });
-if(document.getElementById('btnCancelScript')) document.getElementById('btnCancelScript').addEventListener('click', () => { scriptModal.style.display = 'none'; });
-if(document.getElementById('btnSaveScript')) { document.getElementById('btnSaveScript').addEventListener('click', () => { try { const newStrategyJSON = JSON.parse(document.getElementById('jsonInput').value); document.getElementById('btnSaveScript').innerText = 'Gravando...'; socket.emit('add_new_strategy', newStrategyJSON); } catch (error) { alert("❌ Erro: Formato JSON inválido!"); document.getElementById('btnSaveScript').innerText = 'Salvar & Injetar'; } }); }
 
 const adminModal = document.getElementById('adminModal');
 if(document.getElementById('btnAdminPanel')) { 
@@ -243,7 +312,10 @@ if(document.getElementById('btnAdminPanel')) {
             if(document.getElementById('tgStkEnd')) document.getElementById('tgStkEnd').value = window.tempTgConfig.stkEnd || ''; 
             if(document.getElementById('tgStkWin')) document.getElementById('tgStkWin').value = window.tempTgConfig.stkWin || ''; 
             if(document.getElementById('tgStkLoss')) document.getElementById('tgStkLoss').value = window.tempTgConfig.stkLoss || ''; 
-            if(document.getElementById('tgMsgSinal')) document.getElementById('tgMsgSinal').value = window.tempTgConfig.msgSinal || ''; 
+            
+            // 🎯 GARANTE QUE O TEMPLATE NUNCA FICA EM BRANCO NA TELA!
+            const msgDefault = "⚡ *ALERTA DE TOQUE (M1)* ⚡\n\n💵 Moeda = {MOEDA}\n⏰ Expiração = 1 Minuto\n🛎 Entrada = {HORA_ENTRADA}\n{DIRECAO}\n\n👉🏼 Se necessário, fazer 1 Gale.\n\n➡️ [Clique aqui para abrir a Vellox](https://velloxbroker.com)";
+            if(document.getElementById('tgMsgSinal')) document.getElementById('tgMsgSinal').value = window.tempTgConfig.msgSinal || msgDefault; 
         } 
     }); 
 }

@@ -12,11 +12,9 @@ function initChart() {
 }
 
 function saveRiskConfig() {
+    // 🎯 Agora só salva a Conta e os Stops. Payout e Gale sumiram.
     const config = {
         accountType: document.getElementById('riskAccount').value,
-        baseAmount: document.getElementById('riskAmount').value,
-        payout: document.getElementById('riskPayout') ? document.getElementById('riskPayout').value : 85,
-        maxGale: document.getElementById('riskGale').value,
         stopWin: document.getElementById('riskWin').value,
         stopLoss: document.getElementById('riskLoss').value
     };
@@ -31,23 +29,30 @@ function mostrarPopupBloqueioFreemium() {
     modal.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:99999; display:flex; justify-content:center; align-items:center; backdrop-filter: blur(8px); animation: fadeIn 0.3s ease-out;';
     
     modal.innerHTML = `
-        <div style="background:#0d1117; border:2px solid #f85149; border-radius:15px; width:90%; max-width:400px; padding:30px; text-align:center; color:#c9d1d9; box-shadow: 0 0 40px rgba(248, 81, 73, 0.4); position:relative;">
-            <div style="font-size:50px; margin-bottom:10px; text-shadow: 0 0 15px rgba(248, 81, 73, 0.8);">🔒</div>
-            <h2 style="color:#f85149; margin-bottom:15px; font-weight:900; letter-spacing:1px;">AUTO-TRADE BLOQUEADO</h2>
-            <p style="font-size:15px; margin-bottom:20px; line-height:1.6; color:#8b949e;">A ferramenta de <b style="color:#c9d1d9;">Robô de Alta Frequência</b> é um recurso exclusivo para contas com um saldo mínimo de R$100.</p>
+        <div style="background:#0d1117; border:2px solid #f85149; border-radius:15px; width:90%; max-width:450px; padding:30px; text-align:center; color:#c9d1d9; box-shadow: 0 0 40px rgba(248, 81, 73, 0.4); position:relative;">
+            <div style="font-size:50px; margin-bottom:10px; text-shadow: 0 0 15px rgba(248, 81, 73, 0.8);">🛡️</div>
+            <h2 style="color:#f85149; margin-bottom:15px; font-weight:900; letter-spacing:1px;">GESTÃO INSTITUCIONAL</h2>
+            <p style="font-size:14px; margin-bottom:20px; line-height:1.6; color:#8b949e;">Para sua proteção, a ferramenta de <b style="color:#c9d1d9;">Auto-Trade na Real</b> está fixada em <b style="color:#58a6ff;">1% da sua banca</b>. O valor mínimo de entrada na corretora é de R$ 5,00.</p>
             <div style="background:#161b22; padding:15px; border-radius:8px; border:1px solid #30363d; margin-bottom:25px;">
-                <span style="color:#8b949e; font-size:12px; display:block; margin-bottom:5px;">STATUS DA SUA CONTA</span>
-                <span style="color:#d29922; font-size:16px; font-weight:bold;">⚠️ MODO FREE (Apenas Sinais)</span>
-                <div style="margin-top:10px; font-size:12px; color:#58a6ff;">A sua banca real não atingiu o saldo mínimo de R$ 100,00. Deposite o valor exigido para libertar a automação!</div>
+                <span style="color:#8b949e; font-size:12px; display:block; margin-bottom:5px;">STATUS DA SUA CONTA (SALDO < R$500)</span>
+                <span style="color:#d29922; font-size:16px; font-weight:bold;">⚠️ REAL BLOQUEADA / DEMO LIBERADA</span>
+                <div style="margin-top:10px; font-size:12px; color:#58a6ff;">👉 Mude para a Conta Demo para testar o robô livremente.<br>👉 Ou deposite até atingir R$ 500 para operar na Real.<br>👉 Ou apenas deixe no modo Free (recebendo sinais visuais).</div>
             </div>
-            <button onclick="document.getElementById('premiumBlockModal').remove()" style="background: linear-gradient(180deg, #f85149 0%, #da3633 100%); color:white; border:none; padding:12px 25px; border-radius:8px; font-weight:bold; cursor:pointer; width:100%; font-size:16px; transition:0.2s; box-shadow: 0 4px 15px rgba(248, 81, 73, 0.4);">ENTENDI</button>
+            <button onclick="document.getElementById('premiumBlockModal').remove()" style="background: linear-gradient(180deg, #f85149 0%, #da3633 100%); color:white; border:none; padding:12px 25px; border-radius:8px; font-weight:bold; cursor:pointer; width:100%; font-size:16px; transition:0.2s; box-shadow: 0 4px 15px rgba(248, 81, 73, 0.4);">COMPREENDIDO</button>
         </div>
     `;
     document.body.appendChild(modal);
 }
 
 function togglePremiumUI(isPremium) {
-    const elsToToggle = ['riskAccount', 'riskAmount', 'riskPayout', 'riskGale', 'riskWin', 'riskLoss', 'btnToggleBot', 'btnManualCall', 'btnManualPut'];
+    const statusBot = document.getElementById('statusBot');
+    if (statusBot) {
+        if (isPremium) { statusBot.innerText = "🚀 GESTÃO 1% ATIVA: Conta Real Liberada!"; statusBot.style.color = "#3fb950"; } 
+        else { statusBot.innerText = "🔒 CONTA REAL BLOQUEADA: Saldo < R$ 500 (Use a Demo)"; statusBot.style.color = "#d29922"; }
+    }
+    
+    // 🎯 Ocultamos apenas os botões de risco principais
+    const elsToToggle = ['riskAccount', 'riskAmount', 'riskWin', 'riskLoss', 'btnToggleBot', 'btnManualCall', 'btnManualPut'];
     elsToToggle.forEach(id => {
         const el = document.getElementById(id);
         if (el) {
@@ -57,12 +62,6 @@ function togglePremiumUI(isPremium) {
             }
         }
     });
-
-    const statusBot = document.getElementById('statusBot');
-    if (statusBot) {
-        if (isPremium) { statusBot.innerText = "🚀 MODO PLUS ATIVO: Operações Liberadas!"; statusBot.style.color = "#3fb950"; } 
-        else { statusBot.innerText = "🔒 MODO FREE: Radar Ativo (Requer banca R$ 100+)"; statusBot.style.color = "#d29922"; }
-    }
 }
 
 function setupFifoPanel() {
@@ -151,7 +150,6 @@ function setupStatsUI() {
     `;
     document.body.appendChild(statsModal);
     
-    // O evento de abrir o modal chama renderStats indiretamente através do app.js, ou podemos deixar o HTML pronto e o app.js controla.
     document.getElementById('btnCloseStats').addEventListener('click', () => { document.getElementById('statsModal').style.display = 'none'; });
 }
 

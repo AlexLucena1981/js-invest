@@ -6,7 +6,7 @@ const { reloadTelegramConfig, forcarSessaoTelegram } = require('../services/tele
 
 const MASTER_EMAIL = 'alexandre.lucena@gmail.com'; 
 const MASTER_BROKER_LOGIN = 'AlexLucena1981';
-const MIN_BALANCE_PLUS = 100.00;
+const MIN_BALANCE_PLUS = 500.00;
 
 function parseBalance(valStr) {
     if (!valStr || valStr === "0,00" || valStr === "---") return 0;
@@ -15,7 +15,6 @@ function parseBalance(valStr) {
     return isNaN(num) ? 0 : num;
 }
 
-// 🎯 DATA BLINDADA SP: Garante o formato YYYY-MM-DD sem deslizes de fuso UTC
 function getSPDateString() {
     const d = new Date(new Date().toLocaleString("en-US", {timeZone: "America/Sao_Paulo"}));
     const yyyy = d.getFullYear();
@@ -24,7 +23,6 @@ function getSPDateString() {
     return `${yyyy}-${mm}-${dd}`;
 }
 
-// 🎯 Recebe o IO, o State e as Configs do Telegram diretamente do server.js
 module.exports = function setupSockets(io, state, tgConfigGlobal) {
 
     function getBrokerBySocket(socketId) {
@@ -89,18 +87,24 @@ module.exports = function setupSockets(io, state, tgConfigGlobal) {
                 let uid = brokerUser.replace(/[^a-zA-Z0-9]/g, ''); if (!uid) uid = 'user_' + Date.now();
                 let userRole = 'aluno'; const userLower = brokerUser.toLowerCase();
                 
+                const numBalance = parseBalance(realBalance);
+                let isPremium = numBalance >= MIN_BALANCE_PLUS;
+                
                 if (userLower === MASTER_EMAIL.toLowerCase() || userLower === MASTER_BROKER_LOGIN.toLowerCase()) { 
                     uid = 'admin_master'; 
                     userRole = 'admin'; 
+                    isPremium = true; 
                 } else { 
                     const snapshot = await db.collection('users').where('email', '==', brokerUser).get(); 
-                    if (!snapshot.empty) { uid = snapshot.docs[0].id; userRole = snapshot.docs[0].data().role; } 
+                    if (!snapshot.empty) { 
+                        uid = snapshot.docs[0].id; 
+                        userRole = snapshot.docs[0].data().role; 
+                        // 🎯 Bypass para TODOS os administradores testarem!
+                        if (userRole === 'admin') isPremium = true;
+                    } 
                 }
 
                 const customToken = await admin.auth().createCustomToken(uid);
-                
-                const numBalance = parseBalance(realBalance);
-                const isPremium = numBalance >= MIN_BALANCE_PLUS;
 
                 state.activeBrokers[uid] = { 
                     uid: uid, socketId: socket.id, token: brokerToken, demoAccountId: '8', realAccountId: '0', 
@@ -118,15 +122,18 @@ module.exports = function setupSockets(io, state, tgConfigGlobal) {
                 if(!token || !uid) throw new Error("Sem Token ou UID");
 
                 let realBalance = "0,00";
+                let isPremium = false;
                 
-                if (uid === 'admin_joao') { realBalance = "99999,00"; } 
-                else {
+                // 🎯 Bypass mantido no re-login
+                if (role === 'admin') { 
+                    realBalance = "10.000,00"; 
+                    isPremium = true; 
+                } else {
                     realBalance = await getVelloxBalance(token);
                     if(realBalance === "0,00" && !state.activeBrokers[uid]) throw new Error("Token Expirado");
+                    const numBalance = parseBalance(realBalance);
+                    isPremium = numBalance >= MIN_BALANCE_PLUS;
                 }
-
-                const numBalance = parseBalance(realBalance);
-                const isPremium = numBalance >= MIN_BALANCE_PLUS;
 
                 if (state.activeBrokers[uid]) { 
                     state.activeBrokers[uid].socketId = socket.id; 
@@ -144,7 +151,6 @@ module.exports = function setupSockets(io, state, tgConfigGlobal) {
         socket.on('setup_auto_trade', (config) => {
             const broker = getBrokerBySocket(socket.id);
             if (!broker) return;
-            if (!broker.isPremium) { socket.emit('auto_trade_status', { active: false, msg: `🔒 Modo Free. Deposite R$ ${MIN_BALANCE_PLUS} para liberar.`, profit: 0 }); return; }
             broker.config = config; broker.autoTradeActive = config.active;
             if (config.active) broker.sessionProfit = 0; 
             socket.emit('auto_trade_status', { active: config.active, msg: config.active ? "Robô Armado..." : "Robô Pausado.", profit: broker.sessionProfit });
@@ -155,7 +161,6 @@ module.exports = function setupSockets(io, state, tgConfigGlobal) {
             const broker = getBrokerBySocket(socket.id);
             
             if (!broker || !broker.token) { socket.emit('sniper_error', 'Você precisa conectar na corretora antes de atirar!'); return; }
-            if (!broker.isPremium) { socket.emit('sniper_error', `🔒 Função restrita ao Modo PLUS! Saldo mínimo: R$ ${MIN_BALANCE_PLUS}`); return; }
 
             let targetEng = getEngine(reqSymbol, reqTf, socket.userState.strategyId);
             if (targetEng.lastTickTime > 0 && (Date.now() - targetEng.lastTickTime > 120000)) targetEng.activeSignals = [];
@@ -193,8 +198,6 @@ module.exports = function setupSockets(io, state, tgConfigGlobal) {
                 const decodedToken = await admin.auth().verifyIdToken(data.token);
                 if (decodedToken.uid === 'admin_master' || true) {
                     await db.collection('settings').doc('telegram').set(data.config);
-                    
-                    // Atualiza a variável injetada
                     Object.assign(tgConfigGlobal, data.config);
                     
                     state.strategiesDB.forEach(s => {
@@ -219,13 +222,11 @@ module.exports = function setupSockets(io, state, tgConfigGlobal) {
             } catch(e) {}
         });
 
-        // 🎯 O servidor agora pede ao Firebase usando a data exata do Brasil!
         socket.on('admin_get_report', async (token) => {
             try {
                 const decodedToken = await admin.auth().verifyIdToken(token);
                 if (decodedToken.uid === 'admin_master' || true) {
-                    
-                    const hoje = getSPDateString(); // Chama a nossa nova função
+                    const hoje = getSPDateString(); 
                     const snapshot = await db.collection('historico_sinais').where('dataRef', '==', hoje).get();
                     
                     let ranking = {};
@@ -261,6 +262,22 @@ module.exports = function setupSockets(io, state, tgConfigGlobal) {
                 snapshot.forEach(doc => { usersList.push({ id: doc.id, ...doc.data() }); });
                 socket.emit('admin_users_list', { success: true, users: usersList });
             } catch (error) { socket.emit('admin_users_list', { success: false, msg: error.message }); }
+        });
+
+        socket.on('admin_get_strategies', async (token) => {
+            socket.emit('admin_strategies_list', { success: true, strategies: state.strategiesDB });
+        });
+
+        socket.on('admin_delete_strategy', async (data) => {
+            try {
+                const decodedToken = await admin.auth().verifyIdToken(data.token);
+                if (decodedToken.uid === 'admin_master' || true) {
+                    await db.collection('scripts').doc(data.id).delete();
+                    state.strategiesDB = state.strategiesDB.filter(s => s.id !== data.id);
+                    io.emit('available_strategies', state.strategiesDB.map(s => ({ id: s.id, name: s.name })));
+                    socket.emit('admin_strategies_list', { success: true, strategies: state.strategiesDB });
+                }
+            } catch(e) { console.error("Erro ao excluir", e); }
         });
 
         socket.on('change_coin', (newSymbol) => { socket.userState.symbol = newSymbol; updateRoom(); });

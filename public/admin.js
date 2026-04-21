@@ -20,6 +20,7 @@ function setupTelegramAdminUI(auth, socket) {
         <button id="tabSystem" style="flex:1; background:#1f6feb; color:white; border:none; padding:10px; border-radius:6px; font-weight:bold; cursor:pointer; font-size:12px;">👥 Usuários</button>
         <button id="tabTelegram" style="flex:1; background:#21262d; color:#8b949e; border:1px solid #30363d; padding:10px; border-radius:6px; font-weight:bold; cursor:pointer; font-size:12px;">🤖 Robô TG</button>
         <button id="tabReport" style="flex:1; background:#21262d; color:#8b949e; border:1px solid #30363d; padding:10px; border-radius:6px; font-weight:bold; cursor:pointer; font-size:12px;">📊 Histórico</button>
+        <button id="tabStrategies" style="flex:1; background:#21262d; color:#8b949e; border:1px solid #30363d; padding:10px; border-radius:6px; font-weight:bold; cursor:pointer; font-size:12px;">📈 Estratégias</button>
     `;
 
     const tgPanel = document.createElement('div');
@@ -55,7 +56,7 @@ function setupTelegramAdminUI(auth, socket) {
             <div style="flex:1;"><label style="font-size:11px; color:#8b949e;">ID Sticker: LOSS</label><input type="text" id="tgStkLoss" class="form-control" style="background:#0d1117; color:#f85149; border:1px solid #30363d; font-size:12px;"></div>
         </div>
 
-        <div style="margin-bottom:15px;"><label style="font-size:12px; color:#8b949e;">Template: Sinal Oficial</label><textarea id="tgMsgSinal" class="form-control" style="background:#0d1117; color:#c9d1d9; border:1px solid #30363d; height: 80px; font-family: monospace; font-size: 11px;"></textarea></div>
+        <div style="margin-bottom:15px;"><label style="font-size:12px; color:#8b949e;">Template: Sinal Oficial</label><textarea id="tgMsgSinal" class="form-control" style="background:#0d1117; color:#c9d1d9; border:1px solid #30363d; height: 120px; font-family: monospace; font-size: 11px; white-space: pre-wrap;"></textarea></div>
 
         <div style="display:flex; justify-content:space-between; gap:10px; margin-bottom:15px;">
             <button id="btnSalvarTg" style="flex:1; background:#2ea043; color:white; border:none; padding:12px; border-radius:8px; font-weight:bold; cursor:pointer; font-size:14px;">💾 Salvar</button>
@@ -77,36 +78,95 @@ function setupTelegramAdminUI(auth, socket) {
         </div>
     `;
 
+    const stratPanel = document.createElement('div');
+    stratPanel.id = 'stratAdminPanel';
+    stratPanel.style.display = 'none';
+    stratPanel.innerHTML = `
+        <h3 style="color:#58a6ff; text-align:center; margin-top:0;">📈 GESTÃO DE ESTRATÉGIAS</h3>
+        <div style="background:#161b22; padding:15px; border-radius:8px; border:1px solid #30363d; margin-bottom:15px;">
+            <label style="font-size:11px; color:#8b949e;">Inserir Nova Estratégia (Formato JSON)</label>
+            <textarea id="newStratJson" class="form-control" style="background:#0d1117; color:#c9d1d9; border:1px solid #30363d; height: 180px; font-family: monospace; font-size: 11px; margin-bottom:10px;"></textarea>
+            <button id="btnSaveNewStrat" style="background:#2ea043; color:white; border:none; padding:10px; border-radius:6px; font-weight:bold; cursor:pointer; width:100%;">💾 Adicionar Estratégia</button>
+        </div>
+        <div style="background:#161b22; padding:15px; border-radius:8px; border:1px solid #30363d;">
+            <h4 style="color:#8b949e; text-align:center; margin-top:0; font-size:12px;">ESTRATÉGIAS ATIVAS</h4>
+            <div id="adminStratList" style="max-height: 250px; overflow-y: auto; padding-right:5px;">
+                <div style="text-align:center; color:#8b949e;">Carregando...</div>
+            </div>
+        </div>
+    `;
+
     adminModalContent.appendChild(tabNav);
     adminModalContent.appendChild(systemPanel);
     adminModalContent.appendChild(tgPanel);
     adminModalContent.appendChild(reportPanel);
+    adminModalContent.appendChild(stratPanel);
 
     const closeContainer = document.createElement('div');
     closeContainer.style.textAlign = 'center'; closeContainer.style.marginTop = '20px'; closeContainer.style.paddingTop = '15px'; closeContainer.style.borderTop = '1px solid #30363d';
     closeContainer.innerHTML = `<button id="btnUniversalClose" style="background:#21262d; color:#c9d1d9; border:1px solid #30363d; padding:10px 30px; border-radius:8px; font-weight:bold; cursor:pointer; width:100%; transition:0.2s;">FECHAR PAINEL ADMIN</button>`;
     adminModalContent.appendChild(closeContainer);
 
+    function resetTabs() {
+        ['systemAdminPanel', 'tgAdminPanel', 'reportAdminPanel', 'stratAdminPanel'].forEach(id => document.getElementById(id).style.display = 'none');
+        ['tabSystem', 'tabTelegram', 'tabReport', 'tabStrategies'].forEach(id => {
+            document.getElementById(id).style.background = '#21262d';
+            document.getElementById(id).style.color = '#8b949e';
+            document.getElementById(id).style.border = '1px solid #30363d';
+        });
+    }
+
     document.getElementById('tabSystem').addEventListener('click', () => {
-        document.getElementById('systemAdminPanel').style.display = 'block'; document.getElementById('tgAdminPanel').style.display = 'none'; document.getElementById('reportAdminPanel').style.display = 'none';
+        resetTabs(); document.getElementById('systemAdminPanel').style.display = 'block';
         document.getElementById('tabSystem').style.background = '#1f6feb'; document.getElementById('tabSystem').style.color = 'white'; document.getElementById('tabSystem').style.border = 'none';
-        document.getElementById('tabTelegram').style.background = '#21262d'; document.getElementById('tabTelegram').style.color = '#8b949e'; document.getElementById('tabTelegram').style.border = '1px solid #30363d';
-        document.getElementById('tabReport').style.background = '#21262d'; document.getElementById('tabReport').style.color = '#8b949e'; document.getElementById('tabReport').style.border = '1px solid #30363d';
     });
 
     document.getElementById('tabTelegram').addEventListener('click', () => {
-        document.getElementById('systemAdminPanel').style.display = 'none'; document.getElementById('tgAdminPanel').style.display = 'block'; document.getElementById('reportAdminPanel').style.display = 'none';
+        resetTabs(); document.getElementById('tgAdminPanel').style.display = 'block';
         document.getElementById('tabTelegram').style.background = '#2ea043'; document.getElementById('tabTelegram').style.color = 'white'; document.getElementById('tabTelegram').style.border = 'none';
-        document.getElementById('tabSystem').style.background = '#21262d'; document.getElementById('tabSystem').style.color = '#8b949e'; document.getElementById('tabSystem').style.border = '1px solid #30363d';
-        document.getElementById('tabReport').style.background = '#21262d'; document.getElementById('tabReport').style.color = '#8b949e'; document.getElementById('tabReport').style.border = '1px solid #30363d';
     });
 
     document.getElementById('tabReport').addEventListener('click', () => {
-        document.getElementById('systemAdminPanel').style.display = 'none'; document.getElementById('tgAdminPanel').style.display = 'none'; document.getElementById('reportAdminPanel').style.display = 'block';
+        resetTabs(); document.getElementById('reportAdminPanel').style.display = 'block';
         document.getElementById('tabReport').style.background = '#8957e5'; document.getElementById('tabReport').style.color = 'white'; document.getElementById('tabReport').style.border = 'none';
-        document.getElementById('tabSystem').style.background = '#21262d'; document.getElementById('tabSystem').style.color = '#8b949e'; document.getElementById('tabSystem').style.border = '1px solid #30363d';
-        document.getElementById('tabTelegram').style.background = '#21262d'; document.getElementById('tabTelegram').style.color = '#8b949e'; document.getElementById('tabTelegram').style.border = '1px solid #30363d';
         auth.currentUser.getIdToken().then(token => socket.emit('admin_get_report', token));
+    });
+
+    // 🎯 AQUI: INJETA O MODELO JSON DE ESTRATÉGIA AO CLICAR NA ABA!
+    document.getElementById('tabStrategies').addEventListener('click', () => {
+        resetTabs(); document.getElementById('stratAdminPanel').style.display = 'block';
+        document.getElementById('tabStrategies').style.background = '#d29922'; document.getElementById('tabStrategies').style.color = 'white'; document.getElementById('tabStrategies').style.border = 'none';
+        auth.currentUser.getIdToken().then(token => socket.emit('admin_get_strategies', token));
+        
+        const defaultStratJSON = {
+            "id": "nova_estrat",
+            "name": "Nome da Estratégia",
+            "isComplex": false,
+            "indicators": {
+                "rsi": { "type": "RSI", "period": 14 },
+                "bb": { "type": "BB", "period": 20, "stdDev": 2 }
+            },
+            "conditions": {
+                "call": "current.price <= current.bb.lower && current.rsi <= 35",
+                "put": "current.price >= current.bb.upper && current.rsi >= 65"
+            }
+        };
+        document.getElementById('newStratJson').value = JSON.stringify(defaultStratJSON, null, 4);
+    });
+
+    document.getElementById('btnSaveNewStrat').addEventListener('click', () => {
+        try {
+            const newStrategyJSON = JSON.parse(document.getElementById('newStratJson').value);
+            document.getElementById('btnSaveNewStrat').innerText = 'Gravando...';
+            socket.emit('add_new_strategy', newStrategyJSON); 
+            setTimeout(() => { 
+                document.getElementById('btnSaveNewStrat').innerText = '💾 Adicionar Estratégia';
+                auth.currentUser.getIdToken().then(token => socket.emit('admin_get_strategies', token));
+            }, 1000);
+        } catch (error) {
+            alert("❌ Erro: Formato JSON inválido!");
+            document.getElementById('btnSaveNewStrat').innerText = '💾 Adicionar Estratégia';
+        }
     });
 
     document.getElementById('btnUniversalClose').addEventListener('click', () => { document.getElementById('adminModal').style.display = 'none'; });
