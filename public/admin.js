@@ -39,12 +39,11 @@ function setupTelegramAdminUI(auth, socket) {
         <div style="display:flex; gap:10px; margin-bottom:15px;">
             <div style="flex:1;"><label style="font-size:12px; color:#8b949e;">Início Manhã</label><input type="time" id="tgHoraManha" class="form-control" style="background:#0d1117; color:#c9d1d9; border:1px solid #30363d;"></div>
             <div style="flex:1;"><label style="font-size:12px; color:#8b949e;">Início Tarde</label><input type="time" id="tgHoraTarde" class="form-control" style="background:#0d1117; color:#c9d1d9; border:1px solid #30363d;"></div>
-            <div style="flex:1;"><label style="font-size:12px; color:#8b949e;">Dias</label><input type="text" id="tgDias" class="form-control" style="background:#0d1117; color:#c9d1d9; border:1px solid #30363d;"></div>
         </div>
 
-        <div style="margin-bottom:15px; background:#161b22; padding:10px; border-radius:8px; border:1px solid #30363d;">
-             <label style="font-size:11px; color:#8b949e; display:block; margin-bottom:5px;">Qtd Sinais/Sessão (Meta de Stop)</label>
-             <input type="number" id="tgMaxSinais" class="form-control" style="background:#0d1117; color:#58a6ff; border:1px solid #30363d; font-weight:bold; font-size:14px; width:100%;">
+        <div style="display:flex; gap:10px; margin-bottom:15px;">
+             <div style="flex:1;"><label style="font-size:11px; color:#8b949e;">Dias de Operação</label><input type="text" id="tgDias" class="form-control" style="background:#0d1117; color:#c9d1d9; border:1px solid #30363d;"></div>
+             <div style="flex:1;"><label style="font-size:11px; color:#8b949e;">Meta Sinais (Stop)</label><input type="number" id="tgMaxSinais" class="form-control" style="background:#0d1117; color:#58a6ff; border:1px solid #30363d; font-weight:bold; font-size:14px;"></div>
         </div>
 
         <div style="display:flex; gap:10px; margin-bottom:10px;">
@@ -97,16 +96,22 @@ function setupTelegramAdminUI(auth, socket) {
         </div>
     `;
 
-    // 🎯 NOVA ABA DE ESTATÍSTICAS DO RADAR
+    // 🎯 RADAR STATS: Agora com rolagem independente para os Ativos e para as Horas!
     const radarStatsPanel = document.createElement('div');
     radarStatsPanel.id = 'radarStatsAdminPanel';
     radarStatsPanel.style.display = 'none';
     radarStatsPanel.innerHTML = `
         <h3 style="color:#58a6ff; text-align:center; margin-top:0;">📊 INTELIGÊNCIA DO RADAR</h3>
-        <div style="text-align:center; padding:15px; font-size:20px;">TOTAL DE OPORTUNIDADES GERADAS: <b id="statTotal" style="color:#3fb950; font-size:28px;">0</b></div>
-        <div style="display:flex; flex-direction:column; gap:20px; margin-top:10px;">
-            <div style="background:#161b22; padding:15px; border-radius:8px; border:1px solid #30363d;"><h4 style="color:#8b949e; text-align:center; margin-top:0;">RANKING POR ATIVO</h4><div id="statAssets" style="font-size:14px; line-height:1.8;">Aguardando dados...</div></div>
-            <div style="background:#161b22; padding:15px; border-radius:8px; border:1px solid #30363d;"><h4 style="color:#8b949e; text-align:center; margin-top:0;">MAPA POR HORÁRIO</h4><div id="statHours" style="font-size:14px; line-height:1.8; display:flex; flex-wrap:wrap; gap:10px; justify-content:center;">Aguardando dados...</div></div>
+        <div style="text-align:center; padding:10px; font-size:18px;">TOTAL DE OPORTUNIDADES: <b id="statTotal" style="color:#3fb950; font-size:24px;">0</b></div>
+        <div style="display:flex; flex-direction:column; gap:15px; margin-top:10px;">
+            <div style="background:#161b22; padding:15px; border-radius:8px; border:1px solid #30363d; max-height: 220px; overflow-y: auto;">
+                <h4 style="color:#8b949e; text-align:center; margin-top:0; margin-bottom: 10px; position: sticky; top: 0; background: #161b22; padding-bottom: 5px;">RANKING POR ATIVO</h4>
+                <div id="statAssets" style="font-size:14px; line-height:1.8; padding-right: 5px;">Aguardando dados...</div>
+            </div>
+            <div style="background:#161b22; padding:15px; border-radius:8px; border:1px solid #30363d; max-height: 180px; overflow-y: auto;">
+                <h4 style="color:#8b949e; text-align:center; margin-top:0; margin-bottom: 10px; position: sticky; top: 0; background: #161b22; padding-bottom: 5px;">MAPA POR HORÁRIO</h4>
+                <div id="statHours" style="font-size:14px; line-height:1.8; display:flex; flex-wrap:wrap; gap:10px; justify-content:center; padding-right: 5px;">Aguardando dados...</div>
+            </div>
         </div>
     `;
 
@@ -168,7 +173,6 @@ function setupTelegramAdminUI(auth, socket) {
         document.getElementById('newStratJson').value = JSON.stringify(defaultStratJSON, null, 4);
     });
 
-    // 🎯 NOVO CLIQUE: ABA RADAR
     document.getElementById('tabRadarStats').addEventListener('click', () => {
         resetTabs(); document.getElementById('radarStatsAdminPanel').style.display = 'block';
         document.getElementById('tabRadarStats').style.background = '#388bfd'; document.getElementById('tabRadarStats').style.color = 'white'; document.getElementById('tabRadarStats').style.border = 'none';
