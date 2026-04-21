@@ -11,7 +11,7 @@ async function loadSystemData(io, state, tgConfigGlobal) {
         const tgDoc = await db.collection('settings').doc('telegram').get();
         if (tgDoc.exists) {
             const data = tgDoc.data();
-            Object.assign(tgConfigGlobal, data); // Funde as configs salvas com as padrão
+            Object.assign(tgConfigGlobal, data); 
         }
         
         state.strategiesDB.forEach(s => {
@@ -37,20 +37,7 @@ function loadAvailableCoins(state) {
         "🟠 Criptomoedas (Binance)": ['btcusdt', 'ethusdt', 'ltcusdt', 'adausdt', 'bnbusdt', 'dogeusdt', 'solusdt', 'xrpusdt'],
         "🔵 Forex (Vellox)": ['EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'USDCAD'],
         "🟣 Ações (Vellox)": ['AAPL', 'TSLA', 'MSFT', 'AMZN', 'META', 'GOOGL', 'NFLX'],
-        "🟡 Commodities": ['XAUUSD', 'XAGUSD', 'USOIL'],
-        "🔴 Forex (OTC)": [
-            'EURUSDOTC', 'AUDJPYOTC', 'EURJPYOTC', 'EURAUDOTC', 'AUDCHFOTC', 'GBPJPYOTC', 
-            'CADCHFOTC', 'EURNZDOTC', 'GBPAUDOTC', 'NZDJPYOTC', 'GBPCHFOTC', 'USDCHFOTC', 
-            'EURCADOTC', 'EURCHFOTC'
-        ],
-        "🟠 Criptos (OTC)": [
-            'BTCUSDTOTC', 'ETHUSDTOTC', 'LTCUSDTOTC', 'ADAUSDTOTC', 'BNBUSDTOTC', 'SOLUSDTOTC', 'DOGEUSDTOTC'
-        ],
-        "🟣 Ações/Ouro (OTC)": [
-            'AAPLOTC', 'NFLXOTC', 'METAOTC', 'TSLAOTC', 'MSFTOTC', 'PYPLOTC', 'AMZNOTC', 
-            'NVDAOTC', 'SBUXOTC', 'DISOTC', 'MAOTC', 'IBMOTC', 'KOOTC', 'FOTC', 'SPOTOTC', 
-            'NKEOTC', 'INTCOTC', 'VOTC', 'XAUUSDOTC'
-        ]
+        "🟡 Commodities": ['XAUUSD', 'XAGUSD', 'USOIL']
     };
 }
 

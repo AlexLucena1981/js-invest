@@ -12,7 +12,6 @@ function initChart() {
 }
 
 function saveRiskConfig() {
-    // 🎯 Agora só salva a Conta e os Stops. Payout e Gale sumiram.
     const config = {
         accountType: document.getElementById('riskAccount').value,
         stopWin: document.getElementById('riskWin').value,
@@ -21,6 +20,7 @@ function saveRiskConfig() {
     localStorage.setItem('jsInvestConfig', JSON.stringify(config));
 }
 
+// 🎯 ATUALIZADO: O texto reflete a exigência de "maior que R$ 0,00"
 function mostrarPopupBloqueioFreemium() {
     if (document.getElementById('premiumBlockModal')) return;
 
@@ -34,9 +34,9 @@ function mostrarPopupBloqueioFreemium() {
             <h2 style="color:#f85149; margin-bottom:15px; font-weight:900; letter-spacing:1px;">GESTÃO INSTITUCIONAL</h2>
             <p style="font-size:14px; margin-bottom:20px; line-height:1.6; color:#8b949e;">Para sua proteção, a ferramenta de <b style="color:#c9d1d9;">Auto-Trade na Real</b> está fixada em <b style="color:#58a6ff;">1% da sua banca</b>. O valor mínimo de entrada na corretora é de R$ 5,00.</p>
             <div style="background:#161b22; padding:15px; border-radius:8px; border:1px solid #30363d; margin-bottom:25px;">
-                <span style="color:#8b949e; font-size:12px; display:block; margin-bottom:5px;">STATUS DA SUA CONTA (SALDO < R$500)</span>
+                <span style="color:#8b949e; font-size:12px; display:block; margin-bottom:5px;">STATUS DA SUA CONTA (SALDO ZERADO OU NEGATIVO)</span>
                 <span style="color:#d29922; font-size:16px; font-weight:bold;">⚠️ REAL BLOQUEADA / DEMO LIBERADA</span>
-                <div style="margin-top:10px; font-size:12px; color:#58a6ff;">👉 Mude para a Conta Demo para testar o robô livremente.<br>👉 Ou deposite até atingir R$ 500 para operar na Real.<br>👉 Ou apenas deixe no modo Free (recebendo sinais visuais).</div>
+                <div style="margin-top:10px; font-size:12px; color:#58a6ff;">👉 Mude para a Conta Demo para testar o robô livremente.<br>👉 Ou deposite saldo para operar na Real.<br>👉 Ou apenas deixe no modo Free (recebendo sinais visuais).</div>
             </div>
             <button onclick="document.getElementById('premiumBlockModal').remove()" style="background: linear-gradient(180deg, #f85149 0%, #da3633 100%); color:white; border:none; padding:12px 25px; border-radius:8px; font-weight:bold; cursor:pointer; width:100%; font-size:16px; transition:0.2s; box-shadow: 0 4px 15px rgba(248, 81, 73, 0.4);">COMPREENDIDO</button>
         </div>
@@ -48,10 +48,9 @@ function togglePremiumUI(isPremium) {
     const statusBot = document.getElementById('statusBot');
     if (statusBot) {
         if (isPremium) { statusBot.innerText = "🚀 GESTÃO 1% ATIVA: Conta Real Liberada!"; statusBot.style.color = "#3fb950"; } 
-        else { statusBot.innerText = "🔒 CONTA REAL BLOQUEADA: Saldo < R$ 500 (Use a Demo)"; statusBot.style.color = "#d29922"; }
+        else { statusBot.innerText = "🔒 CONTA REAL BLOQUEADA: Saldo Zerado (Use a Demo)"; statusBot.style.color = "#d29922"; }
     }
     
-    // 🎯 Ocultamos apenas os botões de risco principais
     const elsToToggle = ['riskAccount', 'riskAmount', 'riskWin', 'riskLoss', 'btnToggleBot', 'btnManualCall', 'btnManualPut'];
     elsToToggle.forEach(id => {
         const el = document.getElementById(id);
@@ -127,44 +126,22 @@ function checkFifoEmpty() {
     if (!hasItems && emptyMsg) emptyMsg.style.display = 'block';
 }
 
-function setupStatsUI() {
-    const statsBtn = document.createElement('button');
-    statsBtn.id = 'btnOpenStats'; statsBtn.innerHTML = '📊 ESTATÍSTICAS RADAR';
-    statsBtn.style.cssText = 'position:fixed; bottom:20px; left:20px; background:#1f6feb; color:white; border:none; padding:12px 20px; border-radius:8px; font-weight:bold; cursor:pointer; z-index:9000; box-shadow:0 4px 15px rgba(31,111,235,0.4); transition:0.3s;';
-    statsBtn.onmouseover = () => statsBtn.style.background = '#388bfd'; statsBtn.onmouseout = () => statsBtn.style.background = '#1f6feb';
-    document.body.appendChild(statsBtn);
-
-    const statsModal = document.createElement('div');
-    statsModal.id = 'statsModal';
-    statsModal.style.cssText = 'display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:9999; justify-content:center; align-items:center;';
-    statsModal.innerHTML = `
-        <div style="background:#0d1117; border:1px solid #30363d; border-radius:12px; width:90%; max-width:600px; padding:20px; color:#c9d1d9; max-height:90vh; overflow-y:auto;">
-            <h2 style="color:#58a6ff; text-align:center; border-bottom:1px solid #30363d; padding-bottom:10px;">📊 INTELIGÊNCIA DO RADAR</h2>
-            <div style="text-align:center; padding:15px; font-size:20px;">TOTAL DE OPORTUNIDADES GERADAS: <b id="statTotal" style="color:#3fb950; font-size:28px;">0</b></div>
-            <div style="display:flex; gap:20px; margin-top:20px;">
-                <div style="flex:1; background:#161b22; padding:15px; border-radius:8px; border:1px solid #30363d;"><h4 style="color:#8b949e; text-align:center; margin-top:0;">RANKING POR ATIVO</h4><div id="statAssets" style="font-size:14px; line-height:1.8;">Aguardando dados...</div></div>
-                <div style="flex:1; background:#161b22; padding:15px; border-radius:8px; border:1px solid #30363d;"><h4 style="color:#8b949e; text-align:center; margin-top:0;">MAPA POR HORÁRIO</h4><div id="statHours" style="font-size:14px; line-height:1.8; display:flex; flex-wrap:wrap; gap:10px; justify-content:center;">Aguardando dados...</div></div>
-            </div>
-            <div style="text-align:center; margin-top:20px;"><button id="btnCloseStats" style="background:#21262d; color:#c9d1d9; border:1px solid #30363d; padding:10px 20px; border-radius:6px; cursor:pointer;">Fechar Painel</button></div>
-        </div>
-    `;
-    document.body.appendChild(statsModal);
-    
-    document.getElementById('btnCloseStats').addEventListener('click', () => { document.getElementById('statsModal').style.display = 'none'; });
-}
-
 function renderStats(statsData) {
     if (!statsData) return;
-    document.getElementById('statTotal').innerText = statsData.total;
+    const elTotal = document.getElementById('statTotal');
+    if (elTotal) elTotal.innerText = statsData.total;
+    
     let assetsHtml = ''; const assets = Object.entries(statsData.byAsset).sort((a,b) => b[1].count - a[1].count);
     if(assets.length === 0) assetsHtml = 'Nenhum sinal hoje.';
     assets.forEach(([sym, data]) => { let avgStr = '-- min'; if (data.intervals && data.intervals.length > 0) { const sum = data.intervals.reduce((a, b) => a + b, 0); avgStr = (sum / data.intervals.length).toFixed(1) + ' min'; } assetsHtml += `<div style="display:flex; justify-content:space-between; border-bottom:1px solid #21262d; padding:4px 0;"><b style="color:#ffffff;">${sym}</b> <span><b style="color:#3fb950;">${data.count}</b> (Média: ${avgStr})</span></div>`; });
-    document.getElementById('statAssets').innerHTML = assetsHtml;
+    const elAssets = document.getElementById('statAssets');
+    if (elAssets) elAssets.innerHTML = assetsHtml;
 
     let hoursHtml = ''; const hours = Object.entries(statsData.byHour).sort((a,b) => a[0].localeCompare(b[0]));
     if(hours.length === 0) hoursHtml = 'Nenhum horário registrado.';
     hours.forEach(([hr, count]) => { hoursHtml += `<div style="background:#21262d; padding:4px 8px; border-radius:4px; border:1px solid #30363d;">${hr}: <b style="color:#58a6ff;">${count}</b></div>`; });
-    document.getElementById('statHours').innerHTML = hoursHtml;
+    const elHours = document.getElementById('statHours');
+    if (elHours) elHours.innerHTML = hoursHtml;
 }
 
 function clearUIForLoading() {

@@ -21,6 +21,7 @@ function setupTelegramAdminUI(auth, socket) {
         <button id="tabTelegram" style="flex:1; background:#21262d; color:#8b949e; border:1px solid #30363d; padding:10px; border-radius:6px; font-weight:bold; cursor:pointer; font-size:12px;">🤖 Robô TG</button>
         <button id="tabReport" style="flex:1; background:#21262d; color:#8b949e; border:1px solid #30363d; padding:10px; border-radius:6px; font-weight:bold; cursor:pointer; font-size:12px;">📊 Histórico</button>
         <button id="tabStrategies" style="flex:1; background:#21262d; color:#8b949e; border:1px solid #30363d; padding:10px; border-radius:6px; font-weight:bold; cursor:pointer; font-size:12px;">📈 Estratégias</button>
+        <button id="tabRadarStats" style="flex:1; background:#21262d; color:#8b949e; border:1px solid #30363d; padding:10px; border-radius:6px; font-weight:bold; cursor:pointer; font-size:12px;">📡 Radar</button>
     `;
 
     const tgPanel = document.createElement('div');
@@ -96,11 +97,25 @@ function setupTelegramAdminUI(auth, socket) {
         </div>
     `;
 
+    // 🎯 NOVA ABA DE ESTATÍSTICAS DO RADAR
+    const radarStatsPanel = document.createElement('div');
+    radarStatsPanel.id = 'radarStatsAdminPanel';
+    radarStatsPanel.style.display = 'none';
+    radarStatsPanel.innerHTML = `
+        <h3 style="color:#58a6ff; text-align:center; margin-top:0;">📊 INTELIGÊNCIA DO RADAR</h3>
+        <div style="text-align:center; padding:15px; font-size:20px;">TOTAL DE OPORTUNIDADES GERADAS: <b id="statTotal" style="color:#3fb950; font-size:28px;">0</b></div>
+        <div style="display:flex; flex-direction:column; gap:20px; margin-top:10px;">
+            <div style="background:#161b22; padding:15px; border-radius:8px; border:1px solid #30363d;"><h4 style="color:#8b949e; text-align:center; margin-top:0;">RANKING POR ATIVO</h4><div id="statAssets" style="font-size:14px; line-height:1.8;">Aguardando dados...</div></div>
+            <div style="background:#161b22; padding:15px; border-radius:8px; border:1px solid #30363d;"><h4 style="color:#8b949e; text-align:center; margin-top:0;">MAPA POR HORÁRIO</h4><div id="statHours" style="font-size:14px; line-height:1.8; display:flex; flex-wrap:wrap; gap:10px; justify-content:center;">Aguardando dados...</div></div>
+        </div>
+    `;
+
     adminModalContent.appendChild(tabNav);
     adminModalContent.appendChild(systemPanel);
     adminModalContent.appendChild(tgPanel);
     adminModalContent.appendChild(reportPanel);
     adminModalContent.appendChild(stratPanel);
+    adminModalContent.appendChild(radarStatsPanel);
 
     const closeContainer = document.createElement('div');
     closeContainer.style.textAlign = 'center'; closeContainer.style.marginTop = '20px'; closeContainer.style.paddingTop = '15px'; closeContainer.style.borderTop = '1px solid #30363d';
@@ -108,8 +123,8 @@ function setupTelegramAdminUI(auth, socket) {
     adminModalContent.appendChild(closeContainer);
 
     function resetTabs() {
-        ['systemAdminPanel', 'tgAdminPanel', 'reportAdminPanel', 'stratAdminPanel'].forEach(id => document.getElementById(id).style.display = 'none');
-        ['tabSystem', 'tabTelegram', 'tabReport', 'tabStrategies'].forEach(id => {
+        ['systemAdminPanel', 'tgAdminPanel', 'reportAdminPanel', 'stratAdminPanel', 'radarStatsAdminPanel'].forEach(id => document.getElementById(id).style.display = 'none');
+        ['tabSystem', 'tabTelegram', 'tabReport', 'tabStrategies', 'tabRadarStats'].forEach(id => {
             document.getElementById(id).style.background = '#21262d';
             document.getElementById(id).style.color = '#8b949e';
             document.getElementById(id).style.border = '1px solid #30363d';
@@ -132,7 +147,6 @@ function setupTelegramAdminUI(auth, socket) {
         auth.currentUser.getIdToken().then(token => socket.emit('admin_get_report', token));
     });
 
-    // 🎯 AQUI: INJETA O MODELO JSON DE ESTRATÉGIA AO CLICAR NA ABA!
     document.getElementById('tabStrategies').addEventListener('click', () => {
         resetTabs(); document.getElementById('stratAdminPanel').style.display = 'block';
         document.getElementById('tabStrategies').style.background = '#d29922'; document.getElementById('tabStrategies').style.color = 'white'; document.getElementById('tabStrategies').style.border = 'none';
@@ -152,6 +166,15 @@ function setupTelegramAdminUI(auth, socket) {
             }
         };
         document.getElementById('newStratJson').value = JSON.stringify(defaultStratJSON, null, 4);
+    });
+
+    // 🎯 NOVO CLIQUE: ABA RADAR
+    document.getElementById('tabRadarStats').addEventListener('click', () => {
+        resetTabs(); document.getElementById('radarStatsAdminPanel').style.display = 'block';
+        document.getElementById('tabRadarStats').style.background = '#388bfd'; document.getElementById('tabRadarStats').style.color = 'white'; document.getElementById('tabRadarStats').style.border = 'none';
+        if (typeof renderStats === 'function' && window.radarGlobalStats) {
+            renderStats(window.radarGlobalStats);
+        }
     });
 
     document.getElementById('btnSaveNewStrat').addEventListener('click', () => {

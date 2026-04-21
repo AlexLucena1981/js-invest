@@ -8,6 +8,7 @@ const TOKEN = '8627851942:AAFn2Ze3Nbjb6LbNu7Gk3eEAcpDuzzKGGkM';
 const CHAT_ID = '-1003925714362';
 const bot = new TelegramBot(TOKEN, { polling: false });
 
+// 🎯 DICIONÁRIO LIMPO: Zero OTC.
 const dicionarioAtivos = {
     // 🟠 Criptomoedas (Binance)
     'BTCUSDT': 'Bitcoin', 'ETHUSDT': 'Ethereum', 'LTCUSDT': 'Litecoin', 
@@ -23,28 +24,11 @@ const dicionarioAtivos = {
     'AMZN': 'Amazon', 'META': 'Meta', 'GOOGL': 'Google', 'NFLX': 'Netflix',
     
     // 🟡 Commodities (Vellox)
-    'XAUUSD': 'Ouro', 'XAGUSD': 'Prata', 'USOIL': 'Petróleo',
-
-    // 🔴 Mercado OTC
-    'EURUSDOTC': 'EUR/USD (OTC)', 'AUDJPYOTC': 'AUD/JPY (OTC)', 'EURJPYOTC': 'EUR/JPY (OTC)', 
-    'EURAUDOTC': 'EUR/AUD (OTC)', 'AUDCHFOTC': 'AUD/CHF (OTC)', 'GBPJPYOTC': 'GBP/JPY (OTC)', 
-    'CADCHFOTC': 'CAD/CHF (OTC)', 'EURNZDOTC': 'EUR/NZD (OTC)', 'GBPAUDOTC': 'GBP/AUD (OTC)', 
-    'NZDJPYOTC': 'NZD/JPY (OTC)', 'GBPCHFOTC': 'GBP/CHF (OTC)', 'USDCHFOTC': 'USD/CHF (OTC)', 
-    'EURCADOTC': 'EUR/CAD (OTC)', 'EURCHFOTC': 'EUR/CHF (OTC)', 'BTCUSDTOTC': 'Bitcoin (OTC)', 
-    'ETHUSDTOTC': 'Ethereum (OTC)', 'LTCUSDTOTC': 'Litecoin (OTC)', 'ADAUSDTOTC': 'Cardano (OTC)', 
-    'BNBUSDTOTC': 'Binance Coin (OTC)', 'SOLUSDTOTC': 'Solana (OTC)', 'DOGEUSDTOTC': 'Dogecoin (OTC)',
-    'AAPLOTC': 'Apple (OTC)', 'NFLXOTC': 'Netflix (OTC)', 'METAOTC': 'Meta (OTC)', 'TSLAOTC': 'Tesla (OTC)', 
-    'MSFTOTC': 'Microsoft (OTC)', 'PYPLOTC': 'PayPal (OTC)', 'AMZNOTC': 'Amazon (OTC)', 
-    'NVDAOTC': 'NVIDIA (OTC)', 'SBUXOTC': 'Starbucks (OTC)', 'DISOTC': 'Disney (OTC)', 
-    'MAOTC': 'Mastercard (OTC)', 'IBMOTC': 'IBM (OTC)', 'KOOTC': 'Coca-Cola (OTC)', 
-    'FOTC': 'Ford (OTC)', 'SPOTOTC': 'Spotify (OTC)', 'NKEOTC': 'Nike (OTC)', 'INTCOTC': 'Intel (OTC)', 
-    'VOTC': 'Visa (OTC)', 'XAUUSDOTC': 'Ouro (OTC)'
+    'XAUUSD': 'Ouro', 'XAGUSD': 'Prata', 'USOIL': 'Petróleo'
 };
 
-// 🔥 FILTRO SNIPER: Se tem 'OTC' no nome, o robô ignora sumariamente!
-const ativosTestes = Object.keys(dicionarioAtivos).filter(sym => !sym.includes('OTC')); 
+const ativosTestes = Object.keys(dicionarioAtivos); 
 
-// 🎯 lastGaleMsgId atua como lixeiro para manter o chat limpo
 let estadoSessao = { ativa: false, permitirSinais: false, wins: 0, losses: 0, sinalRodando: null, ultimoSinalEnviado: null, lastGaleMsgId: null };
 let activeCronJobs = [];
 let configLocal = {};
@@ -82,7 +66,7 @@ async function enviarSticker(stickerId) {
         const msg = await bot.sendSticker(CHAT_ID, stickerId);
         return msg.message_id;
     } catch (e) {
-        console.error("Erro ao enviar sticker (ID inválido?):", e.message);
+        console.error("Erro ao enviar sticker:", e.message);
         return null;
     }
 }
@@ -101,9 +85,7 @@ async function salvarResultadoNoFirebase(dados) {
             timestamp: admin.firestore.FieldValue.serverTimestamp(),
             dataRef: dataDoc
         });
-        
-        console.log(`✅ [DB FIREBASE] Sinal de ${dados.ativo} (${dados.resultado}) gravado em ${dataDoc}!`);
-    } catch (e) { console.error("Erro ao salvar histórico:", e); }
+    } catch (e) { console.error("Erro histórico:", e); }
 }
 
 async function enviarRelatorioDiario() {
@@ -148,11 +130,11 @@ async function enviarRelatorioDiario() {
         msg += `\n🚀 *Missão cumprida! Sniper recarregando...*`;
         
         bot.sendMessage(CHAT_ID, msg, { parse_mode: 'Markdown' });
-    } catch (e) { console.error("Erro relatório:", e); }
+    } catch (e) {}
 }
 
 async function initTelegramBot(stateGlobais, configFirebase) {
-    console.log("🤖 Telegram: MODO STICKERS ATIVADO (Gale 1 Limpo) 🚀");
+    console.log("🤖 Telegram: MODO STICKERS ATIVADO (S/ OTC)");
     configLocal = configFirebase;
     agendarSessoes(stateGlobais);
     iniciarMotorContinuo(stateGlobais);
@@ -222,7 +204,6 @@ function iniciarMotorContinuo(stateGlobais) {
                 
                 const minsPassados = (min - op.minutoVerificacao + 60) % 60;
                 if (minsPassados >= 2 && minsPassados < 50) {
-                    bot.sendMessage(CHAT_ID, `⚠️ *Aviso:* A corretora atrasou os dados finais de ${op.nomeAmigavel}. Cancelando análise.`, { parse_mode: 'Markdown' });
                     estadoSessao.sinalRodando = null;
                     verificarFimDeSessao(); 
                 }
@@ -231,7 +212,6 @@ function iniciarMotorContinuo(stateGlobais) {
                 await cacarOportunidade(stateGlobais);
             }
         } catch (e) {
-            console.error("Erro no motor contínuo:", e);
         } finally {
             isProcessing = false; 
         }
@@ -318,7 +298,7 @@ function atirarSinalDefinitivo(sym, tipo, nomeAmigavel, minutoEntrada) {
 
     const acao = tipo === 'CALL' ? '🟩 Comprar' : '🟥 Vender';
     
-    const templateOriginal = configLocal.msgSinal || "⚡ *ALERTA DE TOQUE (M1)* ⚡\n\n💵 Moeda = {MOEDA}\n⏰ Expiração = 1 Minuto\n🛎 Entrada = {HORA_ENTRADA}\n{DIRECAO}\n\nGale 1 - {HORA_GALE}\n\n👉🏼 Se necessário, fazer 1 Gale.\n\n➡️ [Clique aqui para abrir a Vellox](https://velloxbroker.com)";
+    const templateOriginal = configLocal.msgSinal || "⚡ *ALERTA DE TOQUE (M1)* ⚡\n\n💵 Moeda = {MOEDA}\n⏰ Expiração = 1 Minuto\n🛎 Entrada = {HORA_ENTRADA}\n{DIRECAO}\n\nGale 1 - {HORA_GALE}\n\n👉🏼 Se necessário, fazer 1 Gale.";
 
     const msg = formatarMensagem(templateOriginal, { moeda: nomeAmigavel, direcao: acao, horaEntrada: horaEntrada, horaGale: horaGale });
     bot.sendMessage(CHAT_ID, msg, { parse_mode: 'Markdown', disable_web_page_preview: true });
@@ -366,7 +346,6 @@ async function conferirResultado(state) {
     const won = (operacao.type === 'CALL' && isGreen) || (operacao.type === 'PUT' && isRed);
 
     if (won) {
-        // 🔥 Limpa a mensagem TEXTO do Gale 1 (se existir)
         if (estadoSessao.lastGaleMsgId) {
             try { await bot.deleteMessage(CHAT_ID, estadoSessao.lastGaleMsgId); } catch(e) {}
             estadoSessao.lastGaleMsgId = null;
@@ -387,8 +366,7 @@ async function conferirResultado(state) {
         verificarFimDeSessao(); 
     } else {
         operacao.step++;
-        if (operacao.step > 1) { // LOSS
-            // 🔥 Limpa a mensagem TEXTO do Gale 1
+        if (operacao.step > 1) { 
             if (estadoSessao.lastGaleMsgId) {
                 try { await bot.deleteMessage(CHAT_ID, estadoSessao.lastGaleMsgId); } catch(e) {}
                 estadoSessao.lastGaleMsgId = null;
@@ -407,7 +385,7 @@ async function conferirResultado(state) {
 
             estadoSessao.losses++; estadoSessao.sinalRodando = null; 
             verificarFimDeSessao(); 
-        } else { // GALE 1 (Apenas TEXTO, mas o ID é salvo para deleção posterior!)
+        } else { 
             
             const msgSent = await bot.sendMessage(CHAT_ID, `🔄 *ENTRAR NO GALE ${operacao.step}* em ${operacao.nomeAmigavel}!\nMesma direção.`, { parse_mode: 'Markdown' });
             estadoSessao.lastGaleMsgId = msgSent.message_id;
@@ -434,33 +412,15 @@ async function puxarVelasM1(symbol, state) {
             const from = to - (500 * 60); 
             const otcHeaders = { 'accept': '*/*', 'Cookie': state.globalDynamicCookie, 'X-Requested-With': 'XMLHttpRequest', 'referer': 'https://velloxbroker.com/traderoom', 'user-agent': 'Mozilla/5.0' };
             
-            if (activeOtcSuffixes[symUpper]) {
-                try {
-                    let res = await axios.get(`https://velloxbroker.com/publicapi/tradingview/udf-history?symbol=${activeOtcSuffixes[symUpper]}&resolution=1&from=${from}&to=${to}&countback=500&site=velloxbroker.com`, { headers: otcHeaders });
-                    if (res.data && res.data.s === 'ok') {
-                        let klines = [];
-                        for(let i=0; i<res.data.c.length; i++){
-                            klines.push([res.data.t[i]*1000, res.data.o[i], res.data.h ? res.data.h[i] : res.data.o[i], res.data.l ? res.data.l[i] : res.data.c[i], res.data.c[i]]);
-                        }
-                        return klines;
-                    }
-                } catch(e) { delete activeOtcSuffixes[symUpper]; } 
-            }
-
             const baseName = symUpper.replace('OTC', '').replace('-', '').replace('_', ''); 
             
-            const variacoes = [
-                symUpper, 
-                baseName,
-                `${baseName}OTC`, `${baseName}-OTC`, `${baseName}_otc`, `${baseName}_OTC`, `${baseName.substring(0,3)}/${baseName.substring(3)} (OTC)` 
-            ];
+            const variacoes = [ symUpper, baseName ];
 
             for (let variante of variacoes) {
                 try {
                     let res = await axios.get(`https://velloxbroker.com/publicapi/tradingview/udf-history?symbol=${variante}&resolution=1&from=${from}&to=${to}&countback=500&site=velloxbroker.com`, { headers: otcHeaders });
                     
                     if (res.data && res.data.s === 'ok' && res.data.c && res.data.c.length > 0) {
-                        activeOtcSuffixes[symUpper] = variante; 
                         let klines = [];
                         for(let i=0; i<res.data.c.length; i++){
                             klines.push([res.data.t[i]*1000, res.data.o[i], res.data.h ? res.data.h[i] : res.data.o[i], res.data.l ? res.data.l[i] : res.data.c[i], res.data.c[i]]);

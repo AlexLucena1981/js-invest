@@ -8,16 +8,10 @@ let state;
 
 const radarLastCandleProcessed = {}; 
 
+// 🎯 OTC REMOVIDO: O servidor agora roda leve e focado no mercado oficial!
 const radarCoins = [
     'BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'ADAUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT', 
-    'EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'USDCAD', 'AAPL', 'XAUUSD',                           
-    'EURUSDOTC', 'AUDJPYOTC', 'EURJPYOTC', 'EURAUDOTC', 'AUDCHFOTC', 'GBPJPYOTC', 
-    'CADCHFOTC', 'EURNZDOTC', 'GBPAUDOTC', 'NZDJPYOTC', 'GBPCHFOTC', 'USDCHFOTC', 
-    'EURCADOTC', 'EURCHFOTC',
-    'BTCUSDTOTC', 'ETHUSDTOTC', 'LTCUSDTOTC', 'ADAUSDTOTC', 'BNBUSDTOTC', 'SOLUSDTOTC', 'DOGEUSDTOTC',
-    'AAPLOTC', 'NFLXOTC', 'METAOTC', 'TSLAOTC', 'MSFTOTC', 'PYPLOTC', 'AMZNOTC', 
-    'NVDAOTC', 'SBUXOTC', 'DISOTC', 'MAOTC', 'IBMOTC', 'KOOTC', 'FOTC', 'SPOTOTC', 
-    'NKEOTC', 'INTCOTC', 'VOTC', 'XAUUSDOTC'                                                             
+    'EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'USDCAD', 'AAPL', 'XAUUSD'
 ];
 
 const cryptoBinance = ['BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'ADAUSDT', 'BNBUSDT', 'DOGEUSDT', 'SOLUSDT', 'XRPUSDT'];
@@ -55,8 +49,6 @@ function initEngine(_io, _state) {
                 if (eng.activeSignals.length > 0) eng.activeSignals = [];
             }
             
-            // 🎯 O GOLPE DE MESTRE (Garbage Collector):
-            // Se não há NINGUÉM na sala (aba fechada ou noutro ativo), desliga a API!
             const roomSize = io.sockets.adapter.rooms.get(key)?.size || 0;
             if (roomSize === 0 && eng.activeSignals.length === 0) {
                 if (eng.ws) { eng.ws.removeAllListeners(); eng.ws.on('error', () => {}); eng.ws.terminate(); eng.ws = null; }
@@ -130,7 +122,6 @@ function initEngine(_io, _state) {
                             }
                             assetData.lastTime = curDate.getTime();
 
-                            // O Radar continua global porque o painel FIFO lateral precisa de ser atualizado em todas as telas
                             io.emit('radar_alert', { symbol: sym, type: signal });
                             io.emit('radar_stats_update', state.radarStats);
                         }
@@ -318,8 +309,8 @@ async function handleCandleClose(eng, closedPrice, candleStartTime) {
             else if (sig.step === 2) { sig.status = prefix + 'WIN G2 🎯'; if(!sig.isManual) eng.scoreboard.winG2++; }
             
             updateBrokerProfits(sig.step, true, sig); 
-            io.emit('signal_result', sig); // O FIFO precisa receber para mostrar em todas as telas
-            io.to(eng.key).emit('scoreboard', eng.scoreboard); // O Placar atualiza só para quem está a ver esta sala
+            io.emit('signal_result', sig); 
+            io.to(eng.key).emit('scoreboard', eng.scoreboard); 
             signalResolvedThisCandle = true; return false; 
         } else {
             updateBrokerProfits(sig.step, false, sig); 
@@ -375,7 +366,7 @@ async function handleCandleClose(eng, closedPrice, candleStartTime) {
             eng.activeSignals.push(newSig); eng.signalHistory.unshift(newSig); if (eng.signalHistory.length > 20) eng.signalHistory.pop();
             
             io.emit('new_signal_history', newSig); 
-            io.to(eng.key).emit('signal', { type: newSignalType, time: newSig.time }); // Só alerta na tela quem está na sala
+            io.to(eng.key).emit('signal', { type: newSignalType, time: newSig.time, symbol: eng.symbol.toUpperCase() }); 
             
             Object.values(state.activeBrokers).forEach(async (broker) => {
                 if (!broker.autoTradeActive || !broker.isPremium) return;
@@ -400,7 +391,6 @@ function handleCandleTick(eng, currentPrice, isCandleClosed, candleStartTime) {
     const secondsLeft = (tfMinutes * 60) - ((now.getMinutes() % tfMinutes) * 60 + now.getSeconds());
     let currentActive = eng.activeSignals.length > 0 ? eng.activeSignals[0] : null;
     
-    // 🎯 Emite a subida/descida do gráfico APENAS para os utilizadores na sala do ativo
     io.to(eng.key).emit('price_update', { price: currentPrice, secondsLeft: secondsLeft, activeSignal: currentActive });
 
     if (eng.closePrices.length > 50 && !isCandleClosed && candleStartTime !== eng.lastResolvedCandleTime) {
@@ -408,10 +398,12 @@ function handleCandleTick(eng, currentPrice, isCandleClosed, candleStartTime) {
             let tempPrices = [...eng.closePrices, currentPrice]; if (tempPrices.length > 150) tempPrices.shift();
             const currentStrategy = state.strategiesDB.find(s => s.id === eng.strategyId);
             const tempSignal = evaluateStrategy(tempPrices, currentStrategy);
-            if (tempSignal === 'CALL') io.to(eng.key).emit('pre_alert', { call: true, put: false });
-            else if (tempSignal === 'PUT') io.to(eng.key).emit('pre_alert', { call: false, put: true });
-            else io.to(eng.key).emit('pre_alert', { call: false, put: false }); 
-        } else { io.to(eng.key).emit('pre_alert', { call: false, put: false }); }
+            
+            const assetName = eng.symbol.toUpperCase();
+            if (tempSignal === 'CALL') io.to(eng.key).emit('pre_alert', { symbol: assetName, call: true, put: false });
+            else if (tempSignal === 'PUT') io.to(eng.key).emit('pre_alert', { symbol: assetName, call: false, put: true });
+            else io.to(eng.key).emit('pre_alert', { symbol: assetName, call: false, put: false }); 
+        } else { io.to(eng.key).emit('pre_alert', { symbol: eng.symbol.toUpperCase(), call: false, put: false }); }
     }
     
     if (isCandleClosed) handleCandleClose(eng, currentPrice, candleStartTime);
@@ -429,7 +421,7 @@ async function startConnection(symbol, tf, stratId) {
     }
 
     if (!isStale && (eng.ws || eng.otcInterval) && eng.closePrices.length > 0) {
-        return; // O motor já está quente e rodando. Quem entrou na sala já recebe os updates automáticos!
+        return; 
     }
 
     eng.connectionId++; const myConnectionId = eng.connectionId;
@@ -440,7 +432,6 @@ async function startConnection(symbol, tf, stratId) {
     eng.signalHistory = []; eng.scoreboard = { win1: 0, winG1: 0, winG2: 0, loss: 0 };
     eng.lastTickTime = Date.now(); 
 
-    // Limpa a tela de quem acabou de entrar na sala
     io.to(eng.key).emit('price_update', { price: 0, secondsLeft: 0, activeSignal: null });
     io.to(eng.key).emit('scoreboard', eng.scoreboard); 
     io.to(eng.key).emit('history_dump', eng.signalHistory); 

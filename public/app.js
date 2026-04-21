@@ -10,7 +10,7 @@ const auth = firebase.auth();
 const socket = io({ transports: ['websocket'], upgrade: false });
 
 let currentEntryPrice = 0; 
-let radarGlobalStats = null; 
+window.radarGlobalStats = null; 
 let isBotActive = false; 
 
 window.addEventListener('DOMContentLoaded', () => {
@@ -51,7 +51,6 @@ window.addEventListener('DOMContentLoaded', () => {
         if(document.getElementById('riskLoss')) document.getElementById('riskLoss').value = savedConfig.stopLoss || 50;
     }
 
-    setupStatsUI();
     setupFifoPanel(); 
 
     const radarDiv = document.createElement('div'); radarDiv.id = 'radarToast';
@@ -61,8 +60,6 @@ window.addEventListener('DOMContentLoaded', () => {
 
     const savedBrokerToken = localStorage.getItem('jsInvestBrokerToken'); const savedRole = localStorage.getItem('jsInvestUserRole'); const savedUid = localStorage.getItem('jsInvestUid');
     if (savedBrokerToken && savedUid) { document.getElementById('btnLogin').innerText = "Acessando Painel..."; socket.emit('auto_reconnect', { token: savedBrokerToken, role: savedRole, uid: savedUid }); }
-
-    document.getElementById('btnOpenStats').addEventListener('click', () => { renderStats(radarGlobalStats); document.getElementById('statsModal').style.display = 'flex'; });
 });
 
 socket.on('radar_alert', (data) => {
@@ -73,7 +70,12 @@ socket.on('radar_alert', (data) => {
     toast.style.display = 'block'; setTimeout(() => { toast.style.display = 'none'; }, 10000); 
 });
 
-socket.on('radar_stats_update', (stats) => { radarGlobalStats = stats; if (document.getElementById('statsModal').style.display === 'flex') renderStats(radarGlobalStats); });
+socket.on('radar_stats_update', (stats) => { 
+    window.radarGlobalStats = stats; 
+    if (typeof renderStats === 'function') {
+        renderStats(window.radarGlobalStats);
+    }
+});
 
 socket.on('hybrid_login_result', (res) => {
     document.getElementById('btnLogin').innerText = "Acessar Sistema";
@@ -231,6 +233,7 @@ socket.on('admin_users_list', (res) => {
 
 socket.on('user_creation_result', (res) => { alert(res.msg); if(document.getElementById('btnCreateUser')) document.getElementById('btnCreateUser').innerText = 'Cadastrar'; if(res.success) { if(document.getElementById('newUserEmail')) document.getElementById('newUserEmail').value = ''; if(document.getElementById('newUserPassword')) document.getElementById('newUserPassword').value = ''; auth.currentUser.getIdToken().then(token => socket.emit('admin_get_users', token)); } });
 
+// 🎯 ATUALIZADO: Trava ajustada para > 0,00
 function getInstitutionalRiskConfig() {
     const isDemo = document.getElementById('riskAccount').value === 'demo';
     const uid = localStorage.getItem('jsInvestUid');
@@ -238,8 +241,8 @@ function getInstitutionalRiskConfig() {
     const realBalStr = document.getElementById('valReal').innerText;
     const realBalNum = parseFloat(realBalStr.replace('R$ ', '').replace(/\./g, '').replace(',', '.'));
     
-    if (!isDemo && uid !== 'admin_master' && realBalNum < 500) {
-        alert("⚠️ GESTÃO INSTITUCIONAL: SALDO INSUFICIENTE\n\nA sua entrada é fixada em 1% da banca. O seu saldo é menor que R$ 500,00, o que geraria uma entrada abaixo do mínimo permitido pela corretora (R$ 5,00).\n\n👉 Use a Conta Demo;\n👉 Deposite até atingir R$ 500,00;\n👉 Ou use o modo FREE (apenas com Sinais).");
+    if (!isDemo && uid !== 'admin_master' && realBalNum <= 0) {
+        alert("⚠️ GESTÃO INSTITUCIONAL: SALDO INSUFICIENTE\n\nA sua entrada é fixada em 1% da banca. O seu saldo precisa ser maior que R$ 0,00 para operar na conta Real.\n\n👉 Use a Conta Demo;\n👉 Deposite saldo na corretora;\n👉 Ou use o modo FREE (apenas com Sinais).");
         return null; 
     }
 
@@ -313,7 +316,6 @@ if(document.getElementById('btnAdminPanel')) {
             if(document.getElementById('tgStkWin')) document.getElementById('tgStkWin').value = window.tempTgConfig.stkWin || ''; 
             if(document.getElementById('tgStkLoss')) document.getElementById('tgStkLoss').value = window.tempTgConfig.stkLoss || ''; 
             
-            // 🎯 GARANTE QUE O TEMPLATE NUNCA FICA EM BRANCO NA TELA!
             const msgDefault = "⚡ *ALERTA DE TOQUE (M1)* ⚡\n\n💵 Moeda = {MOEDA}\n⏰ Expiração = 1 Minuto\n🛎 Entrada = {HORA_ENTRADA}\n{DIRECAO}\n\n👉🏼 Se necessário, fazer 1 Gale.\n\n➡️ [Clique aqui para abrir a Vellox](https://velloxbroker.com)";
             if(document.getElementById('tgMsgSinal')) document.getElementById('tgMsgSinal').value = window.tempTgConfig.msgSinal || msgDefault; 
         } 

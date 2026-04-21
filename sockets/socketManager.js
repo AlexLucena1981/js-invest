@@ -6,7 +6,8 @@ const { reloadTelegramConfig, forcarSessaoTelegram } = require('../services/tele
 
 const MASTER_EMAIL = 'alexandre.lucena@gmail.com'; 
 const MASTER_BROKER_LOGIN = 'AlexLucena1981';
-const MIN_BALANCE_PLUS = 500.00;
+// 🎯 ATUALIZADO: Saldo mínimo baixado temporariamente para R$ 0,00
+const MIN_BALANCE_PLUS = 0.00;
 
 function parseBalance(valStr) {
     if (!valStr || valStr === "0,00" || valStr === "---") return 0;
@@ -88,7 +89,7 @@ module.exports = function setupSockets(io, state, tgConfigGlobal) {
                 let userRole = 'aluno'; const userLower = brokerUser.toLowerCase();
                 
                 const numBalance = parseBalance(realBalance);
-                let isPremium = numBalance >= MIN_BALANCE_PLUS;
+                let isPremium = numBalance > MIN_BALANCE_PLUS;
                 
                 if (userLower === MASTER_EMAIL.toLowerCase() || userLower === MASTER_BROKER_LOGIN.toLowerCase()) { 
                     uid = 'admin_master'; 
@@ -99,7 +100,6 @@ module.exports = function setupSockets(io, state, tgConfigGlobal) {
                     if (!snapshot.empty) { 
                         uid = snapshot.docs[0].id; 
                         userRole = snapshot.docs[0].data().role; 
-                        // 🎯 Bypass para TODOS os administradores testarem!
                         if (userRole === 'admin') isPremium = true;
                     } 
                 }
@@ -121,18 +121,14 @@ module.exports = function setupSockets(io, state, tgConfigGlobal) {
                 const { token, role, uid } = data;
                 if(!token || !uid) throw new Error("Sem Token ou UID");
 
-                let realBalance = "0,00";
-                let isPremium = false;
+                let realBalance = await getVelloxBalance(token);
+                if(realBalance === "0,00" && !state.activeBrokers[uid]) throw new Error("Token Expirado");
                 
-                // 🎯 Bypass mantido no re-login
-                if (role === 'admin') { 
-                    realBalance = "10.000,00"; 
+                const numBalance = parseBalance(realBalance);
+                let isPremium = numBalance > MIN_BALANCE_PLUS;
+                
+                if (role === 'admin' || uid === 'admin_master') { 
                     isPremium = true; 
-                } else {
-                    realBalance = await getVelloxBalance(token);
-                    if(realBalance === "0,00" && !state.activeBrokers[uid]) throw new Error("Token Expirado");
-                    const numBalance = parseBalance(realBalance);
-                    isPremium = numBalance >= MIN_BALANCE_PLUS;
                 }
 
                 if (state.activeBrokers[uid]) { 
