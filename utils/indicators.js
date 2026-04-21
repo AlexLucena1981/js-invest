@@ -4,6 +4,17 @@ function calculateSMA(data, period) {
     return sum / period;
 }
 
+// 🎯 FÓRMULA ADICIONADA: Média Móvel Exponencial (EMA)
+function calculateEMA(data, period) {
+    if (data.length < period) return null;
+    const k = 2 / (period + 1);
+    let ema = data.slice(0, period).reduce((a, b) => a + b, 0) / period; 
+    for (let i = period; i < data.length; i++) {
+        ema = (data[i] - ema) * k + ema;
+    }
+    return ema;
+}
+
 function calculateWMA(data, period) {
     if (data.length < period) return null;
     const slice = data.slice(-period);
@@ -63,10 +74,6 @@ function calculateBollingerBands(data, period, stdDev) {
 function evaluateStrategy(prices, strategyConfig) {
     if (!prices || prices.length < 50) return null;
 
-    // =====================================================================
-    // 🎯 BYPASS RESTRITO AO ROBO DA LIVE (Lê as configurações do Painel)
-    // Agora SÓ funciona se a estratégia tiver 'live' no nome!
-    // =====================================================================
     if (strategyConfig.name && strategyConfig.name.toLowerCase().includes('live')) {
         const rsiPeriod = 14; 
         const rsiOverbought = strategyConfig.rsiOverbought || 65; 
@@ -81,19 +88,12 @@ function evaluateStrategy(prices, strategyConfig) {
         const lastBB = calculateBollingerBands(prices, bbPeriod, bbStdDev);
 
         if (lastRSI !== null && lastBB !== null) {
-            // 🟢 COMPRA (CALL): Tocou na banda inferior + RSI Sobrevenda
             if (currentPrice <= lastBB.lower && lastRSI <= rsiOversold) return 'CALL';
-            
-            // 🔴 VENDA (PUT): Tocou na banda superior + RSI Sobrecompra
             if (currentPrice >= lastBB.upper && lastRSI >= rsiOverbought) return 'PUT';
         }
         
         return null; 
     }
-
-    // =====================================================================
-    // ⚙️ LÓGICAS ANTIGAS JSON (Fluxo de Velas, MHI, etc. MANTIDAS INTACTAS)
-    // =====================================================================
     
     if (strategyConfig.isComplex && strategyConfig.id === 'rei_das_binarias') {
         let buf1 = [];
@@ -124,6 +124,9 @@ function evaluateStrategy(prices, strategyConfig) {
             if (type === 'SMA') {
                 current[key] = calculateSMA(prices, config.period); 
                 prev[key] = calculateSMA(prices.slice(0, -1), config.period);
+            } else if (type === 'EMA') { // 🎯 LEITOR DE EMA ADICIONADO!
+                current[key] = calculateEMA(prices, config.period); 
+                prev[key] = calculateEMA(prices.slice(0, -1), config.period);
             } else if (type === 'RSI') { 
                 current[key] = calculateRSI(prices, config.period); 
                 prev[key] = calculateRSI(prices.slice(0, -1), config.period);
@@ -152,10 +155,4 @@ function evaluateStrategy(prices, strategyConfig) {
     return null;
 }
 
-module.exports = {
-    calculateSMA,
-    calculateWMA,
-    calculateRSI,
-    calculateBollingerBands,
-    evaluateStrategy
-};
+module.exports = { calculateSMA, calculateEMA, calculateWMA, calculateRSI, calculateBollingerBands, evaluateStrategy };
