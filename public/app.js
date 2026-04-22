@@ -15,13 +15,11 @@ let isBotActive = false;
 window.pixInterval = null; 
 window.lastPaymentId = null;
 
-// 🎯 VARIÁVEL GLOBAL DE PREÇOS (Garante que nunca fique zerado)
 window.appPricing = { month1: 49.90, month3: 119.90, month6: 199.90, month12: 399.90 };
 
 socket.on('pricing_update', (prices) => {
     if (prices) {
         window.appPricing = prices;
-        // Se a aba estiver aberta na hora que o servidor mandar um update ao vivo, atualiza!
         if (document.getElementById('price1')) document.getElementById('price1').value = prices.month1;
         if (document.getElementById('price3')) document.getElementById('price3').value = prices.month3;
         if (document.getElementById('price6')) document.getElementById('price6').value = prices.month6;
@@ -29,7 +27,6 @@ socket.on('pricing_update', (prices) => {
     }
 });
 
-// 🎯 LÓGICA DE NAVEGAÇÃO DAS 7 ABAS DO ADMIN
 window.switchAdminTab = function(tabName) {
     const tabs = ['Users', 'Pix', 'Pricing', 'Telegram', 'Radar', 'Report', 'Strategies'];
     tabs.forEach(t => {
@@ -263,7 +260,9 @@ socket.on('auto_trade_status', (res) => {
 socket.on('update_balance', (data) => { const el = document.getElementById(data.isDemo ? 'valDemo' : 'valReal'); el.innerText = `R$ ${data.balance}`; el.style.color = data.isDemo ? '#3fb950' : '#58a6ff'; setTimeout(() => { el.style.color = data.isDemo ? '#d29922' : '#3fb950'; }, 1000); });
 socket.on('win_balance_update', (data) => { const el = document.getElementById(data.isDemo ? 'valDemo' : 'valReal'); let currentVal = parseFloat(el.innerText.replace('R$ ', '').replace(/\\./g, '').replace(',', '.')); if (!isNaN(currentVal)) { el.innerText = `R$ ${(currentVal + data.prize).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`; el.style.color = '#3fb950'; el.style.textShadow = '0 0 15px rgba(63, 185, 80, 0.8)'; setTimeout(() => { el.style.color = data.isDemo ? '#d29922' : '#3fb950'; el.style.textShadow = 'none'; }, 2000); } });
 
-socket.on('sniper_success', (msg) => { console.log("✅ " + msg); }); socket.on('sniper_error', (msg) => { alert("❌ Erro: " + msg); });
+// 🎯 VISUALIZADOR DE ERROS DA CORRETORA: Se a Vellox recusar a ordem, avisa na tela!
+socket.on('sniper_error', (msg) => { alert("❌ ALERTA AUTO-TRADE:\n" + msg); });
+socket.on('sniper_success', (msg) => { console.log("✅ " + msg); });
 
 socket.on('available_strategies', (strats) => { const sel = document.getElementById('strategySelector'); sel.innerHTML = ''; strats.forEach(s => { const opt = document.createElement('option'); opt.value = s.id; opt.innerText = s.name; sel.appendChild(opt); }); });
 socket.on('available_coins', (groupedCoins) => { const selectBox = document.getElementById('coinSelector'); if(!selectBox) return; selectBox.innerHTML = ''; for (const [categoryName, symbolsArray] of Object.entries(groupedCoins)) { let optgroup = document.createElement('optgroup'); optgroup.label = categoryName; symbolsArray.forEach(sym => { let option = document.createElement('option'); option.value = sym; option.textContent = sym.toUpperCase(); optgroup.appendChild(option); }); selectBox.appendChild(optgroup); } });
@@ -346,14 +345,30 @@ socket.on('admin_report_data', (res) => {
 });
 
 function getInstitutionalRiskConfig() {
-    const isDemo = document.getElementById('riskAccount').value === 'demo'; const uid = localStorage.getItem('jsInvestUid');
-    const realBalStr = document.getElementById('valReal').innerText; const realBalNum = parseFloat(realBalStr.replace('R$ ', '').replace(/\./g, '').replace(',', '.'));
-    const demoBalStr = document.getElementById('valDemo').innerText; const demoBalNum = parseFloat(demoBalStr.replace('R$ ', '').replace(/\./g, '').replace(',', '.'));
+    const isDemo = document.getElementById('riskAccount').value === 'demo'; 
+    const uid = localStorage.getItem('jsInvestUid');
+    
+    const realBalStr = document.getElementById('valReal').innerText; 
+    const realBalNum = parseFloat(realBalStr.replace('R$ ', '').replace(/\./g, '').replace(',', '.'));
+    
+    const demoBalStr = document.getElementById('valDemo').innerText; 
+    const demoBalNum = parseFloat(demoBalStr.replace('R$ ', '').replace(/\./g, '').replace(',', '.'));
+    
     const targetBalance = isDemo ? demoBalNum : realBalNum;
     
-    let calculatedAmount = targetBalance * 0.01; if (calculatedAmount < 5) calculatedAmount = 5; if (uid === 'admin_master') calculatedAmount = 5; 
+    // 🎯 AQUI ESTÁ A CORREÇÃO DE MILHÕES! Evita o NaN da Banca Demo!
+    let calculatedAmount = targetBalance * 0.01; 
+    if (isNaN(calculatedAmount) || calculatedAmount < 5) calculatedAmount = 5; 
+    if (uid === 'admin_master') calculatedAmount = 5; 
     
-    return { accountType: isDemo ? 'demo' : 'real', baseAmount: calculatedAmount, payout: 85, maxGale: 2, stopWin: parseFloat(document.getElementById('riskWin').value), stopLoss: parseFloat(document.getElementById('riskLoss').value) };
+    return { 
+        accountType: isDemo ? 'demo' : 'real', 
+        baseAmount: calculatedAmount, 
+        payout: 85, 
+        maxGale: parseInt(document.getElementById('riskGale').value) || 2, 
+        stopWin: parseFloat(document.getElementById('riskWin').value), 
+        stopLoss: parseFloat(document.getElementById('riskLoss').value) 
+    };
 }
 
 document.getElementById('btnLogin').addEventListener('click', () => { const btn = document.getElementById('btnLogin'); btn.innerText = "Autenticando..."; document.getElementById('loginError').style.display = 'none'; socket.emit('hybrid_login', { brokerUser: document.getElementById('brokerLoginInput').value, brokerPass: document.getElementById('brokerPassInput').value }); });
@@ -373,7 +388,6 @@ if(document.getElementById('btnAdminPanel')) {
             socket.emit('admin_get_payments', token);
         }); 
         
-        // 🎯 PREENCHE OS VALORES DA ABA PREÇOS NO CLIQUE
         if (window.appPricing) {
             if(document.getElementById('price1')) document.getElementById('price1').value = window.appPricing.month1;
             if(document.getElementById('price3')) document.getElementById('price3').value = window.appPricing.month3;

@@ -209,7 +209,11 @@ async function cacarOportunidade(state) {
                     let amount = parseFloat(broker.config.baseAmount).toFixed(2).replace('.', ',');
                     
                     const result = await dispararOrdemVellox(broker, isDemo, sym, sinal, amount, currentPrice, '1m');
-                    if (result.success && result.balance && ioGlobal) ioGlobal.to(broker.socketId).emit('update_balance', { isDemo, balance: result.balance });
+                    if (result.success && result.balance && ioGlobal) {
+                        ioGlobal.to(broker.socketId).emit('update_balance', { isDemo, balance: result.balance });
+                    } else if (ioGlobal) {
+                        ioGlobal.to(broker.socketId).emit('sniper_error', `Falha no Auto-Trade: ${result.msg}`);
+                    }
                 });
 
                 break; 
@@ -260,7 +264,6 @@ async function verificarFimDeSessao() {
     }
 }
 
-// 🎯 A GRANDE CORREÇÃO: ASSERTIVIDADE RESTAURADA E G2 ISOLADO NO AUTO-TRADE
 async function conferirResultado(stateGlobais) {
     const operacao = estadoSessao.sinalRodando; const agora = getAgoraSP();
     const velas = await puxarVelasM1(operacao.symbol, stateGlobais);
@@ -268,15 +271,16 @@ async function conferirResultado(stateGlobais) {
     if (!velas || velas.length < 2) { operacao.verificando = false; return; }
 
     const ultimaVelaFechada = velas[velas.length - 2];
-    const closePrice = parseFloat(ultimaVelaFechada[4]);
+    const openPrice = parseFloat(ultimaVelaFechada[1]); // 🎯 PEGA A ABERTURA DA VELA DA ENTRADA
+    const closePrice = parseFloat(ultimaVelaFechada[4]); // 🎯 PEGA O FECHAMENTO EXATO DA VELA
 
-    // 🎯 De volta à fórmula vencedora: Comparação com a Taxa cravada de Entrada!
-    const isGreen = closePrice > operacao.lastEntryPrice;
-    const isRed = closePrice < operacao.lastEntryPrice;
+    // 🎯 AVALIA PELA COR DA VELA (Fim dos Gaps e Falsas Perdas!)
+    const isGreen = closePrice > openPrice;
+    const isRed = closePrice < openPrice;
+    // Se der empate (Doji), as corretoras devolvem o dinheiro. Vamos considerar como perda para forçar o Gale na busca do Win.
     const won = (operacao.type === 'CALL' && isGreen) || (operacao.type === 'PUT' && isRed);
 
     if (won) {
-        // 🎯 Se o ganho foi no G2, o Telegram não faz nada (porque já deu LOSS no G1)
         if (operacao.step <= 1) {
             if (estadoSessao.lastGaleMsgId) { try { await bot.deleteMessage(CHAT_ID, estadoSessao.lastGaleMsgId); } catch(e) {} estadoSessao.lastGaleMsgId = null; }
             
@@ -293,7 +297,6 @@ async function conferirResultado(stateGlobais) {
             });
         }
 
-        // Paga todos os alunos que tinham MaxGale para cobrir esta entrada
         Object.values(stateGlobais.activeBrokers).forEach(broker => {
             if (!broker.autoTradeActive || !broker.isPremium) return;
             if (operacao.step > broker.config.maxGale) return; 
@@ -310,7 +313,6 @@ async function conferirResultado(stateGlobais) {
     } else {
         operacao.step++;
         
-        // Abate o loss da conta dos alunos
         Object.values(stateGlobais.activeBrokers).forEach(broker => {
             if (!broker.autoTradeActive || !broker.isPremium) return;
             if (operacao.step - 1 > broker.config.maxGale) return; 
@@ -320,7 +322,6 @@ async function conferirResultado(stateGlobais) {
             verificarStopAutoTrade(broker);
         });
 
-        // 🎯 A TRAVA DO TELEGRAM: Decreta LOSS Oficial se o G1 falhar!
         if (operacao.step === 2) {
             if (estadoSessao.lastGaleMsgId) { try { await bot.deleteMessage(CHAT_ID, estadoSessao.lastGaleMsgId); } catch(e) {} estadoSessao.lastGaleMsgId = null; }
             
@@ -338,18 +339,13 @@ async function conferirResultado(stateGlobais) {
         }
 
         if (operacao.step > 2) { 
-            // O G2 Falhou, operação encerra em definitivo
             estadoSessao.sinalRodando = null; 
         } else { 
-            // PREPARA A PRÓXIMA ENTRADA (G1 ou G2)
-
-            // Só manda pro Telegram se for o G1!
             if (operacao.step === 1 && estadoSessao.ativa && estadoSessao.permitirSinais) {
                 const msgSent = await bot.sendMessage(CHAT_ID, `🔄 *ENTRAR NO GALE ${operacao.step}* em ${operacao.nomeAmigavel}!\nMesma direção.`, { parse_mode: 'Markdown' });
                 estadoSessao.lastGaleMsgId = msgSent.message_id;
             }
 
-            // O Auto-Trade sempre tenta atirar, a corretora processa se o aluno tiver configurado aquele Gale
             Object.values(stateGlobais.activeBrokers).forEach(async broker => {
                 if (!broker.autoTradeActive || !broker.isPremium) return;
                 if (operacao.step > broker.config.maxGale) return; 
@@ -357,10 +353,14 @@ async function conferirResultado(stateGlobais) {
                 let valorGale = broker.config.baseAmount * Math.pow(2, operacao.step);
                 let isDemo = broker.config.accountType === 'demo';
                 const result = await dispararOrdemVellox(broker, isDemo, operacao.symbol, operacao.type, valorGale.toFixed(2).replace('.', ','), closePrice, '1m');
-                if (result.success && result.balance && ioGlobal) ioGlobal.to(broker.socketId).emit('update_balance', { isDemo, balance: result.balance });
+                if (result.success && result.balance && ioGlobal) {
+                    ioGlobal.to(broker.socketId).emit('update_balance', { isDemo, balance: result.balance });
+                } else if (ioGlobal) {
+                    ioGlobal.to(broker.socketId).emit('sniper_error', `Falha no Auto-Trade: ${result.msg}`);
+                }
             });
 
-            operacao.lastEntryPrice = closePrice; // Atualiza a âncora do preço para o próximo resultado!
+            operacao.lastEntryPrice = closePrice; 
             operacao.minutoVerificacao = (agora.getMinutes() + 1) % 60;
             operacao.verificando = false; 
         }
