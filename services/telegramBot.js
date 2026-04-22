@@ -132,9 +132,8 @@ function iniciarMotorContinuo(stateGlobais) {
     motorCacaId = setInterval(async () => {
         if (isProcessing) return; 
         
-        // 🎯 A DUPLA IGNIÇÃO: O motor acorda se o Telegram estiver no horário OU se algum aluno tiver o Auto-Trade ligado!
         const hasActiveAutoTrade = Object.values(stateGlobais.activeBrokers).some(b => b.autoTradeActive && b.isPremium);
-        if (!estadoSessao.ativa && !hasActiveAutoTrade && !estadoSessao.sinalRodando) return; // Se ninguém precisa dele, dorme.
+        if (!estadoSessao.ativa && !hasActiveAutoTrade && !estadoSessao.sinalRodando) return; 
 
         isProcessing = true;
         try {
@@ -194,7 +193,6 @@ async function cacarOportunidade(state) {
 
                 const horas = calcularHorarios(minEntrada);
                 
-                // 🎯 O DISPARO INDEPENDENTE: Só envia pro Telegram se a sessão estiver ativa
                 if (estadoSessao.ativa && estadoSessao.permitirSinais) {
                     atirarSinalTelegram(sym, sinal, nomeAmigavel, horas);
                 }
@@ -205,7 +203,6 @@ async function cacarOportunidade(state) {
                     lastEntryPrice: currentPrice 
                 };
                 
-                // 🚀 O AUTO-TRADE ACONTECE SEMPRE QUE HOUVER ALGUÉM ARMADO
                 Object.values(state.activeBrokers).forEach(async (broker) => {
                     if (!broker.autoTradeActive || !broker.isPremium) return;
                     let isDemo = broker.config.accountType === 'demo';
@@ -263,6 +260,7 @@ async function verificarFimDeSessao() {
     }
 }
 
+// 🎯 A GRANDE CORREÇÃO: ASSERTIVIDADE RESTAURADA E G2 ISOLADO NO AUTO-TRADE
 async function conferirResultado(stateGlobais) {
     const operacao = estadoSessao.sinalRodando; const agora = getAgoraSP();
     const velas = await puxarVelasM1(operacao.symbol, stateGlobais);
@@ -272,25 +270,34 @@ async function conferirResultado(stateGlobais) {
     const ultimaVelaFechada = velas[velas.length - 2];
     const closePrice = parseFloat(ultimaVelaFechada[4]);
 
+    // 🎯 De volta à fórmula vencedora: Comparação com a Taxa cravada de Entrada!
     const isGreen = closePrice > operacao.lastEntryPrice;
     const isRed = closePrice < operacao.lastEntryPrice;
     const won = (operacao.type === 'CALL' && isGreen) || (operacao.type === 'PUT' && isRed);
 
     if (won) {
-        // 🎯 SÓ ENVIA MENSAGEM SE A SESSÃO DO TELEGRAM ESTIVER LIGADA
-        if (estadoSessao.ativa && estadoSessao.permitirSinais) {
+        // 🎯 Se o ganho foi no G2, o Telegram não faz nada (porque já deu LOSS no G1)
+        if (operacao.step <= 1) {
             if (estadoSessao.lastGaleMsgId) { try { await bot.deleteMessage(CHAT_ID, estadoSessao.lastGaleMsgId); } catch(e) {} estadoSessao.lastGaleMsgId = null; }
-            if (configLocal.stkWin) await enviarSticker(configLocal.stkWin); else bot.sendMessage(CHAT_ID, `✅ *WIN!* 🎯`, { parse_mode: 'Markdown' });
-            estadoSessao.wins++; 
-            verificarFimDeSessao();
+            
+            if (estadoSessao.ativa && estadoSessao.permitirSinais) {
+                if (configLocal.stkWin) await enviarSticker(configLocal.stkWin); 
+                else bot.sendMessage(CHAT_ID, `✅ *WIN!* 🎯`, { parse_mode: 'Markdown' });
+                estadoSessao.wins++; 
+                verificarFimDeSessao();
+            }
+            
+            await salvarResultadoNoFirebase({ 
+                ativo: operacao.nomeAmigavel, direcao: operacao.type, resultado: 'WIN', 
+                galeUsado: operacao.step, horaEntrada: operacao.horaEntradaStr, horaGale: operacao.horaGaleStr 
+            });
         }
-        
-        // 🎯 SEMPRE SALVA NO HISTÓRICO PARA O PAINEL ADMIN
-        await salvarResultadoNoFirebase({ ativo: operacao.nomeAmigavel, direcao: operacao.type, resultado: 'WIN', galeUsado: operacao.step, horaEntrada: operacao.horaEntradaStr, horaGale: operacao.horaGaleStr });
 
-        // 💰 PAGA OS ALUNOS DO AUTO-TRADE
+        // Paga todos os alunos que tinham MaxGale para cobrir esta entrada
         Object.values(stateGlobais.activeBrokers).forEach(broker => {
             if (!broker.autoTradeActive || !broker.isPremium) return;
+            if (operacao.step > broker.config.maxGale) return; 
+
             let amountBet = broker.config.baseAmount * Math.pow(2, operacao.step);
             let payoutPerc = (broker.config.payout || 85) / 100;
             let lucroLiquido = (amountBet * payoutPerc);
@@ -302,37 +309,50 @@ async function conferirResultado(stateGlobais) {
         estadoSessao.sinalRodando = null; 
     } else {
         operacao.step++;
-        if (operacao.step > 2) { 
+        
+        // Abate o loss da conta dos alunos
+        Object.values(stateGlobais.activeBrokers).forEach(broker => {
+            if (!broker.autoTradeActive || !broker.isPremium) return;
+            if (operacao.step - 1 > broker.config.maxGale) return; 
+            
+            let amountBet = broker.config.baseAmount * Math.pow(2, operacao.step - 1);
+            broker.sessionProfit -= amountBet;
+            verificarStopAutoTrade(broker);
+        });
+
+        // 🎯 A TRAVA DO TELEGRAM: Decreta LOSS Oficial se o G1 falhar!
+        if (operacao.step === 2) {
+            if (estadoSessao.lastGaleMsgId) { try { await bot.deleteMessage(CHAT_ID, estadoSessao.lastGaleMsgId); } catch(e) {} estadoSessao.lastGaleMsgId = null; }
+            
             if (estadoSessao.ativa && estadoSessao.permitirSinais) {
-                if (estadoSessao.lastGaleMsgId) { try { await bot.deleteMessage(CHAT_ID, estadoSessao.lastGaleMsgId); } catch(e) {} estadoSessao.lastGaleMsgId = null; }
-                if (configLocal.stkLoss) await enviarSticker(configLocal.stkLoss); else bot.sendMessage(CHAT_ID, `🔴 *LOSS!*`, { parse_mode: 'Markdown' });
+                if (configLocal.stkLoss) await enviarSticker(configLocal.stkLoss); 
+                else bot.sendMessage(CHAT_ID, `🔴 *LOSS!*`, { parse_mode: 'Markdown' });
                 estadoSessao.losses++; 
-                verificarFimDeSessao(); 
+                verificarFimDeSessao();
             }
             
-            await salvarResultadoNoFirebase({ ativo: operacao.nomeAmigavel, direcao: operacao.type, resultado: 'LOSS', galeUsado: 1, horaEntrada: operacao.horaEntradaStr, horaGale: operacao.horaGaleStr });
-
-            Object.values(stateGlobais.activeBrokers).forEach(broker => {
-                if (!broker.autoTradeActive || !broker.isPremium) return;
-                let amountBet = broker.config.baseAmount * Math.pow(2, operacao.step - 1);
-                broker.sessionProfit -= amountBet;
-                verificarStopAutoTrade(broker);
+            await salvarResultadoNoFirebase({ 
+                ativo: operacao.nomeAmigavel, direcao: operacao.type, resultado: 'LOSS', 
+                galeUsado: 1, horaEntrada: operacao.horaEntradaStr, horaGale: operacao.horaGaleStr 
             });
+        }
 
+        if (operacao.step > 2) { 
+            // O G2 Falhou, operação encerra em definitivo
             estadoSessao.sinalRodando = null; 
         } else { 
-            if (estadoSessao.ativa && estadoSessao.permitirSinais) {
+            // PREPARA A PRÓXIMA ENTRADA (G1 ou G2)
+
+            // Só manda pro Telegram se for o G1!
+            if (operacao.step === 1 && estadoSessao.ativa && estadoSessao.permitirSinais) {
                 const msgSent = await bot.sendMessage(CHAT_ID, `🔄 *ENTRAR NO GALE ${operacao.step}* em ${operacao.nomeAmigavel}!\nMesma direção.`, { parse_mode: 'Markdown' });
                 estadoSessao.lastGaleMsgId = msgSent.message_id;
             }
-            
+
+            // O Auto-Trade sempre tenta atirar, a corretora processa se o aluno tiver configurado aquele Gale
             Object.values(stateGlobais.activeBrokers).forEach(async broker => {
                 if (!broker.autoTradeActive || !broker.isPremium) return;
-                
-                let amountBetAnterior = broker.config.baseAmount * Math.pow(2, operacao.step - 1);
-                broker.sessionProfit -= amountBetAnterior; 
-
-                if (operacao.step > broker.config.maxGale) { verificarStopAutoTrade(broker); return; } 
+                if (operacao.step > broker.config.maxGale) return; 
                 
                 let valorGale = broker.config.baseAmount * Math.pow(2, operacao.step);
                 let isDemo = broker.config.accountType === 'demo';
@@ -340,7 +360,7 @@ async function conferirResultado(stateGlobais) {
                 if (result.success && result.balance && ioGlobal) ioGlobal.to(broker.socketId).emit('update_balance', { isDemo, balance: result.balance });
             });
 
-            operacao.lastEntryPrice = closePrice; 
+            operacao.lastEntryPrice = closePrice; // Atualiza a âncora do preço para o próximo resultado!
             operacao.minutoVerificacao = (agora.getMinutes() + 1) % 60;
             operacao.verificando = false; 
         }
