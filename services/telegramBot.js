@@ -88,7 +88,7 @@ async function enviarRelatorioDiario() {
 
 async function initTelegramBot(io, stateGlobais, configFirebase) {
     ioGlobal = io;
-    console.log("🤖 Motor Global Sniper / Telegram ATIVADO");
+    console.log("🤖 Motor Global Sniper (Telegram & Auto-Trade) ATIVADO");
     configLocal = configFirebase;
     agendarSessoes(stateGlobais);
     iniciarMotorContinuo(stateGlobais);
@@ -118,11 +118,10 @@ async function iniciarSessao(turno) {
     estadoSessao.losses = 0; 
     estadoSessao.sinalRodando = null; 
     estadoSessao.lastGaleMsgId = null;
-    
-    // 🎯 SEPARA O STICKER DE ACORDO COM O TURNO!
     estadoSessao.turnoAtual = turno;
+    
     let stkStart = turno === "Manhã" ? configLocal.stkStartManha : configLocal.stkStartTarde;
-    if (!stkStart) stkStart = configLocal.stkStart; // Fallback para manter o legado
+    if (!stkStart) stkStart = configLocal.stkStart; 
 
     if (stkStart) await enviarSticker(stkStart);
     else bot.sendMessage(CHAT_ID, `👨‍💻 *INÍCIO DE SESSÃO GLOBAL (${turno}): MERCADO ABERTO*`, { parse_mode: 'Markdown' });
@@ -131,7 +130,12 @@ async function iniciarSessao(turno) {
 function iniciarMotorContinuo(stateGlobais) {
     if (motorCacaId) clearInterval(motorCacaId);
     motorCacaId = setInterval(async () => {
-        if (!estadoSessao.ativa || isProcessing) return; 
+        if (isProcessing) return; 
+        
+        // 🎯 A DUPLA IGNIÇÃO: O motor acorda se o Telegram estiver no horário OU se algum aluno tiver o Auto-Trade ligado!
+        const hasActiveAutoTrade = Object.values(stateGlobais.activeBrokers).some(b => b.autoTradeActive && b.isPremium);
+        if (!estadoSessao.ativa && !hasActiveAutoTrade && !estadoSessao.sinalRodando) return; // Se ninguém precisa dele, dorme.
+
         isProcessing = true;
         try {
             const agora = getAgoraSP(); const min = agora.getMinutes(); const sec = agora.getSeconds();
@@ -141,8 +145,11 @@ function iniciarMotorContinuo(stateGlobais) {
                     if (!op.verificando) { op.verificando = true; await conferirResultado(stateGlobais); }
                 }
                 const minsPassados = (min - op.minutoVerificacao + 60) % 60;
-                if (minsPassados >= 2 && minsPassados < 50) { estadoSessao.sinalRodando = null; verificarFimDeSessao(); }
-            } else if (estadoSessao.permitirSinais) { await cacarOportunidade(stateGlobais); }
+                if (minsPassados >= 2 && minsPassados < 50) { 
+                    estadoSessao.sinalRodando = null; 
+                    if(estadoSessao.ativa) verificarFimDeSessao(); 
+                }
+            } else { await cacarOportunidade(stateGlobais); }
         } catch (e) {} finally { isProcessing = false; }
     }, 3000); 
 }
@@ -185,7 +192,12 @@ async function cacarOportunidade(state) {
                 const minEntrada = (minAtual + 1) % 60;
                 const minVerificacao = (minAtual + 2) % 60;
 
-                const horas = atirarSinalDefinitivo(sym, sinal, nomeAmigavel, minEntrada);
+                const horas = calcularHorarios(minEntrada);
+                
+                // 🎯 O DISPARO INDEPENDENTE: Só envia pro Telegram se a sessão estiver ativa
+                if (estadoSessao.ativa && estadoSessao.permitirSinais) {
+                    atirarSinalTelegram(sym, sinal, nomeAmigavel, horas);
+                }
                 
                 estadoSessao.sinalRodando = { 
                     symbol: sym, type: sinal, step: 0, minutoEntrada: minEntrada, minutoVerificacao: minVerificacao,
@@ -193,6 +205,7 @@ async function cacarOportunidade(state) {
                     lastEntryPrice: currentPrice 
                 };
                 
+                // 🚀 O AUTO-TRADE ACONTECE SEMPRE QUE HOUVER ALGUÉM ARMADO
                 Object.values(state.activeBrokers).forEach(async (broker) => {
                     if (!broker.autoTradeActive || !broker.isPremium) return;
                     let isDemo = broker.config.accountType === 'demo';
@@ -209,36 +222,37 @@ async function cacarOportunidade(state) {
     }
 }
 
-function formatarMensagem(template, dados) {
-    if (!template) return "";
-    return template.replace(/{MOEDA}/g, dados.moeda || "").replace(/{DIRECAO}/g, dados.direcao || "").replace(/{HORA_ENTRADA}/g, dados.horaEntrada || "").replace(/{HORA_GALE}/g, dados.horaGale || "").replace(/\\n/g, "\n"); 
-}
-
-function atirarSinalDefinitivo(sym, tipo, nomeAmigavel, minutoEntrada) {
+function calcularHorarios(minutoEntrada) {
     const agora = getAgoraSP(); let hora = agora.getHours();
     if (agora.getMinutes() === 59 && minutoEntrada === 0) hora = (hora + 1) % 24;
     let minGale = (minutoEntrada + 1) % 60; let hrGale = hora; if (minutoEntrada === 59) hrGale = (hora + 1) % 24;
     const horaEntrada = `${hora.toString().padStart(2, '0')}:${minutoEntrada.toString().padStart(2, '0')}`;
     const horaGale = `${hrGale.toString().padStart(2, '0')}:${minGale.toString().padStart(2, '0')}`;
-    const acao = tipo === 'CALL' ? '🟩 Comprar' : '🟥 Vender';
-    
-    // 🎯 PUXA O SEU TEMPLATE DINÂMICO
-    const templateOriginal = configLocal.msgSinal || "⚡ *ALERTA DE TOQUE (M1)* ⚡\n\n💵 Moeda = {MOEDA}\n⏰ Expiração = 1 Minuto\n🛎 Entrada = {HORA_ENTRADA}\n{DIRECAO}\n\nGale 1 - {HORA_GALE}\n\n👉🏼 Se necessário, fazer 1 Gale.";
-    
-    const msg = formatarMensagem(templateOriginal, { moeda: nomeAmigavel, direcao: acao, horaEntrada: horaEntrada, horaGale: horaGale });
-    bot.sendMessage(CHAT_ID, msg, { parse_mode: 'Markdown', disable_web_page_preview: true });
-
     return { horaEntrada, horaGale };
 }
 
+function formatarMensagem(template, dados) {
+    if (!template) return "";
+    return template.replace(/{MOEDA}/g, dados.moeda || "").replace(/{DIRECAO}/g, dados.direcao || "").replace(/{HORA_ENTRADA}/g, dados.horaEntrada || "").replace(/{HORA_GALE}/g, dados.horaGale || "").replace(/\\n/g, "\n"); 
+}
+
+function atirarSinalTelegram(sym, tipo, nomeAmigavel, horas) {
+    const acao = tipo === 'CALL' ? '🟩 Comprar' : '🟥 Vender';
+    const templateOriginal = configLocal.msgSinal || "⚡ *ALERTA DE TOQUE (M1)* ⚡\n\n💵 Moeda = {MOEDA}\n⏰ Expiração = 1 Minuto\n🛎 Entrada = {HORA_ENTRADA}\n{DIRECAO}\n\nGale 1 - {HORA_GALE}\n\n👉🏼 Se necessário, fazer 1 Gale.";
+    
+    const msg = formatarMensagem(templateOriginal, { moeda: nomeAmigavel, direcao: acao, horaEntrada: horas.horaEntrada, horaGale: horas.horaGale });
+    bot.sendMessage(CHAT_ID, msg, { parse_mode: 'Markdown', disable_web_page_preview: true });
+}
+
 async function verificarFimDeSessao() {
+    if (!estadoSessao.ativa) return; 
+
     const totalSinais = estadoSessao.wins + estadoSessao.losses;
     const metaSinais = parseInt(configLocal.maxSinais) || 2;
     
     if (totalSinais >= metaSinais) {
         estadoSessao.ativa = false; estadoSessao.permitirSinais = false;
         
-        // 🎯 SEPARA O STICKER FINAL PELO TURNO!
         let stkEnd = estadoSessao.turnoAtual === "Manhã" ? configLocal.stkEndManha : configLocal.stkEndTarde;
         if (!stkEnd) stkEnd = configLocal.stkEnd;
 
@@ -263,11 +277,18 @@ async function conferirResultado(stateGlobais) {
     const won = (operacao.type === 'CALL' && isGreen) || (operacao.type === 'PUT' && isRed);
 
     if (won) {
-        if (estadoSessao.lastGaleMsgId) { try { await bot.deleteMessage(CHAT_ID, estadoSessao.lastGaleMsgId); } catch(e) {} estadoSessao.lastGaleMsgId = null; }
-        if (configLocal.stkWin) await enviarSticker(configLocal.stkWin); else bot.sendMessage(CHAT_ID, `✅ *WIN!* 🎯`, { parse_mode: 'Markdown' });
+        // 🎯 SÓ ENVIA MENSAGEM SE A SESSÃO DO TELEGRAM ESTIVER LIGADA
+        if (estadoSessao.ativa && estadoSessao.permitirSinais) {
+            if (estadoSessao.lastGaleMsgId) { try { await bot.deleteMessage(CHAT_ID, estadoSessao.lastGaleMsgId); } catch(e) {} estadoSessao.lastGaleMsgId = null; }
+            if (configLocal.stkWin) await enviarSticker(configLocal.stkWin); else bot.sendMessage(CHAT_ID, `✅ *WIN!* 🎯`, { parse_mode: 'Markdown' });
+            estadoSessao.wins++; 
+            verificarFimDeSessao();
+        }
         
+        // 🎯 SEMPRE SALVA NO HISTÓRICO PARA O PAINEL ADMIN
         await salvarResultadoNoFirebase({ ativo: operacao.nomeAmigavel, direcao: operacao.type, resultado: 'WIN', galeUsado: operacao.step, horaEntrada: operacao.horaEntradaStr, horaGale: operacao.horaGaleStr });
 
+        // 💰 PAGA OS ALUNOS DO AUTO-TRADE
         Object.values(stateGlobais.activeBrokers).forEach(broker => {
             if (!broker.autoTradeActive || !broker.isPremium) return;
             let amountBet = broker.config.baseAmount * Math.pow(2, operacao.step);
@@ -278,12 +299,17 @@ async function conferirResultado(stateGlobais) {
             verificarStopAutoTrade(broker);
         });
 
-        estadoSessao.wins++; estadoSessao.sinalRodando = null; verificarFimDeSessao(); 
+        estadoSessao.sinalRodando = null; 
     } else {
         operacao.step++;
         if (operacao.step > 2) { 
-            if (estadoSessao.lastGaleMsgId) { try { await bot.deleteMessage(CHAT_ID, estadoSessao.lastGaleMsgId); } catch(e) {} estadoSessao.lastGaleMsgId = null; }
-            if (configLocal.stkLoss) await enviarSticker(configLocal.stkLoss); else bot.sendMessage(CHAT_ID, `🔴 *LOSS!*`, { parse_mode: 'Markdown' });
+            if (estadoSessao.ativa && estadoSessao.permitirSinais) {
+                if (estadoSessao.lastGaleMsgId) { try { await bot.deleteMessage(CHAT_ID, estadoSessao.lastGaleMsgId); } catch(e) {} estadoSessao.lastGaleMsgId = null; }
+                if (configLocal.stkLoss) await enviarSticker(configLocal.stkLoss); else bot.sendMessage(CHAT_ID, `🔴 *LOSS!*`, { parse_mode: 'Markdown' });
+                estadoSessao.losses++; 
+                verificarFimDeSessao(); 
+            }
+            
             await salvarResultadoNoFirebase({ ativo: operacao.nomeAmigavel, direcao: operacao.type, resultado: 'LOSS', galeUsado: 1, horaEntrada: operacao.horaEntradaStr, horaGale: operacao.horaGaleStr });
 
             Object.values(stateGlobais.activeBrokers).forEach(broker => {
@@ -293,10 +319,12 @@ async function conferirResultado(stateGlobais) {
                 verificarStopAutoTrade(broker);
             });
 
-            estadoSessao.losses++; estadoSessao.sinalRodando = null; verificarFimDeSessao(); 
+            estadoSessao.sinalRodando = null; 
         } else { 
-            const msgSent = await bot.sendMessage(CHAT_ID, `🔄 *ENTRAR NO GALE ${operacao.step}* em ${operacao.nomeAmigavel}!\nMesma direção.`, { parse_mode: 'Markdown' });
-            estadoSessao.lastGaleMsgId = msgSent.message_id;
+            if (estadoSessao.ativa && estadoSessao.permitirSinais) {
+                const msgSent = await bot.sendMessage(CHAT_ID, `🔄 *ENTRAR NO GALE ${operacao.step}* em ${operacao.nomeAmigavel}!\nMesma direção.`, { parse_mode: 'Markdown' });
+                estadoSessao.lastGaleMsgId = msgSent.message_id;
+            }
             
             Object.values(stateGlobais.activeBrokers).forEach(async broker => {
                 if (!broker.autoTradeActive || !broker.isPremium) return;
