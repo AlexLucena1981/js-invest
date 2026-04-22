@@ -1,6 +1,6 @@
 // 🎨 UI & VISUAL CONTROLLERS (Gráficos, Painéis e Alertas)
 
-window.liveChart = null; // Gráfico Global
+window.liveChart = null; 
 
 function initChart() {
     const ctx = document.getElementById('liveChart').getContext('2d');
@@ -20,47 +20,72 @@ function saveRiskConfig() {
     localStorage.setItem('jsInvestConfig', JSON.stringify(config));
 }
 
-// 🎯 ATUALIZADO: O texto reflete a exigência de "maior que R$ 0,00"
-function mostrarPopupBloqueioFreemium() {
+// 🎯 SAAS: PAINEL DE ASSINATURA ATUALIZADO
+function mostrarPainelAssinatura(dataExpiracao) {
     if (document.getElementById('premiumBlockModal')) return;
 
     const modal = document.createElement('div');
     modal.id = 'premiumBlockModal';
-    modal.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:99999; display:flex; justify-content:center; align-items:center; backdrop-filter: blur(8px); animation: fadeIn 0.3s ease-out;';
+    modal.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9); z-index:99999; display:flex; justify-content:center; align-items:center; backdrop-filter: blur(10px); animation: fadeIn 0.3s ease-out;';
     
     modal.innerHTML = `
-        <div style="background:#0d1117; border:2px solid #f85149; border-radius:15px; width:90%; max-width:450px; padding:30px; text-align:center; color:#c9d1d9; box-shadow: 0 0 40px rgba(248, 81, 73, 0.4); position:relative;">
-            <div style="font-size:50px; margin-bottom:10px; text-shadow: 0 0 15px rgba(248, 81, 73, 0.8);">🛡️</div>
-            <h2 style="color:#f85149; margin-bottom:15px; font-weight:900; letter-spacing:1px;">GESTÃO INSTITUCIONAL</h2>
-            <p style="font-size:14px; margin-bottom:20px; line-height:1.6; color:#8b949e;">Para sua proteção, a ferramenta de <b style="color:#c9d1d9;">Auto-Trade na Real</b> está fixada em <b style="color:#58a6ff;">1% da sua banca</b>. O valor mínimo de entrada na corretora é de R$ 5,00.</p>
-            <div style="background:#161b22; padding:15px; border-radius:8px; border:1px solid #30363d; margin-bottom:25px;">
-                <span style="color:#8b949e; font-size:12px; display:block; margin-bottom:5px;">STATUS DA SUA CONTA (SALDO ZERADO OU NEGATIVO)</span>
-                <span style="color:#d29922; font-size:16px; font-weight:bold;">⚠️ REAL BLOQUEADA / DEMO LIBERADA</span>
-                <div style="margin-top:10px; font-size:12px; color:#58a6ff;">👉 Mude para a Conta Demo para testar o robô livremente.<br>👉 Ou deposite saldo para operar na Real.<br>👉 Ou apenas deixe no modo Free (recebendo sinais visuais).</div>
+        <div style="background:#0d1117; border:2px solid #58a6ff; border-radius:20px; width:95%; max-width:450px; padding:30px; text-align:center; color:#fff; box-shadow: 0 0 50px rgba(88, 166, 255, 0.2);">
+            <div style="font-size:50px; margin-bottom:10px;">🔒</div>
+            <h2 style="color:#58a6ff; margin-bottom:5px; font-weight:900;">ACESSO EXPIRADO</h2>
+            <p style="color:#8b949e; font-size:14px; margin-bottom:20px;">O seu período de uso terminou em <br><b style="color:#f85149;">${new Date(dataExpiracao).toLocaleDateString()}</b></p>
+            
+            <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:15px;">
+                <button onclick="gerarCheckout(1.00, 1)" style="background:#161b22; border:1px solid #30363d; color:#fff; padding:12px; border-radius:10px; cursor:pointer; font-weight:bold;"><b>1 MÊS</b> - R$ 1,00 (TESTE)</button>
+                <button onclick="gerarCheckout(119.90, 3)" style="background:linear-gradient(90deg, #1f6feb, #58a6ff); border:none; color:#fff; padding:15px; border-radius:10px; cursor:pointer; font-weight:bold; transform:scale(1.05);">🚀 <b>3 MESES</b> - R$ 119,90</button>
+                <button onclick="gerarCheckout(199.90, 6)" style="background:#161b22; border:1px solid #30363d; color:#fff; padding:12px; border-radius:10px; cursor:pointer; font-weight:bold;"><b>6 MESES</b> - R$ 199,90</button>
+                <button onclick="gerarCheckout(399.90, 12)" style="background:#161b22; border:1px solid #30363d; color:#fff; padding:12px; border-radius:10px; cursor:pointer; font-weight:bold;"><b>1 ANO</b> - R$ 399,90</button>
             </div>
-            <button onclick="document.getElementById('premiumBlockModal').remove()" style="background: linear-gradient(180deg, #f85149 0%, #da3633 100%); color:white; border:none; padding:12px 25px; border-radius:8px; font-weight:bold; cursor:pointer; width:100%; font-size:16px; transition:0.2s; box-shadow: 0 4px 15px rgba(248, 81, 73, 0.4);">COMPREENDIDO</button>
+
+            <div id="pixArea" style="display:none; background:#fff; padding:15px; border-radius:10px; margin-top:15px; margin-bottom:15px;">
+                <p style="color:#000; font-weight:bold; margin-bottom:10px;">Pague o PIX para liberar agora:</p>
+                <div id="qrcodePlace" style="display:flex; justify-content:center; margin-bottom:10px;"></div>
+                <input type="text" id="pixCopyPaste" readonly style="width:100%; padding:8px; font-size:10px; background:#f0f0f0; border:1px solid #ccc; border-radius:4px; color:#000;">
+                <button onclick="copyPix()" style="background:#000; color:#fff; width:100%; border:none; padding:12px; margin-top:10px; border-radius:5px; cursor:pointer; font-weight:bold;">COPIAR CÓDIGO PIX</button>
+            </div>
+            
+            <button onclick="liberarApenasDemo()" style="background:transparent; border:none; color:#8b949e; text-decoration:underline; font-size:12px; cursor:pointer; margin-top:10px;">Ignorar e acessar apenas Conta Demo</button>
         </div>
     `;
     document.body.appendChild(modal);
 }
 
-function togglePremiumUI(isPremium) {
-    const statusBot = document.getElementById('statusBot');
-    if (statusBot) {
-        if (isPremium) { statusBot.innerText = "🚀 GESTÃO 1% ATIVA: Conta Real Liberada!"; statusBot.style.color = "#3fb950"; } 
-        else { statusBot.innerText = "🔒 CONTA REAL BLOQUEADA: Saldo Zerado (Use a Demo)"; statusBot.style.color = "#d29922"; }
-    }
+// 🎯 FECHA O MODAL MAS TRANCA NA DEMO
+function liberarApenasDemo() {
+    const modal = document.getElementById('premiumBlockModal');
+    if (modal) modal.style.display = 'none';
     
-    const elsToToggle = ['riskAccount', 'riskAmount', 'riskWin', 'riskLoss', 'btnToggleBot', 'btnManualCall', 'btnManualPut'];
-    elsToToggle.forEach(id => {
-        const el = document.getElementById(id);
-        if (el) {
-            el.style.display = isPremium ? '' : 'none'; 
-            if(el.parentElement && el.parentElement.tagName === 'DIV' && el.parentElement.id !== 'manualTradePanel') {
-                el.parentElement.style.display = isPremium ? '' : 'none';
+    const accSelect = document.getElementById('riskAccount');
+    if (accSelect) {
+        accSelect.value = 'demo';
+        accSelect.disabled = true; // Tranca o seletor visualmente
+    }
+    alert("⚠️ Acesso restrito à Conta Demo. Para operar na Conta Real com o Robô, renove sua assinatura.");
+}
+
+function togglePremiumUI(isPremium, expiresAt) {
+    const statusBot = document.getElementById('statusBot');
+    const accSelect = document.getElementById('riskAccount');
+    
+    if (statusBot) {
+        if (isPremium) { 
+            let exp = new Date(expiresAt);
+            statusBot.innerText = `🚀 ACESSO LIBERADO (Expira em: ${exp.toLocaleDateString()})`; 
+            statusBot.style.color = "#3fb950"; 
+            if (accSelect) accSelect.disabled = false; // Destranca a conta Real
+        } else { 
+            statusBot.innerText = "🔒 ACESSO EXPIRADO (Apenas Conta Demo)"; 
+            statusBot.style.color = "#d29922"; 
+            if (accSelect) {
+                accSelect.value = 'demo';
+                accSelect.disabled = true; // Tranca na Demo se estiver expirado
             }
         }
-    });
+    }
 }
 
 function setupFifoPanel() {

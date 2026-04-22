@@ -42,7 +42,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
     ['riskAccount', 'riskWin', 'riskLoss'].forEach(id => { const el = document.getElementById(id); if(el) el.addEventListener('change', saveRiskConfig); });
 
-    togglePremiumUI(false);
+    togglePremiumUI(false, new Date());
 
     const savedConfig = JSON.parse(localStorage.getItem('jsInvestConfig'));
     if (savedConfig) {
@@ -77,34 +77,88 @@ socket.on('radar_stats_update', (stats) => {
     }
 });
 
+// 🎯 SAAS LOGIN
 socket.on('hybrid_login_result', (res) => {
     document.getElementById('btnLogin').innerText = "Acessar Sistema";
     if (res.success) {
         localStorage.setItem('jsInvestBrokerToken', res.brokerToken); localStorage.setItem('jsInvestUserRole', res.role); localStorage.setItem('jsInvestUid', res.uid);
         auth.signInWithCustomToken(res.firebaseToken).then(() => {
             document.getElementById('loginScreen').style.display = 'none'; document.getElementById('valReal').innerText = `R$ ${res.balance.real}`; document.getElementById('valDemo').innerText = res.balance.demo; document.getElementById('manualTradePanel').style.display = 'flex'; 
-            togglePremiumUI(res.isPremium);
-            if (!res.isPremium) { setTimeout(() => { mostrarPopupBloqueioFreemium(); }, 1500); }
+            
+            togglePremiumUI(res.isPremium, res.expiresAt);
+            if (!res.isPremium) { mostrarPainelAssinatura(res.expiresAt); }
+            
             if (res.role === 'admin') { 
                 document.getElementById('btnAdminPanel').style.display = 'inline-block';
                 setupTelegramAdminUI(auth, socket); 
                 auth.currentUser.getIdToken().then(token => socket.emit('admin_get_tg_config', token)); 
             }
-        }).catch(err => { document.getElementById('loginError').innerText = "Erro: " + err.message; document.getElementById('loginError').style.display = 'block'; });
-    } else { alert("Conta não encontrada ou credenciais inválidas!\\nVocê será redirecionado para o cadastro oficial da corretora."); window.location.href = "https://joaosilva.top/corretora-vellox"; }
+        }).catch(err => { alert("Erro de Autenticação Firebase: " + err.message); });
+    } else { alert(res.msg || "Erro na autenticação com a corretora."); }
 });
 
+// 🎯 SAAS RECONNECT
 socket.on('auto_reconnect_result', (res) => {
     if(res.success) {
         document.getElementById('loginScreen').style.display = 'none'; document.getElementById('valReal').innerText = `R$ ${res.balance.real}`; document.getElementById('valDemo').innerText = res.balance.demo; document.getElementById('manualTradePanel').style.display = 'flex'; 
-        togglePremiumUI(res.isPremium);
-        if (!res.isPremium) { setTimeout(() => { mostrarPopupBloqueioFreemium(); }, 1500); }
+        
+        togglePremiumUI(res.isPremium, res.expiresAt);
+        if (!res.isPremium) { mostrarPainelAssinatura(res.expiresAt); }
+        
         if (res.role === 'admin') { 
             document.getElementById('btnAdminPanel').style.display = 'inline-block';
             setupTelegramAdminUI(auth, socket); 
             auth.currentUser.getIdToken().then(token => socket.emit('admin_get_tg_config', token)); 
         }
-    } else { localStorage.removeItem('jsInvestBrokerToken'); localStorage.removeItem('jsInvestUserRole'); localStorage.removeItem('jsInvestUid'); document.getElementById('btnLogin').innerText = "Acessar Sistema"; }
+    } else { 
+        localStorage.removeItem('jsInvestBrokerToken'); localStorage.removeItem('jsInvestUserRole'); localStorage.removeItem('jsInvestUid'); 
+        document.getElementById('btnLogin').innerText = "Acessar Sistema"; 
+        alert(res.msg || "Sessão expirada.");
+    }
+});
+
+// 💳 LÓGICA DE CHECKOUT E GERAÇÃO PIX
+window.gerarCheckout = async (valor, meses) => {
+    const uid = localStorage.getItem('jsInvestUid');
+    const email = auth.currentUser ? auth.currentUser.email : "user@jsinvest";
+
+    document.getElementById('pixArea').style.display = 'block';
+    document.getElementById('pixArea').innerHTML = "<p style='color:#000; text-align:center;'>Aguarde... Gerando Cobrança PIX.</p>";
+
+    try {
+        const response = await fetch('/create_payment', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ valor, meses, uid, email })
+        });
+        const data = await response.json();
+
+        if (data.pix_code) {
+            document.getElementById('pixArea').innerHTML = `
+                <p style="color:#000; font-weight:bold; margin-bottom:10px;">Pague o PIX para liberar agora:</p>
+                ${data.qrcode_base64 ? `<div style="background:#fff; padding:10px; display:inline-block; margin-bottom:10px;"><img src="${data.qrcode_base64}" style="width:180px;"></div>` : ''}
+                <input type="text" id="pixCopyPaste" value="${data.pix_code}" readonly style="width:100%; padding:10px; font-size:10px; background:#f0f0f0; border:1px solid #ccc; border-radius:4px; color:#000;">
+                <button onclick="copyPix()" style="background:#000; color:#fff; width:100%; border:none; padding:12px; margin-top:10px; border-radius:5px; cursor:pointer; font-weight:bold;">COPIAR CÓDIGO PIX</button>
+            `;
+        }
+    } catch (e) { alert("Erro ao gerar pagamento. Tente novamente mais tarde."); }
+};
+
+window.copyPix = () => {
+    const input = document.getElementById('pixCopyPaste');
+    input.select(); input.setSelectionRange(0, 99999);
+    navigator.clipboard.writeText(input.value);
+    alert("✅ Código PIX Copiado! Pague no app do seu banco e o acesso será liberado.");
+};
+
+// 🎯 MAGIA SAAS: Destranca a tela ao vivo quando o PIX cai!
+socket.on('payment_approved', (data) => {
+    alert("✅ PAGAMENTO APROVADO! O seu acesso foi liberado com sucesso.");
+    
+    const modal = document.getElementById('premiumBlockModal');
+    if (modal) modal.style.display = 'none';
+    
+    togglePremiumUI(true, data.expiresAt);
 });
 
 socket.on('admin_tg_config_data', (config) => { window.tempTgConfig = config; });
@@ -190,13 +244,19 @@ socket.on('signal', (data) => { const alertBox = document.getElementById('alertB
 socket.on('history_dump', (historyArr) => {
     const historyTableBody = document.getElementById('historyTableBody');
     const telaMoeda = document.getElementById('coinSelector').value.toUpperCase(); historyTableBody.innerHTML = ''; 
+    let adicionados = 0;
     historyArr.forEach(sig => {
         if (sig.symbol.toUpperCase() !== telaMoeda) return; 
+        adicionados++;
         const tr = document.createElement('tr'); tr.id = `sig-${sig.id}`; const isCall = sig.type === 'CALL'; let colorClass = 'text-warning'; if (sig.status.includes('WIN')) colorClass = 'text-green'; else if (sig.status.includes('LOSS')) colorClass = 'text-red'; 
         tr.innerHTML = `<td class="text-muted">${sig.time}</td><td class="${isCall ? 'text-green' : 'text-red'}"><span style="font-size:10px; color:#8b949e; display:block;">${sig.symbol || 'BTCUSDT'}</span>${isCall ? '🟢 CALL' : '🔴 PUT'}</td><td id="res-${sig.id}" class="${colorClass}">${sig.status}</td>`;
         historyTableBody.appendChild(tr); 
         if (!sig.status.includes('WIN') && !sig.status.includes('LOSS')) { let stepText = ''; if (sig.status.includes('Gale 1')) stepText = 'Gale 1'; else if (sig.status.includes('Gale 2')) stepText = 'Gale 2'; else stepText = sig.isManual ? 'Sniper (1ª)' : 'Auto (1ª)'; manageFifoAlert({ id: 'sig-' + sig.id, symbol: sig.symbol, time: sig.time, type: sig.type, stepText: stepText, isEnd: false, isRadar: false }); }
     });
+    
+    if (adicionados === 0) {
+        historyTableBody.innerHTML = `<tr><td colspan="3" style="text-align:center; color:#8b949e; padding: 25px 10px; font-size:12px;">Nenhum sinal encontrado.<br><br>A estratégia selecionada é extremamente rígida ou o ativo não atingiu os parâmetros nas últimas horas.</td></tr>`;
+    }
 });
 
 socket.on('scoreboard', (data) => {
@@ -240,11 +300,6 @@ function getInstitutionalRiskConfig() {
     const realBalStr = document.getElementById('valReal').innerText;
     const realBalNum = parseFloat(realBalStr.replace('R$ ', '').replace(/\./g, '').replace(',', '.'));
     
-    if (!isDemo && uid !== 'admin_master' && realBalNum <= 0) {
-        alert("⚠️ GESTÃO INSTITUCIONAL: SALDO INSUFICIENTE\n\nA sua entrada é fixada em 1% da banca. O seu saldo precisa ser maior que R$ 0,00 para operar na conta Real.\n\n👉 Use a Conta Demo;\n👉 Deposite saldo na corretora;\n👉 Ou use o modo FREE (apenas com Sinais).");
-        return null; 
-    }
-
     const demoBalStr = document.getElementById('valDemo').innerText;
     const demoBalNum = parseFloat(demoBalStr.replace('R$ ', '').replace(/\./g, '').replace(',', '.'));
     const targetBalance = isDemo ? demoBalNum : realBalNum;

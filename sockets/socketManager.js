@@ -6,8 +6,6 @@ const { reloadTelegramConfig, forcarSessaoTelegram } = require('../services/tele
 
 const MASTER_EMAIL = 'alexandre.lucena@gmail.com'; 
 const MASTER_BROKER_LOGIN = 'AlexLucena1981';
-// 🎯 ATUALIZADO: Saldo mínimo baixado temporariamente para R$ 0,00
-const MIN_BALANCE_PLUS = 0.00;
 
 function parseBalance(valStr) {
     if (!valStr || valStr === "0,00" || valStr === "---") return 0;
@@ -82,38 +80,66 @@ module.exports = function setupSockets(io, state, tgConfigGlobal) {
                 const loginResponse = await axios.post(`https://velloxbroker.com/api/login`, loginData, { headers: { 'Accept': 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' } });
                 
                 const brokerToken = loginResponse.data.token || loginResponse.data.access_token;
-                if (!brokerToken) throw new Error("BROKER_FAIL");
+                if (!brokerToken) throw new Error("Falha no token da corretora");
                 const realBalance = await getVelloxBalance(brokerToken);
 
-                let uid = brokerUser.replace(/[^a-zA-Z0-9]/g, ''); if (!uid) uid = 'user_' + Date.now();
-                let userRole = 'aluno'; const userLower = brokerUser.toLowerCase();
+                let docId = loginResponse.data.id ? loginResponse.data.id.toString() : "user_" + Date.now();
+                let nomeAluno = loginResponse.data.login || brokerUser;
                 
-                const numBalance = parseBalance(realBalance);
-                let isPremium = numBalance > MIN_BALANCE_PLUS;
+                try {
+                    const userFullRes = await axios.get(`https://velloxbroker.com/api/public/users?q=${encodeURIComponent(brokerUser)}`, {
+                        headers: { 'Authorization': `Bearer ${brokerToken}` }
+                    });
+                    if (userFullRes.data && userFullRes.data.users && userFullRes.data.users.length > 0) {
+                        const velloxData = userFullRes.data.users[0];
+                        if (velloxData.document) docId = velloxData.document.replace(/\D/g, ''); 
+                        if (velloxData.name) nomeAluno = velloxData.name;
+                    }
+                } catch (e) {
+                    console.log(`[AVISO] Sem permissão para buscar CPF de ${brokerUser}. Usando ID ${docId}.`);
+                }
                 
+                let userRole = 'aluno'; 
+                const userLower = brokerUser.toLowerCase();
                 if (userLower === MASTER_EMAIL.toLowerCase() || userLower === MASTER_BROKER_LOGIN.toLowerCase()) { 
-                    uid = 'admin_master'; 
                     userRole = 'admin'; 
-                    isPremium = true; 
-                } else { 
-                    const snapshot = await db.collection('users').where('email', '==', brokerUser).get(); 
-                    if (!snapshot.empty) { 
-                        uid = snapshot.docs[0].id; 
-                        userRole = snapshot.docs[0].data().role; 
-                        if (userRole === 'admin') isPremium = true;
-                    } 
                 }
 
-                const customToken = await admin.auth().createCustomToken(uid);
+                let userRef = db.collection('users').doc(docId);
+                let userDoc = await userRef.get();
+                let userData;
 
-                state.activeBrokers[uid] = { 
-                    uid: uid, socketId: socket.id, token: brokerToken, demoAccountId: '8', realAccountId: '0', 
+                if (!userDoc.exists) {
+                    const trialEnd = new Date();
+                    trialEnd.setDate(trialEnd.getDate() + 3); 
+                    userData = {
+                        name: nomeAluno,
+                        email: brokerUser,
+                        document: docId, 
+                        trialStartDate: admin.firestore.FieldValue.serverTimestamp(),
+                        subscriptionEndDate: trialEnd,
+                        role: userRole
+                    };
+                    await userRef.set(userData);
+                } else {
+                    userData = userDoc.data();
+                    if (userRole === 'admin') userData.role = 'admin'; 
+                }
+
+                const agora = new Date();
+                const expira = userData.subscriptionEndDate.toDate();
+                const isPremium = agora < expira || userData.role === 'admin';
+
+                const customToken = await admin.auth().createCustomToken(docId);
+
+                state.activeBrokers[docId] = { 
+                    uid: docId, socketId: socket.id, token: brokerToken, demoAccountId: '8', realAccountId: '0', 
                     isPremium: isPremium, autoTradeActive: false, 
                     config: { active: false, accountType: 'demo', baseAmount: 5, maxGale: 2, stopWin: 99999, stopLoss: 99999 }, sessionProfit: 0 
                 };
                 
-                socket.emit('hybrid_login_result', { success: true, firebaseToken: customToken, role: userRole, balance: { demo: "---", real: realBalance }, brokerToken: brokerToken, uid: uid, isPremium: isPremium });
-            } catch (error) { socket.emit('hybrid_login_result', { success: false, reason: 'broker', msg: 'Credenciais inválidas.' }); }
+                socket.emit('hybrid_login_result', { success: true, firebaseToken: customToken, role: userData.role, balance: { demo: "---", real: realBalance }, brokerToken: brokerToken, uid: docId, isPremium: isPremium, expiresAt: expira.toISOString() });
+            } catch (error) { socket.emit('hybrid_login_result', { success: false, reason: 'broker', msg: 'Credenciais inválidas na Vellox.' }); }
         });
 
         socket.on('auto_reconnect', async (data) => {
@@ -121,14 +147,19 @@ module.exports = function setupSockets(io, state, tgConfigGlobal) {
                 const { token, role, uid } = data;
                 if(!token || !uid) throw new Error("Sem Token ou UID");
 
-                let realBalance = await getVelloxBalance(token);
-                if(realBalance === "0,00" && !state.activeBrokers[uid]) throw new Error("Token Expirado");
+                const userDoc = await db.collection('users').doc(uid).get();
+                if (!userDoc.exists) throw new Error("Usuário não encontrado.");
                 
-                const numBalance = parseBalance(realBalance);
-                let isPremium = numBalance > MIN_BALANCE_PLUS;
-                
-                if (role === 'admin' || uid === 'admin_master') { 
-                    isPremium = true; 
+                const userData = userDoc.data();
+                const agora = new Date();
+                const expira = userData.subscriptionEndDate.toDate();
+                const isPremium = agora < expira || userData.role === 'admin';
+
+                let realBalance = "0,00";
+                if (userData.role === 'admin') { realBalance = "99999,00"; } 
+                else {
+                    realBalance = await getVelloxBalance(token);
+                    if(realBalance === "0,00" && !state.activeBrokers[uid]) throw new Error("Token Expirado");
                 }
 
                 if (state.activeBrokers[uid]) { 
@@ -140,23 +171,38 @@ module.exports = function setupSockets(io, state, tgConfigGlobal) {
                     state.activeBrokers[uid] = { uid: uid, socketId: socket.id, token: token, demoAccountId: '8', realAccountId: '0', isPremium: isPremium, autoTradeActive: false, config: { active: false, accountType: 'demo', baseAmount: 5, maxGale: 2, stopWin: 99999, stopLoss: 99999 }, sessionProfit: 0 }; 
                 }
                 
-                socket.emit('auto_reconnect_result', { success: true, role: role, balance: { demo: "---", real: realBalance }, isPremium: isPremium });
+                socket.emit('auto_reconnect_result', { success: true, role: userData.role, balance: { demo: "---", real: realBalance }, isPremium: isPremium, expiresAt: expira.toISOString() });
             } catch (error) { socket.emit('auto_reconnect_result', { success: false, msg: 'Sessão expirada. Faça login novamente.' }); }
         });
 
+        // 🎯 SAAS: BLOQUEIO TÁTICO DE CONTA REAL
         socket.on('setup_auto_trade', (config) => {
             const broker = getBrokerBySocket(socket.id);
             if (!broker) return;
+            
+            // Se expirou e tenta usar conta Real, BLOQUEIA!
+            if (!broker.isPremium && config.accountType !== 'demo') { 
+                socket.emit('auto_trade_status', { active: false, msg: `🔒 Assinatura Expirada. Conta Real Bloqueada.`, profit: 0 }); 
+                return; 
+            }
+            
             broker.config = config; broker.autoTradeActive = config.active;
             if (config.active) broker.sessionProfit = 0; 
             socket.emit('auto_trade_status', { active: config.active, msg: config.active ? "Robô Armado..." : "Robô Pausado.", profit: broker.sessionProfit });
         });
 
+        // 🎯 SAAS: BLOQUEIO TÁTICO DE CONTA REAL NO SNIPER
         socket.on('manual_trade', async (data) => {
             const direction = data.direction; const frontendConfig = data.config; const reqSymbol = data.symbol; const reqTf = data.timeframe;
             const broker = getBrokerBySocket(socket.id);
             
             if (!broker || !broker.token) { socket.emit('sniper_error', 'Você precisa conectar na corretora antes de atirar!'); return; }
+            
+            // Se expirou e tenta atirar com a Real, BLOQUEIA!
+            if (!broker.isPremium && frontendConfig.accountType !== 'demo') { 
+                socket.emit('sniper_error', `🔒 Função restrita. Assine para operar na Conta Real!`); 
+                return; 
+            }
 
             let targetEng = getEngine(reqSymbol, reqTf, socket.userState.strategyId);
             if (targetEng.lastTickTime > 0 && (Date.now() - targetEng.lastTickTime > 120000)) targetEng.activeSignals = [];
@@ -195,13 +241,7 @@ module.exports = function setupSockets(io, state, tgConfigGlobal) {
                 if (decodedToken.uid === 'admin_master' || true) {
                     await db.collection('settings').doc('telegram').set(data.config);
                     Object.assign(tgConfigGlobal, data.config);
-                    
-                    state.strategiesDB.forEach(s => {
-                        s.rsiOverbought = parseFloat(tgConfigGlobal.rsiOver) || 65;
-                        s.rsiOversold = parseFloat(tgConfigGlobal.rsiUnder) || 35;
-                        s.bbStdDev = parseFloat(tgConfigGlobal.bbDev) || 2;
-                    });
-
+                    state.strategiesDB.forEach(s => { s.rsiOverbought = parseFloat(tgConfigGlobal.rsiOver) || 65; s.rsiOversold = parseFloat(tgConfigGlobal.rsiUnder) || 35; s.bbStdDev = parseFloat(tgConfigGlobal.bbDev) || 2; });
                     reloadTelegramConfig(tgConfigGlobal);
                     socket.emit('user_creation_result', { success: true, msg: 'Painel e Robô atualizados com sucesso! 🚀🎯' });
                 }
@@ -224,17 +264,8 @@ module.exports = function setupSockets(io, state, tgConfigGlobal) {
                 if (decodedToken.uid === 'admin_master' || true) {
                     const hoje = getSPDateString(); 
                     const snapshot = await db.collection('historico_sinais').where('dataRef', '==', hoje).get();
-                    
-                    let ranking = {};
-                    let relatorioArray = [];
-
-                    snapshot.forEach(doc => {
-                        const d = doc.data();
-                        relatorioArray.push(d);
-                        if (!ranking[d.ativo]) ranking[d.ativo] = { w: 0, l: 0 };
-                        if (d.resultado === 'WIN') ranking[d.ativo].w++; else ranking[d.ativo].l++;
-                    });
-
+                    let ranking = {}; let relatorioArray = [];
+                    snapshot.forEach(doc => { const d = doc.data(); relatorioArray.push(d); if (!ranking[d.ativo]) ranking[d.ativo] = { w: 0, l: 0 }; if (d.resultado === 'WIN') ranking[d.ativo].w++; else ranking[d.ativo].l++; });
                     const sortedRanking = Object.entries(ranking).sort((a, b) => b[1].w - a[1].w);
                     socket.emit('admin_report_data', { success: true, ranking: sortedRanking, historico: relatorioArray });
                 }
@@ -260,9 +291,7 @@ module.exports = function setupSockets(io, state, tgConfigGlobal) {
             } catch (error) { socket.emit('admin_users_list', { success: false, msg: error.message }); }
         });
 
-        socket.on('admin_get_strategies', async (token) => {
-            socket.emit('admin_strategies_list', { success: true, strategies: state.strategiesDB });
-        });
+        socket.on('admin_get_strategies', () => { socket.emit('admin_strategies_list', { success: true, strategies: state.strategiesDB }); });
 
         socket.on('admin_delete_strategy', async (data) => {
             try {

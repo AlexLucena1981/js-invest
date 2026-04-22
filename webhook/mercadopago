@@ -2,10 +2,11 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const { db } = require('./config/firebase');
-const axios = require('axios'); // 🎯 Necessário para falar com o Mercado Pago
+const axios = require('axios');
 
-// 💰 INSIRA O SEU ACCESS TOKEN AQUI (O mesmo do JS Roleta Turbo)
-const MERCADO_PAGO_TOKEN = "APP_USR-3528566099083615-032621-e83caa93fb1a10be74adc4d003e89766-3295623236"; 
+// 🔒 SEGURANÇA DE PRODUÇÃO: Puxa o token das Variáveis de Ambiente do Render
+// Caso não encontre no Render, usa a string como fallback. Coloque o seu token real aqui:
+const MERCADO_PAGO_TOKEN = process.env.MP_ACCESS_TOKEN || "APP_USR-SEU-TOKEN-AQUI"; 
 
 const globalStore = {
     state: {
@@ -34,13 +35,21 @@ app.post('/create_payment', async (req, res) => {
     try {
         const idempotencyKey = Date.now().toString(); 
         
-        // Dispara o pedido para o Mercado Pago
+        // 🎯 MAGIA DE PRODUÇÃO: O Render sabe o próprio nome! 
+        // Ele monta a URL do Webhook automaticamente com HTTPS.
+        const baseUrl = process.env.RENDER_EXTERNAL_HOSTNAME 
+            ? `https://${process.env.RENDER_EXTERNAL_HOSTNAME}` 
+            : `http://localhost:${process.env.PORT || 3000}`; // Fallback local
+            
+        const webhookOficial = `${baseUrl}/webhook/mercadopago`;
+
         const mpRes = await axios.post('https://api.mercadopago.com/v1/payments', {
             transaction_amount: Number(valor),
             description: `Acesso VIP JS Invest - ${meses} Meses`,
             payment_method_id: 'pix',
             payer: { email: email || 'contato@jsinvest.com' },
-            external_reference: uid // Mandamos o ID do aluno como referência
+            external_reference: uid,
+            notification_url: webhookOficial // 👈 Desvia do JS Roleta e manda para este Render!
         }, {
             headers: {
                 'Authorization': `Bearer ${MERCADO_PAGO_TOKEN}`,
@@ -50,12 +59,9 @@ app.post('/create_payment', async (req, res) => {
 
         const paymentData = mpRes.data;
         const paymentId = paymentData.id.toString();
-        
-        // Pega os códigos reais devolvidos pelo banco
         const pix_code = paymentData.point_of_interaction.transaction_data.qr_code;
         const qrcode_base64 = "data:image/png;base64," + paymentData.point_of_interaction.transaction_data.qr_code_base64;
 
-        // Salva no nosso Firebase como 'Pendente' com o ID do Pagamento
         await db.collection('payments').doc(paymentId).set({ 
             uid, valor, meses, email, status: 'pending', createdAt: new Date(), paymentId
         });
@@ -68,26 +74,22 @@ app.post('/create_payment', async (req, res) => {
     }
 });
 
-// 🔔 WEBHOOK DE APROVAÇÃO AUTOMÁTICA (MERCADO PAGO REAL)
+// 🔔 WEBHOOK DE APROVAÇÃO AUTOMÁTICA (Ouvinte Oficial)
 app.post('/webhook/mercadopago', async (req, res) => {
     try {
-        // O MP manda o ID na query string ou no body
         const paymentId = req.query.id || (req.body.data && req.body.data.id);
         
         if (paymentId) {
-            // Vamos perguntar ao Mercado Pago: "Este pagamento foi realmente aprovado?"
             const mpRes = await axios.get(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
                 headers: { 'Authorization': `Bearer ${MERCADO_PAGO_TOKEN}` }
             });
 
             const paymentData = mpRes.data;
             
-            // Se o pagamento constar como aprovado no banco deles
             if (paymentData.status === 'approved') {
                 const paymentDocRef = db.collection('payments').doc(paymentId.toString());
                 const paymentDoc = await paymentDocRef.get();
 
-                // Evita liberar 2 vezes o mesmo pagamento
                 if (paymentDoc.exists && paymentDoc.data().status !== 'approved') {
                     const data = paymentDoc.data();
                     const uid = data.uid;
@@ -97,36 +99,44 @@ app.post('/webhook/mercadopago', async (req, res) => {
                     const userDoc = await userRef.get();
                     let novaData = new Date();
 
-                    // Se a data já existir e for no futuro, adicionamos tempo. Se não, é a partir de hoje.
                     if (userDoc.exists && userDoc.data().subscriptionEndDate) {
                         let atual = userDoc.data().subscriptionEndDate.toDate();
                         novaData = atual > new Date() ? atual : new Date();
                     }
                     novaData.setMonth(novaData.getMonth() + meses);
 
-                    // Atualiza Firebase e marca como PAGO
+                    // Atualiza Banco de Dados
                     await userRef.update({ subscriptionEndDate: novaData, status: 'active' });
                     await paymentDocRef.update({ status: 'approved', approvedAt: new Date() });
                     
-                    console.log(`✅ [SaaS] PIX RECEBIDO! Acesso liberado para ${uid} até ${novaData.toLocaleDateString()}`);
+                    // 🎯 AVISA A TELA DO ALUNO PARA DESBLOQUEAR AO VIVO!
+                    const broker = globalStore.state.activeBrokers[uid];
+                    if (broker && broker.socketId) {
+                        broker.isPremium = true;
+                        io.to(broker.socketId).emit('payment_approved', { expiresAt: novaData.toISOString() });
+                    }
+                    console.log(`✅ [SaaS] PIX APROVADO! Acesso liberado para ${uid} até ${novaData.toLocaleDateString()}`);
                 }
             }
         }
     } catch (error) {
-        console.error("Erro ao processar Webhook do MP:", error.message);
+        console.error("Erro Webhook MP:", error.message);
     }
     
-    // O Mercado Pago exige que respondamos com 200 OK rápido
+    // Resposta rápida obrigatória para a API do Mercado Pago
     res.sendStatus(200);
 });
 
-// Iniciação do sistema
+// Iniciação do Motor
 initEngine(io, globalStore.state);
 setupSockets(io, globalStore.state, globalStore.tgConfigGlobal);
 loadAvailableCoins(globalStore.state);
 
+// 🚀 A PORTA DINÂMICA DO RENDER
+const PORT = process.env.PORT || 3000;
+
 loadSystemData(io, globalStore.state, globalStore.tgConfigGlobal).then(() => {
-    server.listen(3000, () => { 
-        console.log('🚀 Terminal JS Invest operando com Integração Mercado Pago!'); 
+    server.listen(PORT, () => { 
+        console.log(`🚀 Terminal JS Invest SaaS online na porta ${PORT}!`); 
     });
 });
