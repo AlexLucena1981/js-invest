@@ -81,6 +81,8 @@ module.exports = function setupSockets(io, state, tgConfigGlobal) {
                 
                 const brokerToken = loginResponse.data.token || loginResponse.data.access_token;
                 if (!brokerToken) throw new Error("Falha no token da corretora");
+                
+                // 🎯 Busca o saldo real da Vellox
                 const realBalance = await getVelloxBalance(brokerToken);
 
                 let docId = loginResponse.data.id ? loginResponse.data.id.toString() : "user_" + Date.now();
@@ -155,11 +157,12 @@ module.exports = function setupSockets(io, state, tgConfigGlobal) {
                 const expira = userData.subscriptionEndDate.toDate();
                 const isPremium = agora < expira || userData.role === 'admin';
 
-                let realBalance = "0,00";
-                if (userData.role === 'admin') { realBalance = "99999,00"; } 
-                else {
-                    realBalance = await getVelloxBalance(token);
-                    if(realBalance === "0,00" && !state.activeBrokers[uid]) throw new Error("Token Expirado");
+                // 🎯 CIRURGIA FEITA: O Admin agora puxa o saldo real também! Nada de valores falsos.
+                const realBalance = await getVelloxBalance(token);
+                
+                // Só derruba o aluno se o token da corretora expirar. O admin passa.
+                if (realBalance === "0,00" && !state.activeBrokers[uid] && userData.role !== 'admin') {
+                    throw new Error("Token Expirado");
                 }
 
                 if (state.activeBrokers[uid]) { 
@@ -276,7 +279,6 @@ module.exports = function setupSockets(io, state, tgConfigGlobal) {
             } catch (error) { socket.emit('user_creation_result', { success: false, msg: error.message }); }
         });
 
-        // 🎯 CONTROLO DE ALUNOS COM AS DATAS
         socket.on('admin_get_users', async (token) => {
             try {
                 const decodedToken = await admin.auth().verifyIdToken(token);
@@ -295,7 +297,6 @@ module.exports = function setupSockets(io, state, tgConfigGlobal) {
             } catch (error) { socket.emit('admin_users_list', { success: false, msg: error.message }); }
         });
 
-        // 🎯 CONTROLO DOS PIX RECEBIDOS
         socket.on('admin_get_payments', async (token) => {
             try {
                 const decodedToken = await admin.auth().verifyIdToken(token);
@@ -307,10 +308,9 @@ module.exports = function setupSockets(io, state, tgConfigGlobal) {
                         if (d.createdAt) d.createdAt = d.createdAt.toDate();
                         payments.push({ id: doc.id, ...d });
                     });
-                    // Ordena do mais recente para o mais antigo e limita a 50 no JavaScript 
-                    // (para evitar que dê erro de index no Firebase)
+                    
                     payments.sort((a, b) => b.createdAt - a.createdAt);
-                    payments = payments.slice(0, 50);
+                    payments = payments.slice(0, 50); 
                     
                     socket.emit('admin_payments_list', { success: true, payments });
                 }
