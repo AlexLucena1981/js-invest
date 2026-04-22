@@ -14,6 +14,30 @@ window.radarGlobalStats = null;
 let isBotActive = false; 
 window.pixInterval = null; 
 
+// 🎯 LÓGICA DE NAVEGAÇÃO DAS ABAS DO ADMIN
+window.switchAdminTab = function(tabName) {
+    const tabUsers = document.getElementById('adminTabUsers');
+    const tabPix = document.getElementById('adminTabPix');
+    const btnUsers = document.getElementById('btnTabUsers');
+    const btnPix = document.getElementById('btnTabPix');
+
+    if (tabName === 'users') {
+        tabUsers.style.display = 'block';
+        tabPix.style.display = 'none';
+        btnUsers.style.color = '#58a6ff';
+        btnUsers.style.borderBottomColor = '#58a6ff';
+        btnPix.style.color = '#8b949e';
+        btnPix.style.borderBottomColor = 'transparent';
+    } else {
+        tabUsers.style.display = 'none';
+        tabPix.style.display = 'block';
+        btnPix.style.color = '#3fb950';
+        btnPix.style.borderBottomColor = '#3fb950';
+        btnUsers.style.color = '#8b949e';
+        btnUsers.style.borderBottomColor = 'transparent';
+    }
+};
+
 window.addEventListener('DOMContentLoaded', () => {
     initChart(); 
     
@@ -174,7 +198,7 @@ socket.on('admin_users_list', (res) => {
     const tbody = document.getElementById('usersListBody'); if(!tbody) return;
     tbody.innerHTML = '';
     if (res.success) {
-        if (res.users.length === 0) tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">Vazio.</td></tr>';
+        if (res.users.length === 0) tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding: 20px; color:#8b949e;">Vazio.</td></tr>';
         else { 
             res.users.forEach(u => { 
                 let statusHtml = '';
@@ -200,7 +224,7 @@ socket.on('admin_users_list', (res) => {
                 tr.innerHTML = `
                     <td style="padding: 10px; border-bottom: 1px solid #21262d; font-size:11px; color:#8b949e;">${u.document || u.id}</td>
                     <td style="padding: 10px; border-bottom: 1px solid #21262d; font-weight:bold; color:#c9d1d9;">${u.name || '---'}</td>
-                    <td style="padding: 10px; border-bottom: 1px solid #21262d; font-size:11px;">${u.email}</td>
+                    <td style="padding: 10px; border-bottom: 1px solid #21262d; font-size:11px; color:#8b949e;">${u.email}</td>
                     <td style="padding: 10px; border-bottom: 1px solid #21262d;">${statusHtml}</td>
                 `; 
                 tbody.appendChild(tr); 
@@ -214,7 +238,7 @@ socket.on('admin_payments_list', (res) => {
     const tbody = document.getElementById('paymentsListBody'); if(!tbody) return;
     tbody.innerHTML = '';
     if (res.success) {
-        if (res.payments.length === 0) tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">Nenhum PIX gerado ainda.</td></tr>';
+        if (res.payments.length === 0) tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 20px; color:#8b949e;">Nenhum PIX gerado ainda.</td></tr>';
         else {
             res.payments.forEach(p => {
                 const dateStr = p.createdAt ? new Date(p.createdAt).toLocaleString('pt-BR') : '---';
@@ -223,11 +247,11 @@ socket.on('admin_payments_list', (res) => {
                 
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
-                    <td style="padding: 10px; border-bottom: 1px solid #21262d; font-size:11px;">${dateStr}</td>
-                    <td style="padding: 10px; border-bottom: 1px solid #21262d; font-size:11px;">${p.email || p.uid}</td>
+                    <td style="padding: 10px; border-bottom: 1px solid #21262d; font-size:11px; color:#8b949e;">${dateStr}</td>
+                    <td style="padding: 10px; border-bottom: 1px solid #21262d; font-size:11px; color:#8b949e;">${p.email || p.uid}</td>
                     <td style="padding: 10px; border-bottom: 1px solid #21262d; color:#58a6ff; font-weight:bold;">R$ ${parseFloat(p.valor).toFixed(2).replace('.', ',')}</td>
-                    <td style="padding: 10px; border-bottom: 1px solid #21262d;">${p.meses} Mês(es)</td>
-                    <td style="padding: 10px; border-bottom: 1px solid #21262d; color:${statusColor}; font-weight:bold;">${statusText}</td>
+                    <td style="padding: 10px; border-bottom: 1px solid #21262d; color:#8b949e; font-size:11px;">${p.meses} Mês(es)</td>
+                    <td style="padding: 10px; border-bottom: 1px solid #21262d; color:${statusColor}; font-weight:bold; font-size:11px;">${statusText}</td>
                 `;
                 tbody.appendChild(tr);
             });

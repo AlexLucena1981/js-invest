@@ -168,64 +168,73 @@
     </div>
 
     <div class="modal-overlay" id="adminModal">
-        <div class="modal-box" style="width: 600px;">
-            <h2 style="color: #58a6ff; font-family: 'Orbitron';">👥 Painel Institucional</h2>
-            <div style="text-align: left; margin-bottom: 20px;">
-                <p style="color: #8b949e; font-size: 13px; margin-bottom: 5px;">Cadastrar Novo Assinante (Use o Login da Corretora):</p>
+        <div class="modal-box" style="width: 700px; max-height: 90vh; overflow-y: auto;">
+            <h2 style="color: #58a6ff; font-family: 'Orbitron'; text-align: center; margin-bottom: 20px;">🛡️ PAINEL DE COMANDO</h2>
+            
+            <div style="text-align: left; margin-bottom: 20px; background: #0d1117; padding: 15px; border-radius: 8px; border: 1px solid #30363d;">
+                <p style="color: #8b949e; font-size: 13px; margin-bottom: 10px; font-weight: bold;">➕ Cadastrar Novo Assinante (Acesso Manual):</p>
                 <div style="display: flex; gap: 10px;">
-                    <input type="text" id="newUserEmail" placeholder="Login / E-mail da Corretora" style="margin-bottom: 0;" />
-                    <input type="password" id="newUserPassword" placeholder="Senha App" style="margin-bottom: 0; width: 120px;" />
+                    <input type="text" id="newUserEmail" placeholder="Login / E-mail da Corretora" style="margin-bottom: 0; flex: 2;" />
+                    <input type="password" id="newUserPassword" placeholder="Senha App" style="margin-bottom: 0; flex: 1;" />
                 </div>
                 <div style="display: flex; gap: 10px; margin-top: 10px;">
-                    <select id="newUserRole" style="margin-bottom: 0;">
+                    <select id="newUserRole" style="margin-bottom: 0; flex: 2;">
                         <option value="aluno">Acesso: ALUNO</option>
-                        <option value="admin">Acesso: ADMIN</option>
+                        <option value="admin">Acesso: ADMIN (Vitalício)</option>
                     </select>
-                    <button class="btn btn-save" style="width: auto;" id="btnCreateUser">Cadastrar</button>
+                    <button class="btn btn-save" style="flex: 1;" id="btnCreateUser">Cadastrar</button>
                 </div>
             </div>
 
-            <div style="text-align: left; border-top: 1px solid #30363d; padding-top: 15px; margin-top: 15px;">
-                <p style="color: #8b949e; font-size: 13px; margin-bottom: 5px;">🍪 Injetar Sessão VIP (Destravar OTC e Ações):</p>
+            <div style="text-align: left; background: #0d1117; padding: 15px; border-radius: 8px; border: 1px solid #30363d; margin-bottom: 20px;">
+                <p style="color: #8b949e; font-size: 13px; margin-bottom: 10px; font-weight: bold;">🍪 Injetar Sessão VIP (Radar OTC):</p>
                 <div style="display: flex; gap: 10px;">
-                    <input type="text" id="adminCookieInput" placeholder="Cole o Cookie (cURL) aqui..." style="margin-bottom: 0; font-size: 11px;" />
-                    <button class="btn btn-save" style="width: auto;" id="btnInjectCookie">Injetar</button>
+                    <input type="text" id="adminCookieInput" placeholder="Cole o Cookie (cURL) aqui..." style="margin-bottom: 0; font-size: 11px; flex: 3;" />
+                    <button class="btn btn-save" style="flex: 1;" id="btnInjectCookie">Injetar</button>
                 </div>
             </div>
 
-            <div style="text-align: left; border-top: 1px solid #30363d; padding-top: 15px; margin-top: 15px;">
-                <h3 style="color:#58a6ff; font-weight:bold; font-size:14px; margin-bottom:10px;">👥 CONTROLE DE ALUNOS</h3>
-                <div style="max-height: 250px; overflow-y: auto; background: #0d1117; border-radius: 8px; border: 1px solid #30363d; margin-bottom: 20px;">
-                    <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 12px;">
-                        <thead style="position: sticky; top: 0; background: #161b22;">
-                            <tr>
-                                <th style="padding: 10px; border-bottom: 1px solid #30363d;">ID / CPF</th>
-                                <th style="padding: 10px; border-bottom: 1px solid #30363d;">Nome</th>
-                                <th style="padding: 10px; border-bottom: 1px solid #30363d;">E-mail</th>
-                                <th style="padding: 10px; border-bottom: 1px solid #30363d;">Status / Validade</th>
-                            </tr>
-                        </thead>
-                        <tbody id="usersListBody"><tr><td colspan="4" style="text-align:center; padding: 15px;">Carregando...</td></tr></tbody>
-                    </table>
-                </div>
+            <div style="display: flex; border-bottom: 1px solid #30363d; margin-bottom: 15px;">
+                <button id="btnTabUsers" onclick="switchAdminTab('users')" style="flex: 1; background: transparent; color: #58a6ff; border: none; border-bottom: 2px solid #58a6ff; padding: 12px; cursor: pointer; font-weight: bold; font-size: 14px; transition: all 0.2s;">👥 CONTROLE DE ALUNOS</button>
+                <button id="btnTabPix" onclick="switchAdminTab('pix')" style="flex: 1; background: transparent; color: #8b949e; border: none; border-bottom: 2px solid transparent; padding: 12px; cursor: pointer; font-weight: bold; font-size: 14px; transition: all 0.2s;">💸 HISTÓRICO PIX</button>
+            </div>
 
-                <h3 style="color:#3fb950; font-weight:bold; font-size:14px; margin-bottom:10px;">💸 HISTÓRICO DE PIX</h3>
-                <div style="max-height: 250px; overflow-y: auto; background: #0d1117; border-radius: 8px; border: 1px solid #30363d;">
+            <div id="adminTabUsers" style="display: block;">
+                <div style="max-height: 300px; overflow-y: auto; background: #0d1117; border-radius: 8px; border: 1px solid #30363d;">
                     <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 12px;">
-                        <thead style="position: sticky; top: 0; background: #161b22;">
+                        <thead style="position: sticky; top: 0; background: #161b22; z-index: 1;">
                             <tr>
-                                <th style="padding: 10px; border-bottom: 1px solid #30363d;">Data/Hora</th>
-                                <th style="padding: 10px; border-bottom: 1px solid #30363d;">Cliente</th>
-                                <th style="padding: 10px; border-bottom: 1px solid #30363d;">Valor</th>
-                                <th style="padding: 10px; border-bottom: 1px solid #30363d;">Plano</th>
-                                <th style="padding: 10px; border-bottom: 1px solid #30363d;">Status</th>
+                                <th style="padding: 10px; border-bottom: 1px solid #30363d; color:#8b949e;">ID / CPF</th>
+                                <th style="padding: 10px; border-bottom: 1px solid #30363d; color:#8b949e;">Nome</th>
+                                <th style="padding: 10px; border-bottom: 1px solid #30363d; color:#8b949e;">E-mail</th>
+                                <th style="padding: 10px; border-bottom: 1px solid #30363d; color:#8b949e;">Status / Validade</th>
                             </tr>
                         </thead>
-                        <tbody id="paymentsListBody"><tr><td colspan="5" style="text-align:center; padding: 15px;">Carregando...</td></tr></tbody>
+                        <tbody id="usersListBody"><tr><td colspan="4" style="text-align:center; padding: 20px; color:#8b949e;">Carregando...</td></tr></tbody>
                     </table>
                 </div>
             </div>
-            <div class="modal-buttons" style="justify-content: center; margin-top: 25px;"><button class="btn btn-cancel" style="width: 100%;" id="btnCancelAdmin">Fechar Painel</button></div>
+
+            <div id="adminTabPix" style="display: none;">
+                <div style="max-height: 300px; overflow-y: auto; background: #0d1117; border-radius: 8px; border: 1px solid #30363d;">
+                    <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 12px;">
+                        <thead style="position: sticky; top: 0; background: #161b22; z-index: 1;">
+                            <tr>
+                                <th style="padding: 10px; border-bottom: 1px solid #30363d; color:#8b949e;">Data/Hora</th>
+                                <th style="padding: 10px; border-bottom: 1px solid #30363d; color:#8b949e;">Cliente</th>
+                                <th style="padding: 10px; border-bottom: 1px solid #30363d; color:#8b949e;">Valor</th>
+                                <th style="padding: 10px; border-bottom: 1px solid #30363d; color:#8b949e;">Plano</th>
+                                <th style="padding: 10px; border-bottom: 1px solid #30363d; color:#8b949e;">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="paymentsListBody"><tr><td colspan="5" style="text-align:center; padding: 20px; color:#8b949e;">Carregando...</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="modal-buttons" style="justify-content: center; margin-top: 25px;">
+                <button class="btn btn-cancel" style="width: 100%; font-weight: bold;" id="btnCancelAdmin">FECHAR PAINEL</button>
+            </div>
         </div>
     </div>
     
