@@ -21,12 +21,11 @@ async function fetchOtcWithFallback(symbol, resolution, from, to, countback, hea
     const symUpper = symbol.toUpperCase();
     const baseName = symUpper.replace('OTC', '').replace('-', '').replace('_', ''); 
 
-    // 🎯 CORREÇÃO DA CIRURGIA: Agora ele procura o Mercado Aberto PRIMEIRO!
     const variacoes = [
         symUpper, 
         baseName,
-        `${baseName.substring(0,3)}/${baseName.substring(3)}`, // Formato com barra ex: EUR/USD
-        `${baseName}OTC` // Fallback caso a corretora mude
+        `${baseName.substring(0,3)}/${baseName.substring(3)}`, 
+        `${baseName}OTC` 
     ];
 
     for (let variante of variacoes) {
@@ -66,13 +65,11 @@ function initEngine(_io, _state) {
             if (!radarStrat && state.strategiesDB.length > 0) radarStrat = state.strategiesDB[0];
             
             if (radarStrat) {
-                const tf = '1m';
-                const tfMinutes = 1;
+                const tf = '1m'; const tfMinutes = 1;
                 
                 for (let sym of radarCoins) {
                     try {
-                        let closes = [];
-                        let lastClosedCandleTime = 0;
+                        let closes = []; let lastClosedCandleTime = 0;
                         const isCrypto = cryptoBinance.includes(sym.toUpperCase());
 
                         if (isCrypto) {
@@ -84,21 +81,16 @@ function initEngine(_io, _state) {
                         } else {
                             if(!state.globalDynamicCookie) { await sleep(200); continue; }
                             const resolution = tfMinutes.toString();
-                            const to = Math.floor(Date.now() / 1000); 
-                            const from = to - (151 * tfMinutes * 60); 
+                            const to = Math.floor(Date.now() / 1000); const from = to - (151 * tfMinutes * 60); 
                             const otcHeaders = { 'accept': '*/*', 'Cookie': state.globalDynamicCookie, 'X-Requested-With': 'XMLHttpRequest', 'referer': 'https://velloxbroker.com/traderoom', 'user-agent': 'Mozilla/5.0' };
                             
                             const otcData = await fetchOtcWithFallback(sym, resolution, from, to, 151, otcHeaders);
                             
                             if (otcData) {
-                                const timesArr = otcData.t;
-                                const closesArr = otcData.c;
+                                const timesArr = otcData.t; const closesArr = otcData.c;
                                 lastClosedCandleTime = timesArr[timesArr.length - 2] * 1000;
                                 closes = closesArr.slice(0, -1);
-                            } else {
-                                await sleep(200);
-                                continue; 
-                            }
+                            } else { await sleep(200); continue; }
                         }
 
                         if (radarLastCandleProcessed[sym] === lastClosedCandleTime) { await sleep(200); continue; }
@@ -107,7 +99,6 @@ function initEngine(_io, _state) {
                         const signal = evaluateStrategy(closes, radarStrat);
                         if (signal) {
                             radarLastCandleProcessed[sym] = lastClosedCandleTime;
-
                             const curDate = new Date();
                             const hourStr = curDate.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', hour12: false }) + 'h';
                             
@@ -115,15 +106,8 @@ function initEngine(_io, _state) {
                             state.radarStats.byHour[hourStr] = (state.radarStats.byHour[hourStr] || 0) + 1;
                             
                             if (!state.radarStats.byAsset[sym]) { state.radarStats.byAsset[sym] = { count: 0, intervals: [], lastTime: null }; }
-                            
-                            const assetData = state.radarStats.byAsset[sym];
-                            assetData.count++;
-                            
-                            if (assetData.lastTime) {
-                                const diffMin = (curDate.getTime() - assetData.lastTime) / 60000;
-                                assetData.intervals.push(diffMin);
-                                if(assetData.intervals.length > 50) assetData.intervals.shift(); 
-                            }
+                            const assetData = state.radarStats.byAsset[sym]; assetData.count++;
+                            if (assetData.lastTime) { const diffMin = (curDate.getTime() - assetData.lastTime) / 60000; assetData.intervals.push(diffMin); if(assetData.intervals.length > 50) assetData.intervals.shift(); }
                             assetData.lastTime = curDate.getTime();
 
                             io.emit('radar_alert', { symbol: sym, type: signal });
@@ -146,8 +130,7 @@ async function scanRadarHistory() {
         if (!radarStrat && state.strategiesDB.length > 0) radarStrat = state.strategiesDB[0];
         if (!radarStrat) return;
 
-        const tf = '1m';
-        const tfMinutes = 1;
+        const tf = '1m'; const tfMinutes = 1;
 
         for (let sym of radarCoins) {
             try {
@@ -170,32 +153,18 @@ async function scanRadarHistory() {
                 
                 let tempCloses = [];
                 for (let i = 0; i < closesArr.length - 1; i++) { 
-                    const closedTime = timesArr[i];
-                    tempCloses.push(closesArr[i]);
-                    
+                    const closedTime = timesArr[i]; tempCloses.push(closesArr[i]);
                     if (tempCloses.length > 150) tempCloses.shift();
-
                     if (tempCloses.length === 150) {
                         const signal = evaluateStrategy(tempCloses, radarStrat);
                         if (signal) {
                             radarLastCandleProcessed[sym] = closedTime;
-
                             const curDate = new Date(closedTime);
                             const hourStr = curDate.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', hour12: false }) + 'h';
-                            
-                            state.radarStats.total++;
-                            state.radarStats.byHour[hourStr] = (state.radarStats.byHour[hourStr] || 0) + 1;
-                            
+                            state.radarStats.total++; state.radarStats.byHour[hourStr] = (state.radarStats.byHour[hourStr] || 0) + 1;
                             if (!state.radarStats.byAsset[sym]) { state.radarStats.byAsset[sym] = { count: 0, intervals: [], lastTime: null }; }
-                            
-                            const assetData = state.radarStats.byAsset[sym];
-                            assetData.count++;
-                            
-                            if (assetData.lastTime) {
-                                const diffMin = (curDate.getTime() - assetData.lastTime) / 60000;
-                                assetData.intervals.push(diffMin);
-                                if(assetData.intervals.length > 50) assetData.intervals.shift(); 
-                            }
+                            const assetData = state.radarStats.byAsset[sym]; assetData.count++;
+                            if (assetData.lastTime) { const diffMin = (curDate.getTime() - assetData.lastTime) / 60000; assetData.intervals.push(diffMin); if(assetData.intervals.length > 50) assetData.intervals.shift(); }
                             assetData.lastTime = curDate.getTime();
                         }
                     }
@@ -218,43 +187,6 @@ function getEngine(sym, tf, stratId) {
         };
     }
     return state.activeEngines[key];
-}
-
-function updateStatus(msg) {
-    state.currentEngineStatus = msg;
-    io.emit('status', { msg });
-}
-
-function updateBrokerProfits(step, isWin, sig) {
-    Object.values(state.activeBrokers).forEach(broker => {
-        if (sig.isManual) {
-            if (sig.brokerUid !== broker.uid) return;
-        } else {
-            if (!sig.firedBrokers || !sig.firedBrokers[step] || !sig.firedBrokers[step].includes(broker.uid)) return; 
-        }
-        
-        let amountBet = broker.config.baseAmount * Math.pow(2, step);
-        let payoutPerc = (broker.config.payout || 85) / 100;
-        
-        if (isWin) {
-            let lucroLiquido = (amountBet * payoutPerc); 
-            broker.sessionProfit += lucroLiquido;
-            io.to(broker.socketId).emit('win_balance_update', { isDemo: broker.config.accountType === 'demo', prize: (amountBet + lucroLiquido) });
-        } else { 
-            broker.sessionProfit -= amountBet; 
-        }
-
-        let stopReason = null;
-        if (broker.sessionProfit <= -broker.config.stopLoss) stopReason = `🛑 STOP LOSS ATINGIDO!`;
-        if (broker.sessionProfit >= broker.config.stopWin) stopReason = `🏆 META BATIDA!`;
-
-        if (stopReason) {
-            broker.autoTradeActive = false; 
-            io.to(broker.socketId).emit('auto_trade_status', { active: false, msg: stopReason, profit: broker.sessionProfit });
-        } else {
-            io.to(broker.socketId).emit('auto_trade_status', { active: broker.autoTradeActive, msg: broker.autoTradeActive ? "Robô Operando..." : "Robô Pausado.", profit: broker.sessionProfit });
-        }
-    });
 }
 
 function processHistoricalCandle(eng, k_time, k_o, k_c, currentStrategy) {
@@ -286,9 +218,7 @@ function processHistoricalCandle(eng, k_time, k_o, k_c, currentStrategy) {
                 step: 0, status: 'Aguardando...', entryPrice: k_o, isManual: false,
                 firedBrokers: {} 
             };
-            eng.activeSignals.push(newSig); 
-            eng.signalHistory.unshift(newSig);
-            if (eng.signalHistory.length > 20) eng.signalHistory.pop();
+            eng.activeSignals.push(newSig); eng.signalHistory.unshift(newSig); if (eng.signalHistory.length > 20) eng.signalHistory.pop();
         }
     }
 }
@@ -312,42 +242,27 @@ async function handleCandleClose(eng, closedPrice, candleStartTime) {
             else if (sig.step === 1) { sig.status = prefix + 'WIN G1 🎯'; if(!sig.isManual) eng.scoreboard.winG1++; }
             else if (sig.step === 2) { sig.status = prefix + 'WIN G2 🎯'; if(!sig.isManual) eng.scoreboard.winG2++; }
             
-            updateBrokerProfits(sig.step, true, sig); 
-            io.emit('signal_result', sig); 
-            io.to(eng.key).emit('scoreboard', eng.scoreboard); 
+            io.emit('signal_result', sig); io.to(eng.key).emit('scoreboard', eng.scoreboard); 
             signalResolvedThisCandle = true; return false; 
         } else {
-            updateBrokerProfits(sig.step, false, sig); 
             sig.step++; 
             if (sig.step > MAX_GALE_GLOBAL) {
                 sig.status = prefix + 'LOSS 🔴'; if(!sig.isManual) eng.scoreboard.loss++; 
-                io.emit('signal_result', sig); 
-                io.to(eng.key).emit('scoreboard', eng.scoreboard); 
+                io.emit('signal_result', sig); io.to(eng.key).emit('scoreboard', eng.scoreboard); 
                 signalResolvedThisCandle = true; return false; 
             } else {
                 sig.status = prefix + `Gale ${sig.step}...`; sig.entryPrice = eng.currentGlobalPrice || closedPrice; 
                 io.emit('signal_result', sig);
                 
-                if (!sig.firedBrokers) sig.firedBrokers = {};
-                sig.firedBrokers[sig.step] = [];
-
+                // 🎯 O ENGINE LOCAL AQUI SÓ RESPONDE A TIROS MANUAIS DO SNIPER (Os automáticos foram pro Cérebro Global)
                 Object.values(state.activeBrokers).forEach(async (broker) => {
-                    if (sig.isManual) {
-                        if (sig.brokerUid !== broker.uid) return; 
-                    } else {
-                        if (!broker.autoTradeActive || !broker.isPremium) return;
-                        if (!sig.firedBrokers[0] || !sig.firedBrokers[0].includes(broker.uid)) return;
+                    if (sig.isManual && sig.brokerUid === broker.uid) {
+                        if (sig.step > broker.config.maxGale) return; 
+                        let valorGale = broker.config.baseAmount * Math.pow(2, sig.step); 
+                        let isDemo = broker.config.accountType === 'demo';
+                        const result = await dispararOrdemVellox(broker, isDemo, eng.symbol, sig.type, valorGale.toFixed(2).replace('.', ','), eng.currentGlobalPrice || closedPrice, eng.timeframe);
+                        if (result.success && result.balance) io.to(broker.socketId).emit('update_balance', { isDemo: isDemo, balance: result.balance });
                     }
-                    
-                    if (sig.step > broker.config.maxGale) return; 
-                    
-                    if (!sig.isManual) sig.firedBrokers[sig.step].push(broker.uid); 
-                    
-                    let valorGale = broker.config.baseAmount * Math.pow(2, sig.step); 
-                    let isDemo = broker.config.accountType === 'demo';
-                    
-                    const result = await dispararOrdemVellox(broker, isDemo, eng.symbol, sig.type, valorGale.toFixed(2).replace('.', ','), eng.currentGlobalPrice || closedPrice, eng.timeframe);
-                    if (result.success && result.balance) io.to(broker.socketId).emit('update_balance', { isDemo: isDemo, balance: result.balance });
                 });
                 return true; 
             }
@@ -368,33 +283,16 @@ async function handleCandleClose(eng, closedPrice, candleStartTime) {
                 firedBrokers: { 0: [] } 
             };
             eng.activeSignals.push(newSig); eng.signalHistory.unshift(newSig); if (eng.signalHistory.length > 20) eng.signalHistory.pop();
-            
-            io.emit('new_signal_history', newSig); 
-            io.to(eng.key).emit('signal', { type: newSignalType, time: newSig.time, symbol: eng.symbol.toUpperCase() }); 
-            
-            Object.values(state.activeBrokers).forEach(async (broker) => {
-                if (!broker.autoTradeActive || !broker.isPremium) return;
-                
-                newSig.firedBrokers[0].push(broker.uid); 
-                
-                let valorInicial = parseFloat(broker.config.baseAmount).toFixed(2).replace('.', ','); 
-                let isDemo = broker.config.accountType === 'demo';
-                
-                const result = await dispararOrdemVellox(broker, isDemo, eng.symbol, newSignalType, valorInicial, eng.currentGlobalPrice || closedPrice, eng.timeframe);
-                if (result.success && result.balance) io.to(broker.socketId).emit('update_balance', { isDemo: isDemo, balance: result.balance });
-            });
+            io.emit('new_signal_history', newSig); io.to(eng.key).emit('signal', { type: newSignalType, time: newSig.time, symbol: eng.symbol.toUpperCase() }); 
         }
     }
 }
 
 function handleCandleTick(eng, currentPrice, isCandleClosed, candleStartTime) {
-    eng.currentGlobalPrice = currentPrice;
-    eng.lastTickTime = Date.now(); 
-    
+    eng.currentGlobalPrice = currentPrice; eng.lastTickTime = Date.now(); 
     const tfMinutes = parseInt(eng.timeframe.replace('m', '')); const now = new Date();
     const secondsLeft = (tfMinutes * 60) - ((now.getMinutes() % tfMinutes) * 60 + now.getSeconds());
     let currentActive = eng.activeSignals.length > 0 ? eng.activeSignals[0] : null;
-    
     io.to(eng.key).emit('price_update', { price: currentPrice, secondsLeft: secondsLeft, activeSignal: currentActive });
 
     if (eng.closePrices.length > 50 && !isCandleClosed && candleStartTime !== eng.lastResolvedCandleTime) {
@@ -415,7 +313,6 @@ function handleCandleTick(eng, currentPrice, isCandleClosed, candleStartTime) {
 
 async function startConnection(symbol, tf, stratId) {
     let eng = getEngine(symbol, tf, stratId);
-    
     const isStale = eng.lastTickTime > 0 && (Date.now() - eng.lastTickTime > 120000);
 
     if (isStale && eng.closePrices.length > 0) {
@@ -424,22 +321,17 @@ async function startConnection(symbol, tf, stratId) {
         eng.closePrices = []; 
     }
 
-    if (!isStale && (eng.ws || eng.otcInterval) && eng.closePrices.length > 0) {
-        return; 
-    }
+    if (!isStale && (eng.ws || eng.otcInterval) && eng.closePrices.length > 0) return; 
 
     eng.connectionId++; const myConnectionId = eng.connectionId;
     if (eng.ws) { eng.ws.removeAllListeners(); eng.ws.on('error', () => {}); if (eng.ws.readyState === WebSocket.CONNECTING || eng.ws.readyState === WebSocket.OPEN) { eng.ws.terminate(); } eng.ws = null; }
     if (eng.otcInterval) { clearInterval(eng.otcInterval); eng.otcInterval = null; }
     
     eng.closePrices = []; eng.activeSignals = []; eng.currentGlobalPrice = 0; 
-    eng.signalHistory = []; eng.scoreboard = { win1: 0, winG1: 0, winG2: 0, loss: 0 };
-    eng.lastTickTime = Date.now(); 
+    eng.signalHistory = []; eng.scoreboard = { win1: 0, winG1: 0, winG2: 0, loss: 0 }; eng.lastTickTime = Date.now(); 
 
     io.to(eng.key).emit('price_update', { price: 0, secondsLeft: 0, activeSignal: null });
-    io.to(eng.key).emit('scoreboard', eng.scoreboard); 
-    io.to(eng.key).emit('history_dump', eng.signalHistory); 
-    io.to(eng.key).emit('pre_alert', { call: false, put: false });
+    io.to(eng.key).emit('scoreboard', eng.scoreboard); io.to(eng.key).emit('history_dump', eng.signalHistory); io.to(eng.key).emit('pre_alert', { call: false, put: false });
     
     const tfMinutes = parseInt(tf.replace('m', ''));
     const currentStrategy = state.strategiesDB.find(s => s.id === stratId);
@@ -452,24 +344,20 @@ async function startConnection(symbol, tf, stratId) {
             const resolution = tfMinutes.toString();
             const to = Math.floor(Date.now() / 1000); const from = to - (500 * tfMinutes * 60); 
             const otcHeaders = { 'accept': '*/*', 'Cookie': state.globalDynamicCookie, 'X-Requested-With': 'XMLHttpRequest', 'referer': 'https://velloxbroker.com/traderoom', 'user-agent': 'Mozilla/5.0' };
-            
             const otcData = await fetchOtcWithFallback(symbol, resolution, from, to, 500, otcHeaders);
-
             if (myConnectionId !== eng.connectionId) return;
 
             if (otcData) {
                 const opens = otcData.o; const closes = otcData.c; const times = otcData.t;
                 for (let i = 0; i < closes.length - 1; i++) { processHistoricalCandle(eng, times[i] * 1000, opens[i], closes[i], currentStrategy); }
                 eng.lastClosedCandleTime = times[times.length - 2]; 
-                io.to(eng.key).emit('scoreboard', eng.scoreboard); 
-                io.to(eng.key).emit('history_dump', eng.signalHistory); 
+                io.to(eng.key).emit('scoreboard', eng.scoreboard); io.to(eng.key).emit('history_dump', eng.signalHistory); 
             } 
 
             eng.otcInterval = setInterval(async () => {
                 if (myConnectionId !== eng.connectionId) return;
                 try {
                     const pollTo = Math.floor(Date.now() / 1000); const pollFrom = pollTo - (5 * tfMinutes * 60); 
-                    
                     const pollData = await fetchOtcWithFallback(symbol, resolution, pollFrom, pollTo, 3, otcHeaders);
                     
                     if (pollData) {
@@ -492,9 +380,7 @@ async function startConnection(symbol, tf, stratId) {
 
             const klines = response.data;
             for (let i = 0; i < klines.length - 1; i++) { processHistoricalCandle(eng, klines[i][0], parseFloat(klines[i][1]), parseFloat(klines[i][4]), currentStrategy); }
-            
-            io.to(eng.key).emit('scoreboard', eng.scoreboard); 
-            io.to(eng.key).emit('history_dump', eng.signalHistory); 
+            io.to(eng.key).emit('scoreboard', eng.scoreboard); io.to(eng.key).emit('history_dump', eng.signalHistory); 
             
             eng.ws = new WebSocket(`wss://stream.binance.com:9443/ws/${symbol.toLowerCase()}@kline_${tf}`);
             eng.ws.on('message', (data) => { if (myConnectionId !== eng.connectionId) return; try { const kline = JSON.parse(data).k; handleCandleTick(eng, parseFloat(kline.c), kline.x, kline.t); } catch (e) { } });

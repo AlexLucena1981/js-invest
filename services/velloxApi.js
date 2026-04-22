@@ -50,17 +50,16 @@ async function getVelloxBalance(token) {
         }
         
         if (balance !== undefined && balance !== null) {
-            // 🎯 FILTRO DE LIMPEZA PARA BANCAS ACIMA DE R$ 1.000,00
             let cleanBal = String(balance).trim().replace(/R\$\s?/g, '');
             
             if (cleanBal.includes(',') && cleanBal.includes('.')) {
                 if (cleanBal.indexOf(',') > cleanBal.indexOf('.')) {
-                    cleanBal = cleanBal.replace(/\./g, '').replace(',', '.'); // BR: 1.050,50 -> 1050.50
+                    cleanBal = cleanBal.replace(/\./g, '').replace(',', '.'); 
                 } else {
-                    cleanBal = cleanBal.replace(/,/g, ''); // US: 1,050.50 -> 1050.50
+                    cleanBal = cleanBal.replace(/,/g, ''); 
                 }
             } else if (cleanBal.includes(',')) {
-                cleanBal = cleanBal.replace(',', '.'); // BR: 1050,50 -> 1050.50
+                cleanBal = cleanBal.replace(',', '.'); 
             }
             
             let parsed = parseFloat(cleanBal);

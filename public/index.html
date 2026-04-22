@@ -6,7 +6,6 @@
     <title>JS Invest - Mesa de Operações</title>
     
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -23,7 +22,7 @@
             
             <div id="loginError" style="color: #f85149; margin-top: 15px; font-size: 12px; display: none; font-weight: bold;"></div>
             
-            <a href="https://joaosilva.top/corretora-vellox" target="_blank" class="btn-affiliate" id="btnAffiliate" style="display:none;">
+            <a href="https://joaosilva.top/corretora-vellox" target="_blank" class="btn-affiliate" id="btnAffiliate" style="display:none; margin-top: 15px; color: #3fb950; text-decoration: none; font-size: 13px; font-weight: bold;">
                 ⭐ Não tem conta? Crie grátis e libere o robô!
             </a>
         </div>
@@ -35,7 +34,6 @@
     </div>
 
     <div class="main-container">
-
         <div class="dashboard">
             <h1>🚀 JS INVEST</h1>
             <div class="subtitle">Análise Quantitativa</div>
@@ -72,10 +70,7 @@
                     <div class="risk-grid">
                         <div class="risk-item">
                             <label>Conta</label>
-                            <select id="riskAccount">
-                                <option value="demo">Demo</option>
-                                <option value="real">Real</option>
-                            </select>
+                            <select id="riskAccount"><option value="demo">Demo</option><option value="real">Real</option></select>
                         </div>
                         <div class="risk-item">
                             <label>Valor (R$)</label>
@@ -83,11 +78,7 @@
                         </div>
                         <div class="risk-item">
                             <label>Martingale</label>
-                            <select id="riskGale">
-                                <option value="0">Sem Gale</option>
-                                <option value="1">Até Gale 1</option>
-                                <option value="2" selected>Até Gale 2</option>
-                            </select>
+                            <select id="riskGale"><option value="0">Sem Gale</option><option value="1">Até Gale 1</option><option value="2" selected>Até Gale 2</option></select>
                         </div>
                         <div class="risk-item" style="display: flex; gap: 5px;">
                             <div><label>Win</label><input type="number" id="riskWin" value="50" /></div>
@@ -113,30 +104,22 @@
         </div>
 
         <div class="history-panel">
-            
             <div id="liveTradeCard" style="display: none; background: #0d1117; border: 1px solid #30363d; border-radius: 8px; padding: 15px; margin-bottom: 20px; width: 100%; box-sizing: border-box;">
                 <h3 style="color: #58a6ff; font-size: 14px; margin-top: 0; text-align: center; border-bottom: 1px solid #30363d; padding-bottom: 10px; font-family: 'Orbitron';">📡 RAIO-X DA OPERAÇÃO</h3>
-                
                 <div style="display: flex; justify-content: space-between; text-align: center; margin-bottom: 15px;">
                     <div style="flex: 1;"><div style="font-size: 10px; color: #8b949e;">DIREÇÃO</div><div id="liveDir" style="font-weight: bold; font-size: 16px;">--</div></div>
                     <div style="flex: 1; border-left: 1px solid #30363d; border-right: 1px solid #30363d;"><div style="font-size: 10px; color: #8b949e;">STATUS LIVE</div><div id="liveStatus" style="font-weight: bold; font-size: 16px;">--</div></div>
                     <div style="flex: 1;"><div style="font-size: 10px; color: #8b949e;">TEMPO</div><div id="liveTime" style="font-weight: bold; font-size: 16px; color: #c9d1d9;">00s</div></div>
                 </div>
-
                 <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 10px;">
                     <div style="color: #8b949e;">Entrada: <strong id="liveEntry" style="color: #fff;">0.00</strong></div>
                     <div style="color: #8b949e;">Atual: <strong id="liveCurrent" style="color: #fff;">0.00</strong></div>
                 </div>
-
-                <div style="width: 100%; height: 100px; position: relative;">
-                    <canvas id="liveChart"></canvas>
-                </div>
+                <div style="width: 100%; height: 100px; position: relative;"><canvas id="liveChart"></canvas></div>
             </div>
 
             <h3 style="color: #58a6ff; text-align: center; font-family: 'Orbitron'; margin-top: 0;">📊 PERFORMANCE</h3>
-            
             <div class="overall-accuracy">Assertividade Total: <span id="totalAccuracy">0.0%</span></div>
-            
             <div class="scoreboard">
                 <div class="score-card score-win1"><div class="title">Win 1ª</div><div class="value" id="scoreWin1">0</div><div class="percent" id="pctWin1">0.0%</div></div>
                 <div class="score-card score-wing1"><div class="title">Win G1</div><div class="value" id="scoreWinG1">0</div><div class="percent" id="pctWinG1">0.0%</div></div>
@@ -145,96 +128,15 @@
             </div>
 
             <h3 style="color: #8b949e; text-transform: uppercase; font-size: 12px; margin-bottom: 10px; width: 100%;">Últimas Entradas</h3>
-            
             <div class="history-table-wrapper">
-                <table>
-                    <thead><tr><th>Hora</th><th>Direção</th><th>Resultado</th></tr></thead>
-                    <tbody id="historyTableBody"></tbody>
-                </table>
+                <table><thead><tr><th>Hora</th><th>Direção</th><th>Resultado</th></tr></thead><tbody id="historyTableBody"></tbody></table>
             </div>
         </div>
-
     </div> 
-
-    <div class="modal-overlay" id="scriptModal">
-        <div class="modal-box" style="text-align: left; width: 500px;">
-            <h2 style="text-align: center; color: #58a6ff; font-family: 'Orbitron';">🔌 Plugar Novo Script</h2>
-            <textarea id="jsonInput" style="width: 100%; height: 200px; background:#0d1117; color:#3fb950; font-family:monospace; padding:10px; border: 1px solid #30363d; border-radius: 8px;"></textarea>
-            <div class="modal-buttons">
-                <button class="btn btn-cancel" id="btnCancelScript">Cancelar</button>
-                <button class="btn btn-save" style="width: auto;" id="btnSaveScript">Salvar & Injetar</button>
-            </div>
-        </div>
-    </div>
 
     <div class="modal-overlay" id="adminModal">
         <div class="modal-box" style="width: 700px; max-height: 90vh; overflow-y: auto;">
-            <h2 style="color: #58a6ff; font-family: 'Orbitron'; text-align: center; margin-bottom: 20px;">🛡️ PAINEL DE COMANDO</h2>
-            
-            <div style="text-align: left; margin-bottom: 20px; background: #0d1117; padding: 15px; border-radius: 8px; border: 1px solid #30363d;">
-                <p style="color: #8b949e; font-size: 13px; margin-bottom: 10px; font-weight: bold;">➕ Cadastrar Novo Assinante (Acesso Manual):</p>
-                <div style="display: flex; gap: 10px;">
-                    <input type="text" id="newUserEmail" placeholder="Login / E-mail da Corretora" style="margin-bottom: 0; flex: 2;" />
-                    <input type="password" id="newUserPassword" placeholder="Senha App" style="margin-bottom: 0; flex: 1;" />
-                </div>
-                <div style="display: flex; gap: 10px; margin-top: 10px;">
-                    <select id="newUserRole" style="margin-bottom: 0; flex: 2;">
-                        <option value="aluno">Acesso: ALUNO</option>
-                        <option value="admin">Acesso: ADMIN (Vitalício)</option>
-                    </select>
-                    <button class="btn btn-save" style="flex: 1;" id="btnCreateUser">Cadastrar</button>
-                </div>
-            </div>
-
-            <div style="text-align: left; background: #0d1117; padding: 15px; border-radius: 8px; border: 1px solid #30363d; margin-bottom: 20px;">
-                <p style="color: #8b949e; font-size: 13px; margin-bottom: 10px; font-weight: bold;">🍪 Injetar Sessão VIP (Radar OTC):</p>
-                <div style="display: flex; gap: 10px;">
-                    <input type="text" id="adminCookieInput" placeholder="Cole o Cookie (cURL) aqui..." style="margin-bottom: 0; font-size: 11px; flex: 3;" />
-                    <button class="btn btn-save" style="flex: 1;" id="btnInjectCookie">Injetar</button>
-                </div>
-            </div>
-
-            <div style="display: flex; border-bottom: 1px solid #30363d; margin-bottom: 15px;">
-                <button id="btnTabUsers" onclick="switchAdminTab('users')" style="flex: 1; background: transparent; color: #58a6ff; border: none; border-bottom: 2px solid #58a6ff; padding: 12px; cursor: pointer; font-weight: bold; font-size: 14px; transition: all 0.2s;">👥 CONTROLE DE ALUNOS</button>
-                <button id="btnTabPix" onclick="switchAdminTab('pix')" style="flex: 1; background: transparent; color: #8b949e; border: none; border-bottom: 2px solid transparent; padding: 12px; cursor: pointer; font-weight: bold; font-size: 14px; transition: all 0.2s;">💸 HISTÓRICO PIX</button>
-            </div>
-
-            <div id="adminTabUsers" style="display: block;">
-                <div style="max-height: 300px; overflow-y: auto; background: #0d1117; border-radius: 8px; border: 1px solid #30363d;">
-                    <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 12px;">
-                        <thead style="position: sticky; top: 0; background: #161b22; z-index: 1;">
-                            <tr>
-                                <th style="padding: 10px; border-bottom: 1px solid #30363d; color:#8b949e;">ID / CPF</th>
-                                <th style="padding: 10px; border-bottom: 1px solid #30363d; color:#8b949e;">Nome</th>
-                                <th style="padding: 10px; border-bottom: 1px solid #30363d; color:#8b949e;">E-mail</th>
-                                <th style="padding: 10px; border-bottom: 1px solid #30363d; color:#8b949e;">Status / Validade</th>
-                            </tr>
-                        </thead>
-                        <tbody id="usersListBody"><tr><td colspan="4" style="text-align:center; padding: 20px; color:#8b949e;">Carregando...</td></tr></tbody>
-                    </table>
-                </div>
-            </div>
-
-            <div id="adminTabPix" style="display: none;">
-                <div style="max-height: 300px; overflow-y: auto; background: #0d1117; border-radius: 8px; border: 1px solid #30363d;">
-                    <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 12px;">
-                        <thead style="position: sticky; top: 0; background: #161b22; z-index: 1;">
-                            <tr>
-                                <th style="padding: 10px; border-bottom: 1px solid #30363d; color:#8b949e;">Data/Hora</th>
-                                <th style="padding: 10px; border-bottom: 1px solid #30363d; color:#8b949e;">Cliente</th>
-                                <th style="padding: 10px; border-bottom: 1px solid #30363d; color:#8b949e;">Valor</th>
-                                <th style="padding: 10px; border-bottom: 1px solid #30363d; color:#8b949e;">Plano</th>
-                                <th style="padding: 10px; border-bottom: 1px solid #30363d; color:#8b949e;">Status</th>
-                            </tr>
-                        </thead>
-                        <tbody id="paymentsListBody"><tr><td colspan="5" style="text-align:center; padding: 20px; color:#8b949e;">Carregando...</td></tr></tbody>
-                    </table>
-                </div>
-            </div>
-
-            <div class="modal-buttons" style="justify-content: center; margin-top: 25px;">
-                <button class="btn btn-cancel" style="width: 100%; font-weight: bold;" id="btnCancelAdmin">FECHAR PAINEL</button>
-            </div>
+            <div id="adminPanelContent"></div>
         </div>
     </div>
     

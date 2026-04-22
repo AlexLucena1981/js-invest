@@ -95,7 +95,7 @@ function evaluateStrategy(prices, strategyConfig) {
         return null; 
     }
     
-    // 2. LÓGICA DINÂMICA VIA JSON (Para o Expert V10 e outros)
+    // 2. LÓGICA DINÂMICA VIA JSON
     let current = { price: prices[prices.length - 1] }; 
     let prev = { price: prices[prices.length - 2] };
     
@@ -105,7 +105,7 @@ function evaluateStrategy(prices, strategyConfig) {
             if (type === 'SMA') {
                 current[key] = calculateSMA(prices, config.period); 
                 prev[key] = calculateSMA(prices.slice(0, -1), config.period);
-            } else if (type === 'EMA') { // 🎯 AGORA ELE SABE LER EMA!
+            } else if (type === 'EMA') { 
                 current[key] = calculateEMA(prices, config.period); 
                 prev[key] = calculateEMA(prices.slice(0, -1), config.period);
             } else if (type === 'RSI') { 
@@ -118,7 +118,6 @@ function evaluateStrategy(prices, strategyConfig) {
         }
     }
     
-    // Verifica se todos os indicadores foram calculados com sucesso
     if (Object.values(current).includes(null)) return null;
 
     try {

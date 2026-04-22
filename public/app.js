@@ -13,28 +13,63 @@ let currentEntryPrice = 0;
 window.radarGlobalStats = null; 
 let isBotActive = false; 
 window.pixInterval = null; 
+window.lastPaymentId = null;
 
-// 🎯 LÓGICA DE NAVEGAÇÃO DAS ABAS DO ADMIN
+// 🎯 VARIÁVEL GLOBAL DE PREÇOS (Garante que nunca fique zerado)
+window.appPricing = { month1: 49.90, month3: 119.90, month6: 199.90, month12: 399.90 };
+
+socket.on('pricing_update', (prices) => {
+    if (prices) {
+        window.appPricing = prices;
+        // Se a aba estiver aberta na hora que o servidor mandar um update ao vivo, atualiza!
+        if (document.getElementById('price1')) document.getElementById('price1').value = prices.month1;
+        if (document.getElementById('price3')) document.getElementById('price3').value = prices.month3;
+        if (document.getElementById('price6')) document.getElementById('price6').value = prices.month6;
+        if (document.getElementById('price12')) document.getElementById('price12').value = prices.month12;
+    }
+});
+
+// 🎯 LÓGICA DE NAVEGAÇÃO DAS 7 ABAS DO ADMIN
 window.switchAdminTab = function(tabName) {
-    const tabUsers = document.getElementById('adminTabUsers');
-    const tabPix = document.getElementById('adminTabPix');
-    const btnUsers = document.getElementById('btnTabUsers');
-    const btnPix = document.getElementById('btnTabPix');
+    const tabs = ['Users', 'Pix', 'Pricing', 'Telegram', 'Radar', 'Report', 'Strategies'];
+    tabs.forEach(t => {
+        const tabEl = document.getElementById(`adminTab${t}`);
+        if(tabEl) tabEl.style.display = 'none';
+        const btn = document.getElementById(`btnTab${t}`);
+        if(btn) { btn.style.color = '#8b949e'; btn.style.borderBottomColor = 'transparent'; }
+    });
 
-    if (tabName === 'users') {
-        tabUsers.style.display = 'block';
-        tabPix.style.display = 'none';
-        btnUsers.style.color = '#58a6ff';
-        btnUsers.style.borderBottomColor = '#58a6ff';
-        btnPix.style.color = '#8b949e';
-        btnPix.style.borderBottomColor = 'transparent';
-    } else {
-        tabUsers.style.display = 'none';
-        tabPix.style.display = 'block';
-        btnPix.style.color = '#3fb950';
-        btnPix.style.borderBottomColor = '#3fb950';
-        btnUsers.style.color = '#8b949e';
-        btnUsers.style.borderBottomColor = 'transparent';
+    let activeColor = '#58a6ff'; 
+    if(tabName === 'pix') activeColor = '#3fb950'; 
+    if(tabName === 'pricing') activeColor = '#d29922'; 
+    if(tabName === 'telegram') activeColor = '#2ea043'; 
+    if(tabName === 'radar') activeColor = '#388bfd'; 
+    if(tabName === 'report') activeColor = '#8957e5'; 
+    if(tabName === 'strategies') activeColor = '#d29922'; 
+
+    const activeTabName = tabName.charAt(0).toUpperCase() + tabName.slice(1);
+    const targetTab = document.getElementById(`adminTab${activeTabName}`);
+    if(targetTab) targetTab.style.display = 'block';
+    
+    const activeBtn = document.getElementById(`btnTab${activeTabName}`);
+    if(activeBtn) { activeBtn.style.color = activeColor; activeBtn.style.borderBottomColor = activeColor; }
+
+    if(tabName === 'radar' && typeof renderStats === 'function') {
+        if(window.radarGlobalStats) renderStats(window.radarGlobalStats);
+    }
+    
+    if(tabName === 'report') {
+        auth.currentUser.getIdToken().then(token => socket.emit('admin_get_report', token));
+    }
+    
+    if(tabName === 'strategies') {
+        auth.currentUser.getIdToken().then(token => socket.emit('admin_get_strategies', token));
+        const defaultStratJSON = {
+            "id": "nova_estrat", "name": "Nome da Estratégia", "isComplex": false,
+            "indicators": { "rsi": { "type": "RSI", "period": 14 }, "bb": { "type": "BB", "period": 20, "stdDev": 2 } },
+            "conditions": { "call": "current.price <= current.bb.lower && current.rsi <= 35", "put": "current.price >= current.bb.upper && current.rsi >= 65" }
+        };
+        if(document.getElementById('newStratJson')) document.getElementById('newStratJson').value = JSON.stringify(defaultStratJSON, null, 4);
     }
 };
 
@@ -43,23 +78,15 @@ window.addEventListener('DOMContentLoaded', () => {
     
     const amtInput = document.getElementById('riskAmount');
     if (amtInput) {
-        amtInput.type = 'text';
-        amtInput.value = '1% da Banca';
-        amtInput.setAttribute('readonly', 'true');
-        const label = amtInput.parentElement.querySelector('label');
-        if (label) label.innerText = 'ENTRADA (1%)';
-        
-        const amtCol = amtInput.parentElement;
-        const contaCol = document.getElementById('riskAccount').parentElement;
+        amtInput.type = 'text'; amtInput.value = '1% da Banca'; amtInput.setAttribute('readonly', 'true');
+        const label = amtInput.parentElement.querySelector('label'); if (label) label.innerText = 'ENTRADA (1%)';
+        const amtCol = amtInput.parentElement; const contaCol = document.getElementById('riskAccount').parentElement;
         if (amtCol.classList.contains('col-4')) { amtCol.classList.remove('col-4'); amtCol.classList.add('col-6'); }
         if (contaCol && contaCol.classList.contains('col-4')) { contaCol.classList.remove('col-4'); contaCol.classList.add('col-6'); }
     }
 
-    const riskGale = document.getElementById('riskGale');
-    if (riskGale && riskGale.parentElement) { riskGale.parentElement.style.display = 'none'; }
-    const btnAddScript = document.getElementById('btnOpenModal');
-    if (btnAddScript) { btnAddScript.style.display = 'none'; }
-
+    const riskGale = document.getElementById('riskGale'); if (riskGale && riskGale.parentElement) { riskGale.parentElement.style.display = 'none'; }
+    const btnAddScript = document.getElementById('btnOpenModal'); if (btnAddScript) { btnAddScript.style.display = 'none'; }
     ['riskAccount', 'riskWin', 'riskLoss'].forEach(id => { const el = document.getElementById(id); if(el) el.addEventListener('change', saveRiskConfig); });
 
     togglePremiumUI(false, new Date());
@@ -101,26 +128,25 @@ socket.on('hybrid_login_result', (res) => {
         localStorage.setItem('jsInvestBrokerToken', res.brokerToken); localStorage.setItem('jsInvestUserRole', res.role); localStorage.setItem('jsInvestUid', res.uid);
         auth.signInWithCustomToken(res.firebaseToken).then(() => {
             document.getElementById('loginScreen').style.display = 'none'; document.getElementById('valReal').innerText = `R$ ${res.balance.real}`; document.getElementById('valDemo').innerText = res.balance.demo; document.getElementById('manualTradePanel').style.display = 'flex'; 
-            
             togglePremiumUI(res.isPremium, res.expiresAt);
             if (!res.isPremium) { mostrarPainelAssinatura(res.expiresAt); }
-            
             if (res.role === 'admin') { 
                 document.getElementById('btnAdminPanel').style.display = 'inline-block';
                 setupTelegramAdminUI(auth, socket); 
                 auth.currentUser.getIdToken().then(token => socket.emit('admin_get_tg_config', token)); 
             }
         }).catch(err => { alert("Erro de Autenticação Firebase: " + err.message); });
-    } else { alert(res.msg || "Erro na autenticação com a corretora."); }
+    } else { 
+        const errorDiv = document.getElementById('loginError'); errorDiv.innerText = res.msg || "Erro na autenticação. Verifique suas credenciais."; errorDiv.style.display = 'block';
+        const btnAff = document.getElementById('btnAffiliate'); if (btnAff) btnAff.style.display = 'block';
+    }
 });
 
 socket.on('auto_reconnect_result', (res) => {
     if(res.success) {
         document.getElementById('loginScreen').style.display = 'none'; document.getElementById('valReal').innerText = `R$ ${res.balance.real}`; document.getElementById('valDemo').innerText = res.balance.demo; document.getElementById('manualTradePanel').style.display = 'flex'; 
-        
         togglePremiumUI(res.isPremium, res.expiresAt);
         if (!res.isPremium) { mostrarPainelAssinatura(res.expiresAt); }
-        
         if (res.role === 'admin') { 
             document.getElementById('btnAdminPanel').style.display = 'inline-block';
             setupTelegramAdminUI(auth, socket); 
@@ -133,7 +159,6 @@ socket.on('auto_reconnect_result', (res) => {
     }
 });
 
-// 💳 LÓGICA DE CHECKOUT
 window.gerarCheckout = async (valor, meses) => {
     const uid = localStorage.getItem('jsInvestUid');
     const email = auth.currentUser ? auth.currentUser.email : "user@jsinvest";
@@ -143,13 +168,13 @@ window.gerarCheckout = async (valor, meses) => {
 
     try {
         const response = await fetch('/create_payment', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ valor, meses, uid, email })
         });
         const data = await response.json();
 
         if (data.pix_code) {
+            window.lastPaymentId = data.paymentId;
             document.getElementById('pixArea').innerHTML = `
                 <p style="color:#000; font-weight:bold; margin-bottom:10px;">Pague o PIX para liberar agora:</p>
                 ${data.qrcode_base64 ? `<div style="background:#fff; padding:10px; display:inline-block; margin-bottom:10px;"><img src="${data.qrcode_base64}" style="width:180px;"></div>` : ''}
@@ -157,7 +182,6 @@ window.gerarCheckout = async (valor, meses) => {
                 <button onclick="copyPix()" style="background:#000; color:#fff; width:100%; border:none; padding:12px; margin-top:10px; border-radius:5px; cursor:pointer; font-weight:bold;">COPIAR CÓDIGO PIX</button>
                 <button onclick="verificarPix('${data.paymentId}')" id="btnVerifyPix" style="background:#3fb950; color:#fff; width:100%; border:none; padding:12px; margin-top:10px; border-radius:5px; cursor:pointer; font-weight:bold;">🔄 JÁ PAGUEI (VERIFICAR)</button>
             `;
-            
             if(window.pixInterval) clearInterval(window.pixInterval);
             window.pixInterval = setInterval(() => { window.verificarPix(data.paymentId, true) }, 10000);
         }
@@ -165,17 +189,14 @@ window.gerarCheckout = async (valor, meses) => {
 };
 
 window.copyPix = () => {
-    const input = document.getElementById('pixCopyPaste');
-    input.select(); input.setSelectionRange(0, 99999);
-    navigator.clipboard.writeText(input.value);
+    const input = document.getElementById('pixCopyPaste'); input.select(); input.setSelectionRange(0, 99999); navigator.clipboard.writeText(input.value);
     alert("✅ Código PIX Copiado! Pague no app do seu banco e o acesso será liberado.");
 };
 
 window.verificarPix = async (paymentId, isAuto = false) => {
     if(!isAuto) { const btn = document.getElementById('btnVerifyPix'); if(btn) btn.innerText = "Consultando o Banco..."; }
     try {
-        const res = await fetch(`/verify_payment/${paymentId}`);
-        const data = await res.json();
+        const res = await fetch(`/verify_payment/${paymentId}`); const data = await res.json();
         if (!data.approved && !isAuto) {
             const btn = document.getElementById('btnVerifyPix');
             if(btn) { btn.innerText = "Ainda não aprovado. Tentar de novo"; setTimeout(()=> { btn.innerText = "🔄 JÁ PAGUEI (VERIFICAR)" }, 2000); }
@@ -186,106 +207,57 @@ window.verificarPix = async (paymentId, isAuto = false) => {
 socket.on('payment_approved', (data) => {
     if(window.pixInterval) clearInterval(window.pixInterval);
     alert("✅ PAGAMENTO APROVADO! O seu acesso foi liberado com sucesso.");
-    const modal = document.getElementById('premiumBlockModal');
-    if (modal) modal.style.display = 'none';
-    togglePremiumUI(true, data.expiresAt);
+    const modal = document.getElementById('premiumBlockModal'); if (modal) modal.style.display = 'none'; togglePremiumUI(true, data.expiresAt);
 });
 
 socket.on('admin_tg_config_data', (config) => { window.tempTgConfig = config; });
 
-// 🎯 TABELA DE ALUNOS (ADMIN) COM CORES
 socket.on('admin_users_list', (res) => {
-    const tbody = document.getElementById('usersListBody'); if(!tbody) return;
-    tbody.innerHTML = '';
+    const tbody = document.getElementById('usersListBody'); if(!tbody) return; tbody.innerHTML = '';
     if (res.success) {
         if (res.users.length === 0) tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding: 20px; color:#8b949e;">Vazio.</td></tr>';
         else { 
             res.users.forEach(u => { 
                 let statusHtml = '';
-                if (u.role === 'admin') {
-                    statusHtml = '<span style="color:#58a6ff; font-weight:bold;">🟢 ADMIN</span>';
-                } else if (u.subscriptionEndDate) {
-                    const exp = new Date(u.subscriptionEndDate);
-                    const now = new Date();
-                    const diffDays = Math.ceil((exp - now) / (1000 * 60 * 60 * 24));
-                    
-                    if (diffDays < 0) {
-                        statusHtml = `<span style="color:#f85149; font-weight:bold;">🔴 Expirada (${exp.toLocaleDateString()})</span>`;
-                    } else if (diffDays <= 5) {
-                        statusHtml = `<span style="color:#d29922; font-weight:bold;">🟡 Expira em ${diffDays} dias</span>`;
-                    } else {
-                        statusHtml = `<span style="color:#3fb950; font-weight:bold;">🟢 Válida (${exp.toLocaleDateString()})</span>`;
-                    }
-                } else {
-                    statusHtml = '<span style="color:#8b949e;">Sem Data</span>';
-                }
+                if (u.role === 'admin') { statusHtml = '<span style="color:#58a6ff; font-weight:bold;">🟢 ADMIN</span>'; } 
+                else if (u.subscriptionEndDate) {
+                    const exp = new Date(u.subscriptionEndDate); const now = new Date(); const diffDays = Math.ceil((exp - now) / (1000 * 60 * 60 * 24));
+                    if (diffDays < 0) { statusHtml = `<span style="color:#f85149; font-weight:bold;">🔴 Expirada (${exp.toLocaleDateString()})</span>`; } 
+                    else if (diffDays <= 5) { statusHtml = `<span style="color:#d29922; font-weight:bold;">🟡 Expira em ${diffDays} dias</span>`; } 
+                    else { statusHtml = `<span style="color:#3fb950; font-weight:bold;">🟢 Válida (${exp.toLocaleDateString()})</span>`; }
+                } else { statusHtml = '<span style="color:#8b949e;">Sem Data</span>'; }
 
                 const tr = document.createElement('tr'); 
-                tr.innerHTML = `
-                    <td style="padding: 10px; border-bottom: 1px solid #21262d; font-size:11px; color:#8b949e;">${u.document || u.id}</td>
-                    <td style="padding: 10px; border-bottom: 1px solid #21262d; font-weight:bold; color:#c9d1d9;">${u.name || '---'}</td>
-                    <td style="padding: 10px; border-bottom: 1px solid #21262d; font-size:11px; color:#8b949e;">${u.email}</td>
-                    <td style="padding: 10px; border-bottom: 1px solid #21262d;">${statusHtml}</td>
-                `; 
+                tr.innerHTML = `<td style="padding: 10px; border-bottom: 1px solid #21262d; font-size:11px; color:#8b949e;">${u.document || u.id}</td><td style="padding: 10px; border-bottom: 1px solid #21262d; font-weight:bold; color:#c9d1d9;">${u.name || '---'}</td><td style="padding: 10px; border-bottom: 1px solid #21262d; font-size:11px; color:#8b949e;">${u.email}</td><td style="padding: 10px; border-bottom: 1px solid #21262d;">${statusHtml}</td>`; 
                 tbody.appendChild(tr); 
             }); 
         }
     }
 });
 
-// 🎯 TABELA DE PIX (ADMIN)
 socket.on('admin_payments_list', (res) => {
-    const tbody = document.getElementById('paymentsListBody'); if(!tbody) return;
-    tbody.innerHTML = '';
+    const tbody = document.getElementById('paymentsListBody'); if(!tbody) return; tbody.innerHTML = '';
     if (res.success) {
         if (res.payments.length === 0) tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 20px; color:#8b949e;">Nenhum PIX gerado ainda.</td></tr>';
         else {
             res.payments.forEach(p => {
                 const dateStr = p.createdAt ? new Date(p.createdAt).toLocaleString('pt-BR') : '---';
-                const statusColor = p.status === 'approved' ? '#3fb950' : '#d29922';
-                const statusText = p.status === 'approved' ? 'PAGO' : 'PENDENTE';
-                
+                const statusColor = p.status === 'approved' ? '#3fb950' : '#d29922'; const statusText = p.status === 'approved' ? 'PAGO' : 'PENDENTE';
                 const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td style="padding: 10px; border-bottom: 1px solid #21262d; font-size:11px; color:#8b949e;">${dateStr}</td>
-                    <td style="padding: 10px; border-bottom: 1px solid #21262d; font-size:11px; color:#8b949e;">${p.email || p.uid}</td>
-                    <td style="padding: 10px; border-bottom: 1px solid #21262d; color:#58a6ff; font-weight:bold;">R$ ${parseFloat(p.valor).toFixed(2).replace('.', ',')}</td>
-                    <td style="padding: 10px; border-bottom: 1px solid #21262d; color:#8b949e; font-size:11px;">${p.meses} Mês(es)</td>
-                    <td style="padding: 10px; border-bottom: 1px solid #21262d; color:${statusColor}; font-weight:bold; font-size:11px;">${statusText}</td>
-                `;
+                tr.innerHTML = `<td style="padding: 10px; border-bottom: 1px solid #21262d; font-size:11px; color:#8b949e;">${dateStr}</td><td style="padding: 10px; border-bottom: 1px solid #21262d; font-size:11px; color:#8b949e;">${p.email || p.uid}</td><td style="padding: 10px; border-bottom: 1px solid #21262d; color:#58a6ff; font-weight:bold;">R$ ${parseFloat(p.valor).toFixed(2).replace('.', ',')}</td><td style="padding: 10px; border-bottom: 1px solid #21262d; color:#8b949e; font-size:11px;">${p.meses} Mês(es)</td><td style="padding: 10px; border-bottom: 1px solid #21262d; color:${statusColor}; font-weight:bold; font-size:11px;">${statusText}</td>`;
                 tbody.appendChild(tr);
             });
         }
     }
 });
 
-socket.on('admin_strategies_list', (res) => {
-    const listDiv = document.getElementById('adminStratList'); if (!listDiv) return;
-    if (res.success) {
-        window.adminStrats = res.strategies; let html = '';
-        res.strategies.forEach(s => {
-            let desc = "Estratégia institucional JS Invest.";
-            if (s.conditions && s.conditions.call) desc = s.conditions.call.substring(0, 45) + "...";
-            html += `<div style="background:#0d1117; border:1px solid #30363d; padding:10px; border-radius:6px; margin-bottom:8px; display:flex; flex-direction:column; gap:5px;"><div style="display:flex; justify-content:space-between; align-items:center;"><b style="color:#58a6ff; font-size:12px;">[ ${s.id} ] - ${s.name}</b><div><button onclick="viewStrat('${s.id}')" style="background:#1f6feb; border:none; color:white; padding:4px 8px; border-radius:4px; font-size:10px; cursor:pointer;">Ver JSON</button> <button onclick="deleteStrat('${s.id}')" style="background:#da3633; border:none; color:white; padding:4px 8px; border-radius:4px; font-size:10px; cursor:pointer;">🗑 Excluir</button></div></div><span style="color:#8b949e; font-size:10px;">${desc}</span></div>`;
-        });
-        listDiv.innerHTML = html || '<div style="text-align:center; color:#8b949e;">Nenhuma estratégia ativa.</div>';
-    }
-});
-
-window.viewStrat = (id) => { const s = window.adminStrats.find(x => x.id === id); if (s) alert(JSON.stringify(s, null, 2)); }; window.deleteStrat = (id) => { if (confirm('🚨 Tem a certeza que deseja excluir esta estratégia permanentemente?')) { auth.currentUser.getIdToken().then(token => socket.emit('admin_delete_strategy', { token, id })); } };
-
-socket.on('admin_report_data', (res) => {
-    const container = document.getElementById('rankingListContainer'); if (!container) return;
-    if (!res.success || res.historico.length === 0) { container.innerHTML = '<div style="text-align:center; padding:20px; color:#8b949e;">Nenhum sinal registado hoje no banco de dados.</div>'; return; }
-    let html = `<h4 style="color:#8b949e; text-align:center;">🏆 RANKING DE ASSERTIVIDADE DE HOJE</h4>`;
-    res.ranking.forEach(([ativo, score], index) => { let winColor = score.w > score.l ? '#3fb950' : '#d29922'; html += `<div style="display:flex; justify-content:space-between; align-items:center; background:#0d1117; border:1px solid #30363d; padding:10px 15px; margin-bottom:8px; border-radius:6px;"><span style="color:#c9d1d9; font-weight:bold;">${index + 1}º ${ativo}</span><div><span style="color:${winColor}; font-weight:bold; margin-right:15px;">✅ ${score.w}</span><span style="color:#f85149; font-weight:bold;">🔴 ${score.l}</span></div></div>`; });
-    container.innerHTML = html;
-});
+socket.on('user_creation_result', (res) => { alert(res.msg); if(document.getElementById('btnCreateUser')) document.getElementById('btnCreateUser').innerText = 'Cadastrar'; if(res.success) { if(document.getElementById('newUserEmail')) document.getElementById('newUserEmail').value = ''; if(document.getElementById('newUserPassword')) document.getElementById('newUserPassword').value = ''; auth.currentUser.getIdToken().then(token => socket.emit('admin_get_users', token)); } });
 
 socket.on('auto_trade_status', (res) => {
     isBotActive = res.active; const btn = document.getElementById('btnToggleBot'); const status = document.getElementById('statusBot');
-    if(isBotActive) { btn.className = "btn-toggle-bot bot-on"; btn.innerText = "PARAR AUTO-TRADE"; status.innerText = res.msg; status.style.color = "#58a6ff"; } else { btn.className = "btn-toggle-bot bot-off"; btn.innerText = "ATIVAR AUTO-TRADE"; status.innerText = res.msg; if(res.msg.includes("META")) status.style.color = "#e3b341"; else if(res.msg.includes("STOP")) status.style.color = "#f85149"; else status.style.color = "#8b949e"; }
-    if (res.profit !== undefined) { const pVal = document.getElementById('profitVal'); if(pVal) { pVal.innerText = `R$ ${res.profit.toFixed(2).replace('.', ',')}`; pVal.style.color = res.profit >= 0 ? "#3fb950" : "#f85149"; } else { const lucroBox = document.querySelector('div:contains("Lucro da Sessão:")'); if (lucroBox) { lucroBox.innerHTML = `Lucro da Sessão: <b style="color:${res.profit >= 0 ? '#3fb950' : '#f85149'}">R$ ${res.profit.toFixed(2).replace('.', ',')}</b>`; } } }
+    if(isBotActive) { btn.className = "btn-toggle-bot bot-on"; btn.innerText = "PARAR AUTO-TRADE"; status.innerText = res.msg; status.style.color = "#58a6ff"; } 
+    else { btn.className = "btn-toggle-bot bot-off"; btn.innerText = "ATIVAR AUTO-TRADE"; status.innerText = res.msg; if(res.msg.includes("META")) status.style.color = "#e3b341"; else if(res.msg.includes("STOP")) status.style.color = "#f85149"; else status.style.color = "#8b949e"; }
+    if (res.profit !== undefined) { const pVal = document.getElementById('profitVal'); if(pVal) { pVal.innerText = `R$ ${res.profit.toFixed(2).replace('.', ',')}`; pVal.style.color = res.profit >= 0 ? "#3fb950" : "#f85149"; } }
 });
 
 socket.on('update_balance', (data) => { const el = document.getElementById(data.isDemo ? 'valDemo' : 'valReal'); el.innerText = `R$ ${data.balance}`; el.style.color = data.isDemo ? '#3fb950' : '#58a6ff'; setTimeout(() => { el.style.color = data.isDemo ? '#d29922' : '#3fb950'; }, 1000); });
@@ -348,6 +320,31 @@ socket.on('signal_result', (sig) => {
     if (resTd) { resTd.innerText = sig.status; if (sig.status.includes('WIN')) resTd.className = 'text-green'; else if (sig.status.includes('LOSS')) resTd.className = 'text-red'; else resTd.className = 'text-warning'; }
 });
 
+// 🎯 LISTAGEM DE ESTRATÉGIAS RESTAURADA
+socket.on('admin_strategies_list', (res) => {
+    const listDiv = document.getElementById('adminStratList'); if (!listDiv) return;
+    if (res.success) {
+        window.adminStrats = res.strategies; let html = '';
+        res.strategies.forEach(s => {
+            let desc = "Estratégia institucional JS Invest.";
+            if (s.conditions && s.conditions.call) desc = s.conditions.call.substring(0, 45) + "...";
+            html += `<div style="background:#0d1117; border:1px solid #30363d; padding:10px; border-radius:6px; margin-bottom:8px; display:flex; flex-direction:column; gap:5px;"><div style="display:flex; justify-content:space-between; align-items:center;"><b style="color:#58a6ff; font-size:12px;">[ ${s.id} ] - ${s.name}</b><div><button onclick="viewStrat('${s.id}')" style="background:#1f6feb; border:none; color:white; padding:4px 8px; border-radius:4px; font-size:10px; cursor:pointer;">Ver JSON</button> <button onclick="deleteStrat('${s.id}')" style="background:#da3633; border:none; color:white; padding:4px 8px; border-radius:4px; font-size:10px; cursor:pointer;">🗑 Excluir</button></div></div><span style="color:#8b949e; font-size:10px;">${desc}</span></div>`;
+        });
+        listDiv.innerHTML = html || '<div style="text-align:center; color:#8b949e;">Nenhuma estratégia ativa.</div>';
+    }
+});
+
+window.viewStrat = (id) => { const s = window.adminStrats.find(x => x.id === id); if (s) alert(JSON.stringify(s, null, 2)); }; window.deleteStrat = (id) => { if (confirm('🚨 Tem a certeza que deseja excluir esta estratégia permanentemente?')) { auth.currentUser.getIdToken().then(token => socket.emit('admin_delete_strategy', { token, id })); } };
+
+// 🎯 RELATÓRIO MOMENTÂNEO DO ROBÔ RESTAURADO
+socket.on('admin_report_data', (res) => {
+    const container = document.getElementById('rankingListContainer'); if (!container) return;
+    if (!res.success || res.historico.length === 0) { container.innerHTML = '<div style="text-align:center; padding:20px; color:#8b949e;">Nenhum sinal registado hoje no banco de dados.</div>'; return; }
+    let html = `<h4 style="color:#8b949e; text-align:center;">🏆 RANKING DE ASSERTIVIDADE DE HOJE</h4>`;
+    res.ranking.forEach(([ativo, score], index) => { let winColor = score.w > score.l ? '#3fb950' : '#d29922'; html += `<div style="display:flex; justify-content:space-between; align-items:center; background:#0d1117; border:1px solid #30363d; padding:10px 15px; margin-bottom:8px; border-radius:6px;"><span style="color:#c9d1d9; font-weight:bold;">${index + 1}º ${ativo}</span><div><span style="color:${winColor}; font-weight:bold; margin-right:15px;">✅ ${score.w}</span><span style="color:#f85149; font-weight:bold;">🔴 ${score.l}</span></div></div>`; });
+    container.innerHTML = html;
+});
+
 function getInstitutionalRiskConfig() {
     const isDemo = document.getElementById('riskAccount').value === 'demo'; const uid = localStorage.getItem('jsInvestUid');
     const realBalStr = document.getElementById('valReal').innerText; const realBalNum = parseFloat(realBalStr.replace('R$ ', '').replace(/\./g, '').replace(',', '.'));
@@ -368,23 +365,44 @@ document.getElementById('coinSelector').addEventListener('change', (e) => { clea
 document.getElementById('strategySelector').addEventListener('change', (e) => { clearUIForLoading(); socket.emit('change_strategy', e.target.value); });
 document.getElementById('timeframeSelector').addEventListener('change', (e) => { clearUIForLoading(); socket.emit('change_timeframe', e.target.value); });
 
-const adminModal = document.getElementById('adminModal');
 if(document.getElementById('btnAdminPanel')) { 
     document.getElementById('btnAdminPanel').addEventListener('click', () => { 
-        adminModal.style.display = 'flex'; 
+        document.getElementById('adminModal').style.display = 'flex'; 
         auth.currentUser.getIdToken().then(token => {
             socket.emit('admin_get_users', token); 
             socket.emit('admin_get_payments', token);
         }); 
+        
+        // 🎯 PREENCHE OS VALORES DA ABA PREÇOS NO CLIQUE
+        if (window.appPricing) {
+            if(document.getElementById('price1')) document.getElementById('price1').value = window.appPricing.month1;
+            if(document.getElementById('price3')) document.getElementById('price3').value = window.appPricing.month3;
+            if(document.getElementById('price6')) document.getElementById('price6').value = window.appPricing.month6;
+            if(document.getElementById('price12')) document.getElementById('price12').value = window.appPricing.month12;
+        }
+        
         if (window.tempTgConfig) { 
-            if(document.getElementById('tgRsiOver')) document.getElementById('tgRsiOver').value = window.tempTgConfig.rsiOver || '65'; if(document.getElementById('tgRsiUnder')) document.getElementById('tgRsiUnder').value = window.tempTgConfig.rsiUnder || '35'; if(document.getElementById('tgBbDev')) document.getElementById('tgBbDev').value = window.tempTgConfig.bbDev || '2'; 
-            if(document.getElementById('tgHoraManha')) document.getElementById('tgHoraManha').value = window.tempTgConfig.horaManha || '09:30'; if(document.getElementById('tgHoraTarde')) document.getElementById('tgHoraTarde').value = window.tempTgConfig.horaTarde || '15:30'; 
-            if(document.getElementById('tgDias')) document.getElementById('tgDias').value = window.tempTgConfig.dias || '1-5'; if(document.getElementById('tgMaxSinais')) document.getElementById('tgMaxSinais').value = window.tempTgConfig.maxSinais || '2'; if(document.getElementById('tgStkStart')) document.getElementById('tgStkStart').value = window.tempTgConfig.stkStart || ''; if(document.getElementById('tgStkEnd')) document.getElementById('tgStkEnd').value = window.tempTgConfig.stkEnd || ''; if(document.getElementById('tgStkWin')) document.getElementById('tgStkWin').value = window.tempTgConfig.stkWin || ''; if(document.getElementById('tgStkLoss')) document.getElementById('tgStkLoss').value = window.tempTgConfig.stkLoss || ''; 
-            const msgDefault = "⚡ *ALERTA DE TOQUE (M1)* ⚡\n\n💵 Moeda = {MOEDA}\n⏰ Expiração = 1 Minuto\n🛎 Entrada = {HORA_ENTRADA}\n{DIRECAO}\n\n👉🏼 Se necessário, fazer 1 Gale."; if(document.getElementById('tgMsgSinal')) document.getElementById('tgMsgSinal').value = window.tempTgConfig.msgSinal || msgDefault; 
+            if(document.getElementById('tgRsiOver')) document.getElementById('tgRsiOver').value = window.tempTgConfig.rsiOver || '65'; 
+            if(document.getElementById('tgRsiUnder')) document.getElementById('tgRsiUnder').value = window.tempTgConfig.rsiUnder || '35'; 
+            if(document.getElementById('tgBbDev')) document.getElementById('tgBbDev').value = window.tempTgConfig.bbDev || '2'; 
+            if(document.getElementById('tgHoraManha')) document.getElementById('tgHoraManha').value = window.tempTgConfig.horaManha || '09:30'; 
+            if(document.getElementById('tgHoraTarde')) document.getElementById('tgHoraTarde').value = window.tempTgConfig.horaTarde || '15:30'; 
+            if(document.getElementById('tgDias')) document.getElementById('tgDias').value = window.tempTgConfig.dias || '1-5'; 
+            if(document.getElementById('tgMaxSinais')) document.getElementById('tgMaxSinais').value = window.tempTgConfig.maxSinais || '2'; 
+            
+            // Stickers Separados
+            if(document.getElementById('tgStkStartManha')) document.getElementById('tgStkStartManha').value = window.tempTgConfig.stkStartManha || window.tempTgConfig.stkStart || ''; 
+            if(document.getElementById('tgStkEndManha')) document.getElementById('tgStkEndManha').value = window.tempTgConfig.stkEndManha || window.tempTgConfig.stkEnd || ''; 
+            if(document.getElementById('tgStkStartTarde')) document.getElementById('tgStkStartTarde').value = window.tempTgConfig.stkStartTarde || window.tempTgConfig.stkStart || ''; 
+            if(document.getElementById('tgStkEndTarde')) document.getElementById('tgStkEndTarde').value = window.tempTgConfig.stkEndTarde || window.tempTgConfig.stkEnd || ''; 
+            
+            if(document.getElementById('tgStkWin')) document.getElementById('tgStkWin').value = window.tempTgConfig.stkWin || ''; 
+            if(document.getElementById('tgStkLoss')) document.getElementById('tgStkLoss').value = window.tempTgConfig.stkLoss || ''; 
+            
+            const msgDefault = "⚡ *ALERTA DE TOQUE (M1)* ⚡\n\n💵 Moeda = {MOEDA}\n⏰ Expiração = 1 Minuto\n🛎 Entrada = {HORA_ENTRADA}\n{DIRECAO}\n\n👉🏼 Se necessário, fazer 1 Gale."; 
+            if(document.getElementById('tgMsgSinal')) document.getElementById('tgMsgSinal').value = window.tempTgConfig.msgSinal || msgDefault; 
         } 
     }); 
 }
-if(document.getElementById('btnCreateUser')) { document.getElementById('btnCreateUser').addEventListener('click', () => { const newEmail = document.getElementById('newUserEmail').value; const newPassword = document.getElementById('newUserPassword').value; const newRole = document.getElementById('newUserRole').value; document.getElementById('btnCreateUser').innerText = '...'; auth.currentUser.getIdToken().then(token => socket.emit('admin_create_user', { token, newEmail, newPassword, newRole })); }); }
-if(document.getElementById('btnInjectCookie')) { document.getElementById('btnInjectCookie').addEventListener('click', () => { const cookieVal = document.getElementById('adminCookieInput').value; if(cookieVal.length > 20) { socket.emit('inject_cookie', cookieVal); document.getElementById('adminCookieInput').value = ''; document.getElementById('btnInjectCookie').innerText = 'Injetado! ✅'; setTimeout(() => { document.getElementById('btnInjectCookie').innerText = 'Injetar'; }, 3000); } else { alert('❌ Cookie inválido!'); } }); }
 
 setInterval(() => { const tfSelect = document.getElementById('timeframeSelector'); const tfMinutes = tfSelect ? parseInt(tfSelect.value.replace('m', '')) : 1; const now = new Date(); const sec = (tfMinutes * 60) - ((now.getMinutes() % tfMinutes) * 60 + now.getSeconds()); let displayTime = ''; if (sec >= 60) { const m = Math.floor(sec / 60); const s = sec % 60; displayTime = `${m < 10 ? '0'+m : m}:${s < 10 ? '0'+s : s}`; } else { displayTime = sec < 10 ? '0' + sec : sec; } document.getElementById('timerCircle').innerText = displayTime; const liveCard = document.getElementById('liveTradeCard'); if (liveCard && liveCard.style.display !== 'none') { document.getElementById('liveTime').innerText = displayTime + (sec < 60 ? 's' : ''); } }, 1000);

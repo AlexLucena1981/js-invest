@@ -20,9 +20,13 @@ function saveRiskConfig() {
     localStorage.setItem('jsInvestConfig', JSON.stringify(config));
 }
 
-// 🎯 SAAS: PAINEL DE ASSINATURA ATUALIZADO (Preço Oficial)
 function mostrarPainelAssinatura(dataExpiracao) {
     if (document.getElementById('premiumBlockModal')) return;
+
+    const p1 = window.appPricing ? window.appPricing.month1 : 49.90;
+    const p3 = window.appPricing ? window.appPricing.month3 : 119.90;
+    const p6 = window.appPricing ? window.appPricing.month6 : 199.90;
+    const p12 = window.appPricing ? window.appPricing.month12 : 399.90;
 
     const modal = document.createElement('div');
     modal.id = 'premiumBlockModal';
@@ -35,10 +39,10 @@ function mostrarPainelAssinatura(dataExpiracao) {
             <p style="color:#8b949e; font-size:14px; margin-bottom:20px;">O seu período de uso terminou em <br><b style="color:#f85149;">${new Date(dataExpiracao).toLocaleDateString()}</b></p>
             
             <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:15px;">
-                <button onclick="gerarCheckout(49.90, 1)" style="background:#161b22; border:1px solid #30363d; color:#fff; padding:12px; border-radius:10px; cursor:pointer; font-weight:bold;"><b>1 MÊS</b> - R$ 49,90</button>
-                <button onclick="gerarCheckout(119.90, 3)" style="background:linear-gradient(90deg, #1f6feb, #58a6ff); border:none; color:#fff; padding:15px; border-radius:10px; cursor:pointer; font-weight:bold; transform:scale(1.05);">🚀 <b>3 MESES</b> - R$ 119,90</button>
-                <button onclick="gerarCheckout(199.90, 6)" style="background:#161b22; border:1px solid #30363d; color:#fff; padding:12px; border-radius:10px; cursor:pointer; font-weight:bold;"><b>6 MESES</b> - R$ 199,90</button>
-                <button onclick="gerarCheckout(399.90, 12)" style="background:#161b22; border:1px solid #30363d; color:#fff; padding:12px; border-radius:10px; cursor:pointer; font-weight:bold;"><b>1 ANO</b> - R$ 399,90</button>
+                <button onclick="gerarCheckout(${p1}, 1)" style="background:#161b22; border:1px solid #30363d; color:#fff; padding:12px; border-radius:10px; cursor:pointer; font-weight:bold;"><b>1 MÊS</b> - R$ ${p1.toFixed(2).replace('.', ',')}</button>
+                <button onclick="gerarCheckout(${p3}, 3)" style="background:linear-gradient(90deg, #1f6feb, #58a6ff); border:none; color:#fff; padding:15px; border-radius:10px; cursor:pointer; font-weight:bold; transform:scale(1.05);">🚀 <b>3 MESES</b> - R$ ${p3.toFixed(2).replace('.', ',')}</button>
+                <button onclick="gerarCheckout(${p6}, 6)" style="background:#161b22; border:1px solid #30363d; color:#fff; padding:12px; border-radius:10px; cursor:pointer; font-weight:bold;"><b>6 MESES</b> - R$ ${p6.toFixed(2).replace('.', ',')}</button>
+                <button onclick="gerarCheckout(${p12}, 12)" style="background:#161b22; border:1px solid #30363d; color:#fff; padding:12px; border-radius:10px; cursor:pointer; font-weight:bold;"><b>1 ANO</b> - R$ ${p12.toFixed(2).replace('.', ',')}</button>
             </div>
 
             <div id="pixArea" style="display:none; background:#fff; padding:15px; border-radius:10px; margin-top:15px; margin-bottom:15px;">
@@ -46,6 +50,7 @@ function mostrarPainelAssinatura(dataExpiracao) {
                 <div id="qrcodePlace" style="display:flex; justify-content:center; margin-bottom:10px;"></div>
                 <input type="text" id="pixCopyPaste" readonly style="width:100%; padding:8px; font-size:10px; background:#f0f0f0; border:1px solid #ccc; border-radius:4px; color:#000;">
                 <button onclick="copyPix()" style="background:#000; color:#fff; width:100%; border:none; padding:12px; margin-top:10px; border-radius:5px; cursor:pointer; font-weight:bold;">COPIAR CÓDIGO PIX</button>
+                <button onclick="verificarPix(window.lastPaymentId)" id="btnVerifyPix" style="background:#3fb950; color:#fff; width:100%; border:none; padding:12px; margin-top:10px; border-radius:5px; cursor:pointer; font-weight:bold;">🔄 JÁ PAGUEI (VERIFICAR)</button>
             </div>
             
             <button onclick="liberarApenasDemo()" style="background:transparent; border:none; color:#8b949e; text-decoration:underline; font-size:12px; cursor:pointer; margin-top:10px;">Ignorar e acessar apenas Conta Demo</button>
@@ -59,17 +64,13 @@ function liberarApenasDemo() {
     if (modal) modal.style.display = 'none';
     
     const accSelect = document.getElementById('riskAccount');
-    if (accSelect) {
-        accSelect.value = 'demo';
-        accSelect.disabled = true; 
-    }
+    if (accSelect) { accSelect.value = 'demo'; accSelect.disabled = true; }
     alert("⚠️ Acesso restrito à Conta Demo. Para operar na Conta Real com o Robô, renove sua assinatura.");
 }
 
 function togglePremiumUI(isPremium, expiresAt) {
     const statusBot = document.getElementById('statusBot');
     const accSelect = document.getElementById('riskAccount');
-    
     if (statusBot) {
         if (isPremium) { 
             let exp = new Date(expiresAt);
@@ -79,10 +80,7 @@ function togglePremiumUI(isPremium, expiresAt) {
         } else { 
             statusBot.innerText = "🔒 ACESSO EXPIRADO (Apenas Conta Demo)"; 
             statusBot.style.color = "#d29922"; 
-            if (accSelect) {
-                accSelect.value = 'demo';
-                accSelect.disabled = true; 
-            }
+            if (accSelect) { accSelect.value = 'demo'; accSelect.disabled = true; }
         }
     }
 }
@@ -173,10 +171,6 @@ function clearUIForLoading() {
     document.getElementById('historyTableBody').innerHTML = `<tr><td colspan="3" style="text-align:center; color:#8b949e; padding: 20px;">Carregando análise histórica...</td></tr>`;
     document.getElementById('scoreWin1').innerText = '-'; document.getElementById('scoreWinG1').innerText = '-'; document.getElementById('scoreWinG2').innerText = '-'; document.getElementById('scoreLoss').innerText = '-'; document.getElementById('totalAccuracy').innerText = '0.0%';
     const alertBox = document.getElementById('alertBox'); alertBox.innerHTML = "Analisando Mercado..."; alertBox.className = "alert-box";
-
     const fifoList = document.getElementById('fifoList'); 
-    if(fifoList) { 
-        Array.from(fifoList.children).forEach(child => { if (child.id && child.id.startsWith('fifo-sig-')) child.remove(); }); 
-        checkFifoEmpty(); 
-    }
+    if(fifoList) { Array.from(fifoList.children).forEach(child => { if (child.id && child.id.startsWith('fifo-sig-')) child.remove(); }); checkFifoEmpty(); }
 }

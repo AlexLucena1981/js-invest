@@ -27,7 +27,8 @@ async function loadSystemData(io, state, tgConfigGlobal) {
             io.emit('status', { msg: state.currentEngineStatus });
         }
         
-        initTelegramBot(state, tgConfigGlobal);
+        // 🎯 O BOT AGORA RECEBE O IO PARA CONTROLAR A TELA DOS ALUNOS
+        initTelegramBot(io, state, tgConfigGlobal);
 
     } catch (error) { console.error("Erro Firebase:", error); }
 }
