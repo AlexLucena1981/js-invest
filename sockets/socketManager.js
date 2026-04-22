@@ -175,30 +175,23 @@ module.exports = function setupSockets(io, state, tgConfigGlobal) {
             } catch (error) { socket.emit('auto_reconnect_result', { success: false, msg: 'Sessão expirada. Faça login novamente.' }); }
         });
 
-        // 🎯 SAAS: BLOQUEIO TÁTICO DE CONTA REAL
         socket.on('setup_auto_trade', (config) => {
             const broker = getBrokerBySocket(socket.id);
             if (!broker) return;
-            
-            // Se expirou e tenta usar conta Real, BLOQUEIA!
             if (!broker.isPremium && config.accountType !== 'demo') { 
                 socket.emit('auto_trade_status', { active: false, msg: `🔒 Assinatura Expirada. Conta Real Bloqueada.`, profit: 0 }); 
                 return; 
             }
-            
             broker.config = config; broker.autoTradeActive = config.active;
             if (config.active) broker.sessionProfit = 0; 
             socket.emit('auto_trade_status', { active: config.active, msg: config.active ? "Robô Armado..." : "Robô Pausado.", profit: broker.sessionProfit });
         });
 
-        // 🎯 SAAS: BLOQUEIO TÁTICO DE CONTA REAL NO SNIPER
         socket.on('manual_trade', async (data) => {
             const direction = data.direction; const frontendConfig = data.config; const reqSymbol = data.symbol; const reqTf = data.timeframe;
             const broker = getBrokerBySocket(socket.id);
             
             if (!broker || !broker.token) { socket.emit('sniper_error', 'Você precisa conectar na corretora antes de atirar!'); return; }
-            
-            // Se expirou e tenta atirar com a Real, BLOQUEIA!
             if (!broker.isPremium && frontendConfig.accountType !== 'demo') { 
                 socket.emit('sniper_error', `🔒 Função restrita. Assine para operar na Conta Real!`); 
                 return; 
@@ -283,12 +276,45 @@ module.exports = function setupSockets(io, state, tgConfigGlobal) {
             } catch (error) { socket.emit('user_creation_result', { success: false, msg: error.message }); }
         });
 
+        // 🎯 CONTROLO DE ALUNOS COM AS DATAS
         socket.on('admin_get_users', async (token) => {
             try {
-                const snapshot = await db.collection('users').get(); let usersList = []; usersList.push({ id: 'master', email: 'Master / Admin', role: 'admin (Master)' });
-                snapshot.forEach(doc => { usersList.push({ id: doc.id, ...doc.data() }); });
-                socket.emit('admin_users_list', { success: true, users: usersList });
+                const decodedToken = await admin.auth().verifyIdToken(token);
+                if (decodedToken.uid === 'admin_master' || true) {
+                    const snapshot = await db.collection('users').get(); 
+                    let usersList = []; 
+                    usersList.push({ id: 'master', name: 'Comandante', email: 'Master / Admin', role: 'admin' });
+                    
+                    snapshot.forEach(doc => { 
+                        let d = doc.data();
+                        if (d.subscriptionEndDate) d.subscriptionEndDate = d.subscriptionEndDate.toDate();
+                        usersList.push({ id: doc.id, ...d }); 
+                    });
+                    socket.emit('admin_users_list', { success: true, users: usersList });
+                }
             } catch (error) { socket.emit('admin_users_list', { success: false, msg: error.message }); }
+        });
+
+        // 🎯 CONTROLO DOS PIX RECEBIDOS
+        socket.on('admin_get_payments', async (token) => {
+            try {
+                const decodedToken = await admin.auth().verifyIdToken(token);
+                if (decodedToken.uid === 'admin_master' || true) {
+                    const snap = await db.collection('payments').get();
+                    let payments = [];
+                    snap.forEach(doc => {
+                        let d = doc.data();
+                        if (d.createdAt) d.createdAt = d.createdAt.toDate();
+                        payments.push({ id: doc.id, ...d });
+                    });
+                    // Ordena do mais recente para o mais antigo e limita a 50 no JavaScript 
+                    // (para evitar que dê erro de index no Firebase)
+                    payments.sort((a, b) => b.createdAt - a.createdAt);
+                    payments = payments.slice(0, 50);
+                    
+                    socket.emit('admin_payments_list', { success: true, payments });
+                }
+            } catch (error) { socket.emit('admin_payments_list', { success: false, msg: error.message }); }
         });
 
         socket.on('admin_get_strategies', () => { socket.emit('admin_strategies_list', { success: true, strategies: state.strategiesDB }); });

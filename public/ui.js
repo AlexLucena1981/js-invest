@@ -1,4 +1,4 @@
-// 🎨 UI & VISUAL CONTROLLERS (Gráficos, Painéis e Alertas)
+// 🎨 UI & VISUAL CONTROLLERS
 
 window.liveChart = null; 
 
@@ -20,7 +20,7 @@ function saveRiskConfig() {
     localStorage.setItem('jsInvestConfig', JSON.stringify(config));
 }
 
-// 🎯 SAAS: PAINEL DE ASSINATURA ATUALIZADO
+// 🎯 SAAS: PAINEL DE ASSINATURA ATUALIZADO (Preço Oficial)
 function mostrarPainelAssinatura(dataExpiracao) {
     if (document.getElementById('premiumBlockModal')) return;
 
@@ -35,7 +35,7 @@ function mostrarPainelAssinatura(dataExpiracao) {
             <p style="color:#8b949e; font-size:14px; margin-bottom:20px;">O seu período de uso terminou em <br><b style="color:#f85149;">${new Date(dataExpiracao).toLocaleDateString()}</b></p>
             
             <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:15px;">
-                <button onclick="gerarCheckout(1.00, 1)" style="background:#161b22; border:1px solid #30363d; color:#fff; padding:12px; border-radius:10px; cursor:pointer; font-weight:bold;"><b>1 MÊS</b> - R$ 1,00 (TESTE)</button>
+                <button onclick="gerarCheckout(49.90, 1)" style="background:#161b22; border:1px solid #30363d; color:#fff; padding:12px; border-radius:10px; cursor:pointer; font-weight:bold;"><b>1 MÊS</b> - R$ 49,90</button>
                 <button onclick="gerarCheckout(119.90, 3)" style="background:linear-gradient(90deg, #1f6feb, #58a6ff); border:none; color:#fff; padding:15px; border-radius:10px; cursor:pointer; font-weight:bold; transform:scale(1.05);">🚀 <b>3 MESES</b> - R$ 119,90</button>
                 <button onclick="gerarCheckout(199.90, 6)" style="background:#161b22; border:1px solid #30363d; color:#fff; padding:12px; border-radius:10px; cursor:pointer; font-weight:bold;"><b>6 MESES</b> - R$ 199,90</button>
                 <button onclick="gerarCheckout(399.90, 12)" style="background:#161b22; border:1px solid #30363d; color:#fff; padding:12px; border-radius:10px; cursor:pointer; font-weight:bold;"><b>1 ANO</b> - R$ 399,90</button>
@@ -54,7 +54,6 @@ function mostrarPainelAssinatura(dataExpiracao) {
     document.body.appendChild(modal);
 }
 
-// 🎯 FECHA O MODAL MAS TRANCA NA DEMO
 function liberarApenasDemo() {
     const modal = document.getElementById('premiumBlockModal');
     if (modal) modal.style.display = 'none';
@@ -62,7 +61,7 @@ function liberarApenasDemo() {
     const accSelect = document.getElementById('riskAccount');
     if (accSelect) {
         accSelect.value = 'demo';
-        accSelect.disabled = true; // Tranca o seletor visualmente
+        accSelect.disabled = true; 
     }
     alert("⚠️ Acesso restrito à Conta Demo. Para operar na Conta Real com o Robô, renove sua assinatura.");
 }
@@ -76,13 +75,13 @@ function togglePremiumUI(isPremium, expiresAt) {
             let exp = new Date(expiresAt);
             statusBot.innerText = `🚀 ACESSO LIBERADO (Expira em: ${exp.toLocaleDateString()})`; 
             statusBot.style.color = "#3fb950"; 
-            if (accSelect) accSelect.disabled = false; // Destranca a conta Real
+            if (accSelect) accSelect.disabled = false; 
         } else { 
             statusBot.innerText = "🔒 ACESSO EXPIRADO (Apenas Conta Demo)"; 
             statusBot.style.color = "#d29922"; 
             if (accSelect) {
                 accSelect.value = 'demo';
-                accSelect.disabled = true; // Tranca na Demo se estiver expirado
+                accSelect.disabled = true; 
             }
         }
     }

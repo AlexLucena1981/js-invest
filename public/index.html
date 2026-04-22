@@ -30,7 +30,7 @@
     </div>
 
     <div class="top-buttons">
-        <button class="btn-top btn-admin" id="btnAdminPanel">Painel Admin</button>
+        <button class="btn-top btn-admin" id="btnAdminPanel" style="display: none;">Painel Admin</button>
         <button class="btn-top" id="btnLogout">Sair / Desconectar</button>
     </div>
 
@@ -168,8 +168,8 @@
     </div>
 
     <div class="modal-overlay" id="adminModal">
-        <div class="modal-box" style="width: 500px;">
-            <h2 style="color: #58a6ff; font-family: 'Orbitron';">👥 Gerenciar Usuários</h2>
+        <div class="modal-box" style="width: 600px;">
+            <h2 style="color: #58a6ff; font-family: 'Orbitron';">👥 Painel Institucional</h2>
             <div style="text-align: left; margin-bottom: 20px;">
                 <p style="color: #8b949e; font-size: 13px; margin-bottom: 5px;">Cadastrar Novo Assinante (Use o Login da Corretora):</p>
                 <div style="display: flex; gap: 10px;">
@@ -194,13 +194,34 @@
             </div>
 
             <div style="text-align: left; border-top: 1px solid #30363d; padding-top: 15px; margin-top: 15px;">
-                <p style="color: #8b949e; font-size: 13px; margin-bottom: 10px;">Usuários na Plataforma:</p>
-                <div style="max-height: 180px; overflow-y: auto; background: #0d1117; border-radius: 8px; border: 1px solid #30363d;">
+                <h3 style="color:#58a6ff; font-weight:bold; font-size:14px; margin-bottom:10px;">👥 CONTROLE DE ALUNOS</h3>
+                <div style="max-height: 250px; overflow-y: auto; background: #0d1117; border-radius: 8px; border: 1px solid #30363d; margin-bottom: 20px;">
                     <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 12px;">
                         <thead style="position: sticky; top: 0; background: #161b22;">
-                            <tr><th style="padding: 10px; border-bottom: 1px solid #30363d;">E-mail / Login</th><th style="padding: 10px; border-bottom: 1px solid #30363d;">Nível</th></tr>
+                            <tr>
+                                <th style="padding: 10px; border-bottom: 1px solid #30363d;">ID / CPF</th>
+                                <th style="padding: 10px; border-bottom: 1px solid #30363d;">Nome</th>
+                                <th style="padding: 10px; border-bottom: 1px solid #30363d;">E-mail</th>
+                                <th style="padding: 10px; border-bottom: 1px solid #30363d;">Status / Validade</th>
+                            </tr>
                         </thead>
-                        <tbody id="usersListBody"><tr><td colspan="2" style="text-align:center; padding: 15px;">Carregando...</td></tr></tbody>
+                        <tbody id="usersListBody"><tr><td colspan="4" style="text-align:center; padding: 15px;">Carregando...</td></tr></tbody>
+                    </table>
+                </div>
+
+                <h3 style="color:#3fb950; font-weight:bold; font-size:14px; margin-bottom:10px;">💸 HISTÓRICO DE PIX</h3>
+                <div style="max-height: 250px; overflow-y: auto; background: #0d1117; border-radius: 8px; border: 1px solid #30363d;">
+                    <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 12px;">
+                        <thead style="position: sticky; top: 0; background: #161b22;">
+                            <tr>
+                                <th style="padding: 10px; border-bottom: 1px solid #30363d;">Data/Hora</th>
+                                <th style="padding: 10px; border-bottom: 1px solid #30363d;">Cliente</th>
+                                <th style="padding: 10px; border-bottom: 1px solid #30363d;">Valor</th>
+                                <th style="padding: 10px; border-bottom: 1px solid #30363d;">Plano</th>
+                                <th style="padding: 10px; border-bottom: 1px solid #30363d;">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="paymentsListBody"><tr><td colspan="5" style="text-align:center; padding: 15px;">Carregando...</td></tr></tbody>
                     </table>
                 </div>
             </div>

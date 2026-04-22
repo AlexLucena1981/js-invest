@@ -12,7 +12,7 @@ const socket = io({ transports: ['websocket'], upgrade: false });
 let currentEntryPrice = 0; 
 window.radarGlobalStats = null; 
 let isBotActive = false; 
-window.pixInterval = null; // 🎯 Controlador do Rastreador de PIX
+window.pixInterval = null; 
 
 window.addEventListener('DOMContentLoaded', () => {
     initChart(); 
@@ -32,14 +32,9 @@ window.addEventListener('DOMContentLoaded', () => {
     }
 
     const riskGale = document.getElementById('riskGale');
-    if (riskGale && riskGale.parentElement) {
-        riskGale.parentElement.style.display = 'none';
-    }
-
+    if (riskGale && riskGale.parentElement) { riskGale.parentElement.style.display = 'none'; }
     const btnAddScript = document.getElementById('btnOpenModal');
-    if (btnAddScript) {
-        btnAddScript.style.display = 'none';
-    }
+    if (btnAddScript) { btnAddScript.style.display = 'none'; }
 
     ['riskAccount', 'riskWin', 'riskLoss'].forEach(id => { const el = document.getElementById(id); if(el) el.addEventListener('change', saveRiskConfig); });
 
@@ -73,12 +68,9 @@ socket.on('radar_alert', (data) => {
 
 socket.on('radar_stats_update', (stats) => { 
     window.radarGlobalStats = stats; 
-    if (typeof renderStats === 'function') {
-        renderStats(window.radarGlobalStats);
-    }
+    if (typeof renderStats === 'function') renderStats(window.radarGlobalStats);
 });
 
-// 🎯 SAAS LOGIN
 socket.on('hybrid_login_result', (res) => {
     document.getElementById('btnLogin').innerText = "Acessar Sistema";
     if (res.success) {
@@ -98,7 +90,6 @@ socket.on('hybrid_login_result', (res) => {
     } else { alert(res.msg || "Erro na autenticação com a corretora."); }
 });
 
-// 🎯 SAAS RECONNECT
 socket.on('auto_reconnect_result', (res) => {
     if(res.success) {
         document.getElementById('loginScreen').style.display = 'none'; document.getElementById('valReal').innerText = `R$ ${res.balance.real}`; document.getElementById('valDemo').innerText = res.balance.demo; document.getElementById('manualTradePanel').style.display = 'flex'; 
@@ -118,7 +109,7 @@ socket.on('auto_reconnect_result', (res) => {
     }
 });
 
-// 💳 LÓGICA DE CHECKOUT E GERAÇÃO PIX COM RASTREADOR
+// 💳 LÓGICA DE CHECKOUT
 window.gerarCheckout = async (valor, meses) => {
     const uid = localStorage.getItem('jsInvestUid');
     const email = auth.currentUser ? auth.currentUser.email : "user@jsinvest";
@@ -143,11 +134,10 @@ window.gerarCheckout = async (valor, meses) => {
                 <button onclick="verificarPix('${data.paymentId}')" id="btnVerifyPix" style="background:#3fb950; color:#fff; width:100%; border:none; padding:12px; margin-top:10px; border-radius:5px; cursor:pointer; font-weight:bold;">🔄 JÁ PAGUEI (VERIFICAR)</button>
             `;
             
-            // 🎯 O RASTREADOR: Pergunta ao servidor a cada 10 segundos!
             if(window.pixInterval) clearInterval(window.pixInterval);
             window.pixInterval = setInterval(() => { window.verificarPix(data.paymentId, true) }, 10000);
         }
-    } catch (e) { alert("Erro ao gerar pagamento. Tente novamente mais tarde."); }
+    } catch (e) { alert("Erro ao gerar pagamento."); }
 };
 
 window.copyPix = () => {
@@ -157,7 +147,6 @@ window.copyPix = () => {
     alert("✅ Código PIX Copiado! Pague no app do seu banco e o acesso será liberado.");
 };
 
-// 🎯 FUNÇÃO MANUAL/AUTOMÁTICA DE VERIFICAÇÃO DO BANCO
 window.verificarPix = async (paymentId, isAuto = false) => {
     if(!isAuto) { const btn = document.getElementById('btnVerifyPix'); if(btn) btn.innerText = "Consultando o Banco..."; }
     try {
@@ -170,75 +159,115 @@ window.verificarPix = async (paymentId, isAuto = false) => {
     } catch(e) {}
 };
 
-// 🎯 DESTRANCA A TELA QUANDO APROVADO!
 socket.on('payment_approved', (data) => {
-    if(window.pixInterval) clearInterval(window.pixInterval); // Pára o rastreador
+    if(window.pixInterval) clearInterval(window.pixInterval);
     alert("✅ PAGAMENTO APROVADO! O seu acesso foi liberado com sucesso.");
-    
     const modal = document.getElementById('premiumBlockModal');
     if (modal) modal.style.display = 'none';
-    
     togglePremiumUI(true, data.expiresAt);
 });
 
 socket.on('admin_tg_config_data', (config) => { window.tempTgConfig = config; });
 
-socket.on('admin_strategies_list', (res) => {
-    const listDiv = document.getElementById('adminStratList');
-    if (!listDiv) return;
+// 🎯 TABELA DE ALUNOS (ADMIN) COM CORES
+socket.on('admin_users_list', (res) => {
+    const tbody = document.getElementById('usersListBody'); if(!tbody) return;
+    tbody.innerHTML = '';
     if (res.success) {
-        window.adminStrats = res.strategies;
-        let html = '';
+        if (res.users.length === 0) tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">Vazio.</td></tr>';
+        else { 
+            res.users.forEach(u => { 
+                let statusHtml = '';
+                if (u.role === 'admin') {
+                    statusHtml = '<span style="color:#58a6ff; font-weight:bold;">🟢 ADMIN</span>';
+                } else if (u.subscriptionEndDate) {
+                    const exp = new Date(u.subscriptionEndDate);
+                    const now = new Date();
+                    const diffDays = Math.ceil((exp - now) / (1000 * 60 * 60 * 24));
+                    
+                    if (diffDays < 0) {
+                        statusHtml = `<span style="color:#f85149; font-weight:bold;">🔴 Expirada (${exp.toLocaleDateString()})</span>`;
+                    } else if (diffDays <= 5) {
+                        statusHtml = `<span style="color:#d29922; font-weight:bold;">🟡 Expira em ${diffDays} dias</span>`;
+                    } else {
+                        statusHtml = `<span style="color:#3fb950; font-weight:bold;">🟢 Válida (${exp.toLocaleDateString()})</span>`;
+                    }
+                } else {
+                    statusHtml = '<span style="color:#8b949e;">Sem Data</span>';
+                }
+
+                const tr = document.createElement('tr'); 
+                tr.innerHTML = `
+                    <td style="padding: 10px; border-bottom: 1px solid #21262d; font-size:11px; color:#8b949e;">${u.document || u.id}</td>
+                    <td style="padding: 10px; border-bottom: 1px solid #21262d; font-weight:bold; color:#c9d1d9;">${u.name || '---'}</td>
+                    <td style="padding: 10px; border-bottom: 1px solid #21262d; font-size:11px;">${u.email}</td>
+                    <td style="padding: 10px; border-bottom: 1px solid #21262d;">${statusHtml}</td>
+                `; 
+                tbody.appendChild(tr); 
+            }); 
+        }
+    }
+});
+
+// 🎯 TABELA DE PIX (ADMIN)
+socket.on('admin_payments_list', (res) => {
+    const tbody = document.getElementById('paymentsListBody'); if(!tbody) return;
+    tbody.innerHTML = '';
+    if (res.success) {
+        if (res.payments.length === 0) tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">Nenhum PIX gerado ainda.</td></tr>';
+        else {
+            res.payments.forEach(p => {
+                const dateStr = p.createdAt ? new Date(p.createdAt).toLocaleString('pt-BR') : '---';
+                const statusColor = p.status === 'approved' ? '#3fb950' : '#d29922';
+                const statusText = p.status === 'approved' ? 'PAGO' : 'PENDENTE';
+                
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td style="padding: 10px; border-bottom: 1px solid #21262d; font-size:11px;">${dateStr}</td>
+                    <td style="padding: 10px; border-bottom: 1px solid #21262d; font-size:11px;">${p.email || p.uid}</td>
+                    <td style="padding: 10px; border-bottom: 1px solid #21262d; color:#58a6ff; font-weight:bold;">R$ ${parseFloat(p.valor).toFixed(2).replace('.', ',')}</td>
+                    <td style="padding: 10px; border-bottom: 1px solid #21262d;">${p.meses} Mês(es)</td>
+                    <td style="padding: 10px; border-bottom: 1px solid #21262d; color:${statusColor}; font-weight:bold;">${statusText}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+    }
+});
+
+socket.on('admin_strategies_list', (res) => {
+    const listDiv = document.getElementById('adminStratList'); if (!listDiv) return;
+    if (res.success) {
+        window.adminStrats = res.strategies; let html = '';
         res.strategies.forEach(s => {
             let desc = "Estratégia institucional JS Invest.";
             if (s.conditions && s.conditions.call) desc = s.conditions.call.substring(0, 45) + "...";
-            if (s.name.includes('Live')) desc = "Gatilhos de Reversão/Retração (RSI + BB).";
-            else if (s.indicators && s.indicators.ema) desc = "Filtro de Tendência MME + Gatilhos.";
-            
-            html += `
-            <div style="background:#0d1117; border:1px solid #30363d; padding:10px; border-radius:6px; margin-bottom:8px; display:flex; flex-direction:column; gap:5px;">
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <b style="color:#58a6ff; font-size:12px;">[ ${s.id} ] - ${s.name}</b>
-                    <div>
-                        <button onclick="viewStrat('${s.id}')" style="background:#1f6feb; border:none; color:white; padding:4px 8px; border-radius:4px; font-size:10px; cursor:pointer;">Ver JSON</button>
-                        <button onclick="deleteStrat('${s.id}')" style="background:#da3633; border:none; color:white; padding:4px 8px; border-radius:4px; font-size:10px; cursor:pointer;">🗑 Excluir</button>
-                    </div>
-                </div>
-                <span style="color:#8b949e; font-size:10px;">${desc}</span>
-            </div>`;
+            html += `<div style="background:#0d1117; border:1px solid #30363d; padding:10px; border-radius:6px; margin-bottom:8px; display:flex; flex-direction:column; gap:5px;"><div style="display:flex; justify-content:space-between; align-items:center;"><b style="color:#58a6ff; font-size:12px;">[ ${s.id} ] - ${s.name}</b><div><button onclick="viewStrat('${s.id}')" style="background:#1f6feb; border:none; color:white; padding:4px 8px; border-radius:4px; font-size:10px; cursor:pointer;">Ver JSON</button> <button onclick="deleteStrat('${s.id}')" style="background:#da3633; border:none; color:white; padding:4px 8px; border-radius:4px; font-size:10px; cursor:pointer;">🗑 Excluir</button></div></div><span style="color:#8b949e; font-size:10px;">${desc}</span></div>`;
         });
         listDiv.innerHTML = html || '<div style="text-align:center; color:#8b949e;">Nenhuma estratégia ativa.</div>';
     }
 });
 
-window.viewStrat = (id) => { const s = window.adminStrats.find(x => x.id === id); if (s) alert(JSON.stringify(s, null, 2)); };
-window.deleteStrat = (id) => { if (confirm('🚨 Tem a certeza que deseja excluir esta estratégia permanentemente?')) { auth.currentUser.getIdToken().then(token => socket.emit('admin_delete_strategy', { token, id })); } };
+window.viewStrat = (id) => { const s = window.adminStrats.find(x => x.id === id); if (s) alert(JSON.stringify(s, null, 2)); }; window.deleteStrat = (id) => { if (confirm('🚨 Tem a certeza que deseja excluir esta estratégia permanentemente?')) { auth.currentUser.getIdToken().then(token => socket.emit('admin_delete_strategy', { token, id })); } };
 
 socket.on('admin_report_data', (res) => {
-    const container = document.getElementById('rankingListContainer');
-    if (!container) return;
+    const container = document.getElementById('rankingListContainer'); if (!container) return;
     if (!res.success || res.historico.length === 0) { container.innerHTML = '<div style="text-align:center; padding:20px; color:#8b949e;">Nenhum sinal registado hoje no banco de dados.</div>'; return; }
     let html = `<h4 style="color:#8b949e; text-align:center;">🏆 RANKING DE ASSERTIVIDADE DE HOJE</h4>`;
-    res.ranking.forEach(([ativo, score], index) => {
-        let winColor = score.w > score.l ? '#3fb950' : '#d29922';
-        html += `<div style="display:flex; justify-content:space-between; align-items:center; background:#0d1117; border:1px solid #30363d; padding:10px 15px; margin-bottom:8px; border-radius:6px;"><span style="color:#c9d1d9; font-weight:bold;">${index + 1}º ${ativo}</span><div><span style="color:${winColor}; font-weight:bold; margin-right:15px;">✅ ${score.w}</span><span style="color:#f85149; font-weight:bold;">🔴 ${score.l}</span></div></div>`;
-    });
+    res.ranking.forEach(([ativo, score], index) => { let winColor = score.w > score.l ? '#3fb950' : '#d29922'; html += `<div style="display:flex; justify-content:space-between; align-items:center; background:#0d1117; border:1px solid #30363d; padding:10px 15px; margin-bottom:8px; border-radius:6px;"><span style="color:#c9d1d9; font-weight:bold;">${index + 1}º ${ativo}</span><div><span style="color:${winColor}; font-weight:bold; margin-right:15px;">✅ ${score.w}</span><span style="color:#f85149; font-weight:bold;">🔴 ${score.l}</span></div></div>`; });
     container.innerHTML = html;
 });
 
 socket.on('auto_trade_status', (res) => {
-    isBotActive = res.active;
-    const btn = document.getElementById('btnToggleBot'); const status = document.getElementById('statusBot');
-    if(isBotActive) { btn.className = "btn-toggle-bot bot-on"; btn.innerText = "PARAR AUTO-TRADE"; status.innerText = res.msg; status.style.color = "#58a6ff"; } 
-    else { btn.className = "btn-toggle-bot bot-off"; btn.innerText = "ATIVAR AUTO-TRADE"; status.innerText = res.msg; if(res.msg.includes("META")) status.style.color = "#e3b341"; else if(res.msg.includes("STOP")) status.style.color = "#f85149"; else status.style.color = "#8b949e"; }
+    isBotActive = res.active; const btn = document.getElementById('btnToggleBot'); const status = document.getElementById('statusBot');
+    if(isBotActive) { btn.className = "btn-toggle-bot bot-on"; btn.innerText = "PARAR AUTO-TRADE"; status.innerText = res.msg; status.style.color = "#58a6ff"; } else { btn.className = "btn-toggle-bot bot-off"; btn.innerText = "ATIVAR AUTO-TRADE"; status.innerText = res.msg; if(res.msg.includes("META")) status.style.color = "#e3b341"; else if(res.msg.includes("STOP")) status.style.color = "#f85149"; else status.style.color = "#8b949e"; }
     if (res.profit !== undefined) { const pVal = document.getElementById('profitVal'); if(pVal) { pVal.innerText = `R$ ${res.profit.toFixed(2).replace('.', ',')}`; pVal.style.color = res.profit >= 0 ? "#3fb950" : "#f85149"; } else { const lucroBox = document.querySelector('div:contains("Lucro da Sessão:")'); if (lucroBox) { lucroBox.innerHTML = `Lucro da Sessão: <b style="color:${res.profit >= 0 ? '#3fb950' : '#f85149'}">R$ ${res.profit.toFixed(2).replace('.', ',')}</b>`; } } }
 });
 
 socket.on('update_balance', (data) => { const el = document.getElementById(data.isDemo ? 'valDemo' : 'valReal'); el.innerText = `R$ ${data.balance}`; el.style.color = data.isDemo ? '#3fb950' : '#58a6ff'; setTimeout(() => { el.style.color = data.isDemo ? '#d29922' : '#3fb950'; }, 1000); });
 socket.on('win_balance_update', (data) => { const el = document.getElementById(data.isDemo ? 'valDemo' : 'valReal'); let currentVal = parseFloat(el.innerText.replace('R$ ', '').replace(/\\./g, '').replace(',', '.')); if (!isNaN(currentVal)) { el.innerText = `R$ ${(currentVal + data.prize).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`; el.style.color = '#3fb950'; el.style.textShadow = '0 0 15px rgba(63, 185, 80, 0.8)'; setTimeout(() => { el.style.color = data.isDemo ? '#d29922' : '#3fb950'; el.style.textShadow = 'none'; }, 2000); } });
 
-socket.on('sniper_success', (msg) => { console.log("✅ " + msg); }); 
-socket.on('sniper_error', (msg) => { alert("❌ Erro: " + msg); });
+socket.on('sniper_success', (msg) => { console.log("✅ " + msg); }); socket.on('sniper_error', (msg) => { alert("❌ Erro: " + msg); });
 
 socket.on('available_strategies', (strats) => { const sel = document.getElementById('strategySelector'); sel.innerHTML = ''; strats.forEach(s => { const opt = document.createElement('option'); opt.value = s.id; opt.innerText = s.name; sel.appendChild(opt); }); });
 socket.on('available_coins', (groupedCoins) => { const selectBox = document.getElementById('coinSelector'); if(!selectBox) return; selectBox.innerHTML = ''; for (const [categoryName, symbolsArray] of Object.entries(groupedCoins)) { let optgroup = document.createElement('optgroup'); optgroup.label = categoryName; symbolsArray.forEach(sym => { let option = document.createElement('option'); option.value = sym; option.textContent = sym.toUpperCase(); optgroup.appendChild(option); }); selectBox.appendChild(optgroup); } });
@@ -262,21 +291,15 @@ socket.on('pre_alert', (data) => { const alertBox = document.getElementById('ale
 socket.on('signal', (data) => { const alertBox = document.getElementById('alertBox'); alertBox.innerHTML = data.type === 'CALL' ? '🟢 ENTRAR: COMPRA!' : '🔴 ENTRAR: VENDA!'; alertBox.className = "alert-box alert-go"; setTimeout(() => { alertBox.className = "alert-box"; }, 4000); });
 
 socket.on('history_dump', (historyArr) => {
-    const historyTableBody = document.getElementById('historyTableBody');
-    const telaMoeda = document.getElementById('coinSelector').value.toUpperCase(); historyTableBody.innerHTML = ''; 
+    const historyTableBody = document.getElementById('historyTableBody'); const telaMoeda = document.getElementById('coinSelector').value.toUpperCase(); historyTableBody.innerHTML = ''; 
     let adicionados = 0;
     historyArr.forEach(sig => {
-        if (sig.symbol.toUpperCase() !== telaMoeda) return; 
-        adicionados++;
+        if (sig.symbol.toUpperCase() !== telaMoeda) return; adicionados++;
         const tr = document.createElement('tr'); tr.id = `sig-${sig.id}`; const isCall = sig.type === 'CALL'; let colorClass = 'text-warning'; if (sig.status.includes('WIN')) colorClass = 'text-green'; else if (sig.status.includes('LOSS')) colorClass = 'text-red'; 
-        tr.innerHTML = `<td class="text-muted">${sig.time}</td><td class="${isCall ? 'text-green' : 'text-red'}"><span style="font-size:10px; color:#8b949e; display:block;">${sig.symbol || 'BTCUSDT'}</span>${isCall ? '🟢 CALL' : '🔴 PUT'}</td><td id="res-${sig.id}" class="${colorClass}">${sig.status}</td>`;
-        historyTableBody.appendChild(tr); 
+        tr.innerHTML = `<td class="text-muted">${sig.time}</td><td class="${isCall ? 'text-green' : 'text-red'}"><span style="font-size:10px; color:#8b949e; display:block;">${sig.symbol || 'BTCUSDT'}</span>${isCall ? '🟢 CALL' : '🔴 PUT'}</td><td id="res-${sig.id}" class="${colorClass}">${sig.status}</td>`; historyTableBody.appendChild(tr); 
         if (!sig.status.includes('WIN') && !sig.status.includes('LOSS')) { let stepText = ''; if (sig.status.includes('Gale 1')) stepText = 'Gale 1'; else if (sig.status.includes('Gale 2')) stepText = 'Gale 2'; else stepText = sig.isManual ? 'Sniper (1ª)' : 'Auto (1ª)'; manageFifoAlert({ id: 'sig-' + sig.id, symbol: sig.symbol, time: sig.time, type: sig.type, stepText: stepText, isEnd: false, isRadar: false }); }
     });
-    
-    if (adicionados === 0) {
-        historyTableBody.innerHTML = `<tr><td colspan="3" style="text-align:center; color:#8b949e; padding: 25px 10px; font-size:12px;">Nenhum sinal encontrado.<br><br>A estratégia selecionada é extremamente rígida ou o ativo não atingiu os parâmetros nas últimas horas.</td></tr>`;
-    }
+    if (adicionados === 0) { historyTableBody.innerHTML = `<tr><td colspan="3" style="text-align:center; color:#8b949e; padding: 25px 10px; font-size:12px;">Nenhum sinal encontrado.</td></tr>`; }
 });
 
 socket.on('scoreboard', (data) => {
@@ -286,13 +309,11 @@ socket.on('scoreboard', (data) => {
 });
 
 socket.on('new_signal_history', (sig) => {
-    const historyTableBody = document.getElementById('historyTableBody');
-    const telaMoeda = document.getElementById('coinSelector').value.toUpperCase();
+    const historyTableBody = document.getElementById('historyTableBody'); const telaMoeda = document.getElementById('coinSelector').value.toUpperCase();
     manageFifoAlert({ id: 'sig-' + sig.id, symbol: sig.symbol, time: sig.time, type: sig.type, stepText: sig.isManual ? 'Sniper (1ª)' : 'Auto (1ª)', isEnd: false, isRadar: false });
     if (sig.symbol.toUpperCase() !== telaMoeda) return; 
     const tr = document.createElement('tr'); tr.id = `sig-${sig.id}`; let colorClass = 'text-warning'; 
-    tr.innerHTML = `<td class="text-muted">${sig.time}</td><td class="${sig.type === 'CALL' ? 'text-green' : 'text-red'}"><span style="font-size:10px; color:#8b949e; display:block;">${sig.symbol || 'BTCUSDT'}</span>${sig.type === 'CALL' ? '🟢 CALL' : '🔴 PUT'}</td><td id="res-${sig.id}" class="${colorClass}">${sig.status}</td>`;
-    historyTableBody.prepend(tr); 
+    tr.innerHTML = `<td class="text-muted">${sig.time}</td><td class="${sig.type === 'CALL' ? 'text-green' : 'text-red'}"><span style="font-size:10px; color:#8b949e; display:block;">${sig.symbol || 'BTCUSDT'}</span>${sig.type === 'CALL' ? '🟢 CALL' : '🔴 PUT'}</td><td id="res-${sig.id}" class="${colorClass}">${sig.status}</td>`; historyTableBody.prepend(tr); 
 });
 
 socket.on('signal_result', (sig) => {
@@ -303,71 +324,22 @@ socket.on('signal_result', (sig) => {
     if (resTd) { resTd.innerText = sig.status; if (sig.status.includes('WIN')) resTd.className = 'text-green'; else if (sig.status.includes('LOSS')) resTd.className = 'text-red'; else resTd.className = 'text-warning'; }
 });
 
-socket.on('admin_users_list', (res) => {
-    const tbody = document.getElementById('usersListBody'); tbody.innerHTML = '';
-    if (res.success) {
-        if (res.users.length === 0) tbody.innerHTML = '<tr><td colspan="2" style="text-align:center;">Vazio.</td></tr>';
-        else { res.users.forEach(u => { const tr = document.createElement('tr'); tr.innerHTML = `<td style="padding: 10px; border-bottom: 1px solid #21262d;">${u.email}</td><td style="padding: 10px; border-bottom: 1px solid #21262d; color: ${u.role.includes('admin') ? '#58a6ff' : '#8b949e'};">${u.role.toUpperCase()}</td>`; tbody.appendChild(tr); }); }
-    }
-});
-
-socket.on('user_creation_result', (res) => { alert(res.msg); if(document.getElementById('btnCreateUser')) document.getElementById('btnCreateUser').innerText = 'Cadastrar'; if(res.success) { if(document.getElementById('newUserEmail')) document.getElementById('newUserEmail').value = ''; if(document.getElementById('newUserPassword')) document.getElementById('newUserPassword').value = ''; auth.currentUser.getIdToken().then(token => socket.emit('admin_get_users', token)); } });
-
 function getInstitutionalRiskConfig() {
-    const isDemo = document.getElementById('riskAccount').value === 'demo';
-    const uid = localStorage.getItem('jsInvestUid');
-    
-    const realBalStr = document.getElementById('valReal').innerText;
-    const realBalNum = parseFloat(realBalStr.replace('R$ ', '').replace(/\./g, '').replace(',', '.'));
-    
-    const demoBalStr = document.getElementById('valDemo').innerText;
-    const demoBalNum = parseFloat(demoBalStr.replace('R$ ', '').replace(/\./g, '').replace(',', '.'));
+    const isDemo = document.getElementById('riskAccount').value === 'demo'; const uid = localStorage.getItem('jsInvestUid');
+    const realBalStr = document.getElementById('valReal').innerText; const realBalNum = parseFloat(realBalStr.replace('R$ ', '').replace(/\./g, '').replace(',', '.'));
+    const demoBalStr = document.getElementById('valDemo').innerText; const demoBalNum = parseFloat(demoBalStr.replace('R$ ', '').replace(/\./g, '').replace(',', '.'));
     const targetBalance = isDemo ? demoBalNum : realBalNum;
     
-    let calculatedAmount = targetBalance * 0.01;
-    if (calculatedAmount < 5) calculatedAmount = 5; 
-    if (uid === 'admin_master') calculatedAmount = 5; 
+    let calculatedAmount = targetBalance * 0.01; if (calculatedAmount < 5) calculatedAmount = 5; if (uid === 'admin_master') calculatedAmount = 5; 
     
-    return {
-        accountType: isDemo ? 'demo' : 'real',
-        baseAmount: calculatedAmount, 
-        payout: 85, 
-        maxGale: 2, 
-        stopWin: parseFloat(document.getElementById('riskWin').value),
-        stopLoss: parseFloat(document.getElementById('riskLoss').value)
-    };
+    return { accountType: isDemo ? 'demo' : 'real', baseAmount: calculatedAmount, payout: 85, maxGale: 2, stopWin: parseFloat(document.getElementById('riskWin').value), stopLoss: parseFloat(document.getElementById('riskLoss').value) };
 }
 
-document.getElementById('btnLogin').addEventListener('click', () => {
-    const btn = document.getElementById('btnLogin'); btn.innerText = "Autenticando..."; document.getElementById('loginError').style.display = 'none';
-    socket.emit('hybrid_login', { brokerUser: document.getElementById('brokerLoginInput').value, brokerPass: document.getElementById('brokerPassInput').value });
-});
-
+document.getElementById('btnLogin').addEventListener('click', () => { const btn = document.getElementById('btnLogin'); btn.innerText = "Autenticando..."; document.getElementById('loginError').style.display = 'none'; socket.emit('hybrid_login', { brokerUser: document.getElementById('brokerLoginInput').value, brokerPass: document.getElementById('brokerPassInput').value }); });
 document.getElementById('btnLogout').addEventListener('click', () => { localStorage.removeItem('jsInvestBrokerToken'); localStorage.removeItem('jsInvestUserRole'); localStorage.removeItem('jsInvestUid'); auth.signOut().then(() => { window.location.reload(); }); });
-
-document.getElementById('btnToggleBot').addEventListener('click', () => {
-    const config = getInstitutionalRiskConfig();
-    if (!config) return; 
-
-    isBotActive = !isBotActive; saveRiskConfig(); 
-    config.active = isBotActive;
-    socket.emit('setup_auto_trade', config);
-});
-
-document.getElementById('btnManualCall').addEventListener('click', () => { 
-    const config = getInstitutionalRiskConfig();
-    if (!config) return;
-    saveRiskConfig(); 
-    socket.emit('manual_trade', { direction: 'CALL', config: config, symbol: document.getElementById('coinSelector').value, timeframe: document.getElementById('timeframeSelector').value }); 
-});
-
-document.getElementById('btnManualPut').addEventListener('click', () => { 
-    const config = getInstitutionalRiskConfig();
-    if (!config) return;
-    saveRiskConfig(); 
-    socket.emit('manual_trade', { direction: 'PUT', config: config, symbol: document.getElementById('coinSelector').value, timeframe: document.getElementById('timeframeSelector').value }); 
-});
-
+document.getElementById('btnToggleBot').addEventListener('click', () => { const config = getInstitutionalRiskConfig(); if (!config) return; isBotActive = !isBotActive; saveRiskConfig(); config.active = isBotActive; socket.emit('setup_auto_trade', config); });
+document.getElementById('btnManualCall').addEventListener('click', () => { const config = getInstitutionalRiskConfig(); if (!config) return; saveRiskConfig(); socket.emit('manual_trade', { direction: 'CALL', config: config, symbol: document.getElementById('coinSelector').value, timeframe: document.getElementById('timeframeSelector').value }); });
+document.getElementById('btnManualPut').addEventListener('click', () => { const config = getInstitutionalRiskConfig(); if (!config) return; saveRiskConfig(); socket.emit('manual_trade', { direction: 'PUT', config: config, symbol: document.getElementById('coinSelector').value, timeframe: document.getElementById('timeframeSelector').value }); });
 document.getElementById('coinSelector').addEventListener('change', (e) => { clearUIForLoading(); socket.emit('change_coin', e.target.value); });
 document.getElementById('strategySelector').addEventListener('change', (e) => { clearUIForLoading(); socket.emit('change_strategy', e.target.value); });
 document.getElementById('timeframeSelector').addEventListener('change', (e) => { clearUIForLoading(); socket.emit('change_timeframe', e.target.value); });
@@ -376,24 +348,15 @@ const adminModal = document.getElementById('adminModal');
 if(document.getElementById('btnAdminPanel')) { 
     document.getElementById('btnAdminPanel').addEventListener('click', () => { 
         adminModal.style.display = 'flex'; 
-        auth.currentUser.getIdToken().then(token => socket.emit('admin_get_users', token)); 
+        auth.currentUser.getIdToken().then(token => {
+            socket.emit('admin_get_users', token); 
+            socket.emit('admin_get_payments', token);
+        }); 
         if (window.tempTgConfig) { 
-            if(document.getElementById('tgRsiOver')) document.getElementById('tgRsiOver').value = window.tempTgConfig.rsiOver || '65'; 
-            if(document.getElementById('tgRsiUnder')) document.getElementById('tgRsiUnder').value = window.tempTgConfig.rsiUnder || '35'; 
-            if(document.getElementById('tgBbDev')) document.getElementById('tgBbDev').value = window.tempTgConfig.bbDev || '2'; 
-            
-            if(document.getElementById('tgHoraManha')) document.getElementById('tgHoraManha').value = window.tempTgConfig.horaManha || '09:30'; 
-            if(document.getElementById('tgHoraTarde')) document.getElementById('tgHoraTarde').value = window.tempTgConfig.horaTarde || '15:30'; 
-            
-            if(document.getElementById('tgDias')) document.getElementById('tgDias').value = window.tempTgConfig.dias || '1-5'; 
-            if(document.getElementById('tgMaxSinais')) document.getElementById('tgMaxSinais').value = window.tempTgConfig.maxSinais || '2'; 
-            if(document.getElementById('tgStkStart')) document.getElementById('tgStkStart').value = window.tempTgConfig.stkStart || ''; 
-            if(document.getElementById('tgStkEnd')) document.getElementById('tgStkEnd').value = window.tempTgConfig.stkEnd || ''; 
-            if(document.getElementById('tgStkWin')) document.getElementById('tgStkWin').value = window.tempTgConfig.stkWin || ''; 
-            if(document.getElementById('tgStkLoss')) document.getElementById('tgStkLoss').value = window.tempTgConfig.stkLoss || ''; 
-            
-            const msgDefault = "⚡ *ALERTA DE TOQUE (M1)* ⚡\n\n💵 Moeda = {MOEDA}\n⏰ Expiração = 1 Minuto\n🛎 Entrada = {HORA_ENTRADA}\n{DIRECAO}\n\n👉🏼 Se necessário, fazer 1 Gale.";
-            if(document.getElementById('tgMsgSinal')) document.getElementById('tgMsgSinal').value = window.tempTgConfig.msgSinal || msgDefault; 
+            if(document.getElementById('tgRsiOver')) document.getElementById('tgRsiOver').value = window.tempTgConfig.rsiOver || '65'; if(document.getElementById('tgRsiUnder')) document.getElementById('tgRsiUnder').value = window.tempTgConfig.rsiUnder || '35'; if(document.getElementById('tgBbDev')) document.getElementById('tgBbDev').value = window.tempTgConfig.bbDev || '2'; 
+            if(document.getElementById('tgHoraManha')) document.getElementById('tgHoraManha').value = window.tempTgConfig.horaManha || '09:30'; if(document.getElementById('tgHoraTarde')) document.getElementById('tgHoraTarde').value = window.tempTgConfig.horaTarde || '15:30'; 
+            if(document.getElementById('tgDias')) document.getElementById('tgDias').value = window.tempTgConfig.dias || '1-5'; if(document.getElementById('tgMaxSinais')) document.getElementById('tgMaxSinais').value = window.tempTgConfig.maxSinais || '2'; if(document.getElementById('tgStkStart')) document.getElementById('tgStkStart').value = window.tempTgConfig.stkStart || ''; if(document.getElementById('tgStkEnd')) document.getElementById('tgStkEnd').value = window.tempTgConfig.stkEnd || ''; if(document.getElementById('tgStkWin')) document.getElementById('tgStkWin').value = window.tempTgConfig.stkWin || ''; if(document.getElementById('tgStkLoss')) document.getElementById('tgStkLoss').value = window.tempTgConfig.stkLoss || ''; 
+            const msgDefault = "⚡ *ALERTA DE TOQUE (M1)* ⚡\n\n💵 Moeda = {MOEDA}\n⏰ Expiração = 1 Minuto\n🛎 Entrada = {HORA_ENTRADA}\n{DIRECAO}\n\n👉🏼 Se necessário, fazer 1 Gale."; if(document.getElementById('tgMsgSinal')) document.getElementById('tgMsgSinal').value = window.tempTgConfig.msgSinal || msgDefault; 
         } 
     }); 
 }
