@@ -12,6 +12,7 @@ const socket = io({ transports: ['websocket'], upgrade: false });
 let currentEntryPrice = 0; 
 window.radarGlobalStats = null; 
 let isBotActive = false; 
+window.pixInterval = null; // 🎯 Controlador do Rastreador de PIX
 
 window.addEventListener('DOMContentLoaded', () => {
     initChart(); 
@@ -117,7 +118,7 @@ socket.on('auto_reconnect_result', (res) => {
     }
 });
 
-// 💳 LÓGICA DE CHECKOUT E GERAÇÃO PIX
+// 💳 LÓGICA DE CHECKOUT E GERAÇÃO PIX COM RASTREADOR
 window.gerarCheckout = async (valor, meses) => {
     const uid = localStorage.getItem('jsInvestUid');
     const email = auth.currentUser ? auth.currentUser.email : "user@jsinvest";
@@ -139,7 +140,12 @@ window.gerarCheckout = async (valor, meses) => {
                 ${data.qrcode_base64 ? `<div style="background:#fff; padding:10px; display:inline-block; margin-bottom:10px;"><img src="${data.qrcode_base64}" style="width:180px;"></div>` : ''}
                 <input type="text" id="pixCopyPaste" value="${data.pix_code}" readonly style="width:100%; padding:10px; font-size:10px; background:#f0f0f0; border:1px solid #ccc; border-radius:4px; color:#000;">
                 <button onclick="copyPix()" style="background:#000; color:#fff; width:100%; border:none; padding:12px; margin-top:10px; border-radius:5px; cursor:pointer; font-weight:bold;">COPIAR CÓDIGO PIX</button>
+                <button onclick="verificarPix('${data.paymentId}')" id="btnVerifyPix" style="background:#3fb950; color:#fff; width:100%; border:none; padding:12px; margin-top:10px; border-radius:5px; cursor:pointer; font-weight:bold;">🔄 JÁ PAGUEI (VERIFICAR)</button>
             `;
+            
+            // 🎯 O RASTREADOR: Pergunta ao servidor a cada 10 segundos!
+            if(window.pixInterval) clearInterval(window.pixInterval);
+            window.pixInterval = setInterval(() => { window.verificarPix(data.paymentId, true) }, 10000);
         }
     } catch (e) { alert("Erro ao gerar pagamento. Tente novamente mais tarde."); }
 };
@@ -151,8 +157,22 @@ window.copyPix = () => {
     alert("✅ Código PIX Copiado! Pague no app do seu banco e o acesso será liberado.");
 };
 
-// 🎯 MAGIA SAAS: Destranca a tela ao vivo quando o PIX cai!
+// 🎯 FUNÇÃO MANUAL/AUTOMÁTICA DE VERIFICAÇÃO DO BANCO
+window.verificarPix = async (paymentId, isAuto = false) => {
+    if(!isAuto) { const btn = document.getElementById('btnVerifyPix'); if(btn) btn.innerText = "Consultando o Banco..."; }
+    try {
+        const res = await fetch(`/verify_payment/${paymentId}`);
+        const data = await res.json();
+        if (!data.approved && !isAuto) {
+            const btn = document.getElementById('btnVerifyPix');
+            if(btn) { btn.innerText = "Ainda não aprovado. Tentar de novo"; setTimeout(()=> { btn.innerText = "🔄 JÁ PAGUEI (VERIFICAR)" }, 2000); }
+        }
+    } catch(e) {}
+};
+
+// 🎯 DESTRANCA A TELA QUANDO APROVADO!
 socket.on('payment_approved', (data) => {
+    if(window.pixInterval) clearInterval(window.pixInterval); // Pára o rastreador
     alert("✅ PAGAMENTO APROVADO! O seu acesso foi liberado com sucesso.");
     
     const modal = document.getElementById('premiumBlockModal');
