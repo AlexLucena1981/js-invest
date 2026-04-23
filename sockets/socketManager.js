@@ -16,7 +16,9 @@ function parseBalance(valStr) {
 
 function getSPDateString() {
     const d = new Date(new Date().toLocaleString("en-US", {timeZone: "America/Sao_Paulo"}));
-    const yyyy = d.getFullYear(); const mm = String(d.getMonth() + 1).padStart(2, '0'); const dd = String(d.getDate()).padStart(2, '0');
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
     return `${yyyy}-${mm}-${dd}`;
 }
 
@@ -100,9 +102,7 @@ module.exports = function setupSockets(io, state, tgConfigGlobal) {
                         if (velloxData.document) docId = velloxData.document.replace(/\D/g, ''); 
                         if (velloxData.name) nomeAluno = velloxData.name;
                     }
-                } catch (e) {
-                    console.log(`[AVISO] Sem permissão para buscar CPF de ${brokerUser}. Usando ID ${docId}.`);
-                }
+                } catch (e) {}
                 
                 let userRole = 'aluno'; 
                 const userLower = brokerUser.toLowerCase();
@@ -258,12 +258,12 @@ module.exports = function setupSockets(io, state, tgConfigGlobal) {
             } catch(e) { console.error("Erro ao salvar preços:", e); }
         });
 
-        // 🎯 ROTA ATUALIZADA: Agora recebe a SALA que o admin quer forçar (FREE ou VIP)
+        // 🎯 AQUI ESTÁ A CORREÇÃO: "data.sala" substitui o antigo "data.turno"
         socket.on('admin_force_tg', async (data) => {
             try {
                 const decodedToken = await admin.auth().verifyIdToken(data.token);
                 if (decodedToken.uid === 'admin_master' || true) {
-                    forcarSessaoTelegram(data.sala); // Passa a Sala (FREE/VIP) para o robô
+                    forcarSessaoTelegram(data.sala); 
                     socket.emit('user_creation_result', { success: true, msg: `🔥 SESSÃO ${data.sala} FORÇADA NO TELEGRAM!` });
                 }
             } catch(e) {}
