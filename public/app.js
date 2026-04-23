@@ -124,7 +124,15 @@ socket.on('hybrid_login_result', (res) => {
     if (res.success) {
         localStorage.setItem('jsInvestBrokerToken', res.brokerToken); localStorage.setItem('jsInvestUserRole', res.role); localStorage.setItem('jsInvestUid', res.uid);
         auth.signInWithCustomToken(res.firebaseToken).then(() => {
-            document.getElementById('loginScreen').style.display = 'none'; document.getElementById('valReal').innerText = `R$ ${res.balance.real}`; document.getElementById('valDemo').innerText = res.balance.demo; document.getElementById('manualTradePanel').style.display = 'flex'; 
+            document.getElementById('loginScreen').style.display = 'none'; 
+            document.getElementById('valReal').innerText = `R$ ${res.balance.real}`; 
+            document.getElementById('valDemo').innerText = res.balance.demo; 
+            document.getElementById('manualTradePanel').style.display = 'flex'; 
+            
+            // 🎯 Exibe o FIFO apenas após o login!
+            const fifo = document.getElementById('fifoPanel');
+            if(fifo) fifo.style.display = 'flex';
+            
             togglePremiumUI(res.isPremium, res.expiresAt);
             if (!res.isPremium) { mostrarPainelAssinatura(res.expiresAt); }
             if (res.role === 'admin') { 
@@ -141,7 +149,15 @@ socket.on('hybrid_login_result', (res) => {
 
 socket.on('auto_reconnect_result', (res) => {
     if(res.success) {
-        document.getElementById('loginScreen').style.display = 'none'; document.getElementById('valReal').innerText = `R$ ${res.balance.real}`; document.getElementById('valDemo').innerText = res.balance.demo; document.getElementById('manualTradePanel').style.display = 'flex'; 
+        document.getElementById('loginScreen').style.display = 'none'; 
+        document.getElementById('valReal').innerText = `R$ ${res.balance.real}`; 
+        document.getElementById('valDemo').innerText = res.balance.demo; 
+        document.getElementById('manualTradePanel').style.display = 'flex'; 
+        
+        // 🎯 Exibe o FIFO apenas após o login!
+        const fifo = document.getElementById('fifoPanel');
+        if(fifo) fifo.style.display = 'flex';
+
         togglePremiumUI(res.isPremium, res.expiresAt);
         if (!res.isPremium) { mostrarPainelAssinatura(res.expiresAt); }
         if (res.role === 'admin') { 
@@ -375,51 +391,36 @@ document.getElementById('coinSelector').addEventListener('change', (e) => { clea
 document.getElementById('strategySelector').addEventListener('change', (e) => { clearUIForLoading(); socket.emit('change_strategy', e.target.value); });
 document.getElementById('timeframeSelector').addEventListener('change', (e) => { clearUIForLoading(); socket.emit('change_timeframe', e.target.value); });
 
+const adminModal = document.getElementById('adminModal');
 if(document.getElementById('btnAdminPanel')) { 
     document.getElementById('btnAdminPanel').addEventListener('click', () => { 
-        document.getElementById('adminModal').style.display = 'flex'; 
+        adminModal.style.display = 'flex'; 
         auth.currentUser.getIdToken().then(token => {
             socket.emit('admin_get_users', token); 
             socket.emit('admin_get_payments', token);
         }); 
         
-        if (window.appPricing) {
-            if(document.getElementById('price1')) document.getElementById('price1').value = window.appPricing.month1;
-            if(document.getElementById('price3')) document.getElementById('price3').value = window.appPricing.month3;
-            if(document.getElementById('price6')) document.getElementById('price6').value = window.appPricing.month6;
-            if(document.getElementById('price12')) document.getElementById('price12').value = window.appPricing.month12;
+        if(document.getElementById('btnSavePricing')) {
+            document.getElementById('btnSavePricing').onclick = () => {
+                const pricing = {
+                    month1: parseFloat(document.getElementById('price1').value),
+                    month3: parseFloat(document.getElementById('price3').value),
+                    month6: parseFloat(document.getElementById('price6').value),
+                    month12: parseFloat(document.getElementById('price12').value)
+                };
+                auth.currentUser.getIdToken().then(token => socket.emit('admin_save_pricing', { token, pricing }));
+            };
         }
-        
-        if (window.tempTgConfig) { 
-            if(document.getElementById('tgRsiOver')) document.getElementById('tgRsiOver').value = window.tempTgConfig.rsiOver || '65'; 
-            if(document.getElementById('tgRsiUnder')) document.getElementById('tgRsiUnder').value = window.tempTgConfig.rsiUnder || '35'; 
-            if(document.getElementById('tgBbDev')) document.getElementById('tgBbDev').value = window.tempTgConfig.bbDev || '2'; 
-            
-            if(document.getElementById('tgChatIdFree')) document.getElementById('tgChatIdFree').value = window.tempTgConfig.chatIdFree || ''; 
-            if(document.getElementById('tgChatIdVip')) document.getElementById('tgChatIdVip').value = window.tempTgConfig.chatIdVip || ''; 
-            
-            if(document.getElementById('tgHoraFreeManha')) document.getElementById('tgHoraFreeManha').value = window.tempTgConfig.horaFreeManha || '09:30'; 
-            if(document.getElementById('tgHoraFreeTarde')) document.getElementById('tgHoraFreeTarde').value = window.tempTgConfig.horaFreeTarde || '15:30'; 
-            if(document.getElementById('tgHoraVipTarde')) document.getElementById('tgHoraVipTarde').value = window.tempTgConfig.horaVipTarde || '13:30'; 
-            if(document.getElementById('tgHoraVipNoite')) document.getElementById('tgHoraVipNoite').value = window.tempTgConfig.horaVipNoite || '19:30'; 
 
-            if(document.getElementById('tgDias')) document.getElementById('tgDias').value = window.tempTgConfig.dias || '1-5'; 
-            if(document.getElementById('tgMaxSinais')) document.getElementById('tgMaxSinais').value = window.tempTgConfig.maxSinais || '2'; 
-            
-            if(document.getElementById('tgStkStartManha')) document.getElementById('tgStkStartManha').value = window.tempTgConfig.stkStartManha || window.tempTgConfig.stkStart || ''; 
-            if(document.getElementById('tgStkEndManha')) document.getElementById('tgStkEndManha').value = window.tempTgConfig.stkEndManha || window.tempTgConfig.stkEnd || ''; 
-            if(document.getElementById('tgStkStartTarde')) document.getElementById('tgStkStartTarde').value = window.tempTgConfig.stkStartTarde || window.tempTgConfig.stkStart || ''; 
-            if(document.getElementById('tgStkEndTarde')) document.getElementById('tgStkEndTarde').value = window.tempTgConfig.stkEndTarde || window.tempTgConfig.stkEnd || ''; 
-            if(document.getElementById('tgStkStartNoite')) document.getElementById('tgStkStartNoite').value = window.tempTgConfig.stkStartNoite || ''; 
-            if(document.getElementById('tgStkEndNoite')) document.getElementById('tgStkEndNoite').value = window.tempTgConfig.stkEndNoite || ''; 
-            
-            if(document.getElementById('tgStkWin')) document.getElementById('tgStkWin').value = window.tempTgConfig.stkWin || ''; 
-            if(document.getElementById('tgStkLoss')) document.getElementById('tgStkLoss').value = window.tempTgConfig.stkLoss || ''; 
-            
-            const msgDefault = "⚡ *ALERTA DE TOQUE (M1)* ⚡\n\n💵 Moeda = {MOEDA}\n⏰ Expiração = 1 Minuto\n🛎 Entrada = {HORA_ENTRADA}\n{DIRECAO}\n\n👉🏼 Se necessário, fazer 1 Gale."; 
-            if(document.getElementById('tgMsgSinal')) document.getElementById('tgMsgSinal').value = window.tempTgConfig.msgSinal || msgDefault; 
+        if (window.tempTgConfig) { 
+            if(document.getElementById('tgRsiOver')) document.getElementById('tgRsiOver').value = window.tempTgConfig.rsiOver || '65'; if(document.getElementById('tgRsiUnder')) document.getElementById('tgRsiUnder').value = window.tempTgConfig.rsiUnder || '35'; if(document.getElementById('tgBbDev')) document.getElementById('tgBbDev').value = window.tempTgConfig.bbDev || '2'; 
+            if(document.getElementById('tgHoraManha')) document.getElementById('tgHoraManha').value = window.tempTgConfig.horaManha || '09:30'; if(document.getElementById('tgHoraTarde')) document.getElementById('tgHoraTarde').value = window.tempTgConfig.horaTarde || '15:30'; 
+            if(document.getElementById('tgDias')) document.getElementById('tgDias').value = window.tempTgConfig.dias || '1-5'; if(document.getElementById('tgMaxSinais')) document.getElementById('tgMaxSinais').value = window.tempTgConfig.maxSinais || '2'; if(document.getElementById('tgStkStart')) document.getElementById('tgStkStart').value = window.tempTgConfig.stkStart || ''; if(document.getElementById('tgStkEnd')) document.getElementById('tgStkEnd').value = window.tempTgConfig.stkEnd || ''; if(document.getElementById('tgStkWin')) document.getElementById('tgStkWin').value = window.tempTgConfig.stkWin || ''; if(document.getElementById('tgStkLoss')) document.getElementById('tgStkLoss').value = window.tempTgConfig.stkLoss || ''; 
+            const msgDefault = "⚡ *ALERTA DE TOQUE (M1)* ⚡\n\n💵 Moeda = {MOEDA}\n⏰ Expiração = 1 Minuto\n🛎 Entrada = {HORA_ENTRADA}\n{DIRECAO}\n\n👉🏼 Se necessário, fazer 1 Gale."; if(document.getElementById('tgMsgSinal')) document.getElementById('tgMsgSinal').value = window.tempTgConfig.msgSinal || msgDefault; 
         } 
     }); 
 }
+if(document.getElementById('btnCreateUser')) { document.getElementById('btnCreateUser').addEventListener('click', () => { const newEmail = document.getElementById('newUserEmail').value; const newPassword = document.getElementById('newUserPassword').value; const newRole = document.getElementById('newUserRole').value; document.getElementById('btnCreateUser').innerText = '...'; auth.currentUser.getIdToken().then(token => socket.emit('admin_create_user', { token, newEmail, newPassword, newRole })); }); }
+if(document.getElementById('btnInjectCookie')) { document.getElementById('btnInjectCookie').addEventListener('click', () => { const cookieVal = document.getElementById('adminCookieInput').value; if(cookieVal.length > 20) { socket.emit('inject_cookie', cookieVal); document.getElementById('adminCookieInput').value = ''; document.getElementById('btnInjectCookie').innerText = 'Injetado! ✅'; setTimeout(() => { document.getElementById('btnInjectCookie').innerText = 'Injetar'; }, 3000); } else { alert('❌ Cookie inválido!'); } }); }
 
 setInterval(() => { const tfSelect = document.getElementById('timeframeSelector'); const tfMinutes = tfSelect ? parseInt(tfSelect.value.replace('m', '')) : 1; const now = new Date(); const sec = (tfMinutes * 60) - ((now.getMinutes() % tfMinutes) * 60 + now.getSeconds()); let displayTime = ''; if (sec >= 60) { const m = Math.floor(sec / 60); const s = sec % 60; displayTime = `${m < 10 ? '0'+m : m}:${s < 10 ? '0'+s : s}`; } else { displayTime = sec < 10 ? '0' + sec : sec; } document.getElementById('timerCircle').innerText = displayTime; const liveCard = document.getElementById('liveTradeCard'); if (liveCard && liveCard.style.display !== 'none') { document.getElementById('liveTime').innerText = displayTime + (sec < 60 ? 's' : ''); } }, 1000);

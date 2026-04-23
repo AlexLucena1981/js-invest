@@ -50,7 +50,6 @@ function mostrarPainelAssinatura(dataExpiracao) {
                 <div id="qrcodePlace" style="display:flex; justify-content:center; margin-bottom:10px;"></div>
                 <input type="text" id="pixCopyPaste" readonly style="width:100%; padding:8px; font-size:10px; background:#f0f0f0; border:1px solid #ccc; border-radius:4px; color:#000;">
                 <button onclick="copyPix()" style="background:#000; color:#fff; width:100%; border:none; padding:12px; margin-top:10px; border-radius:5px; cursor:pointer; font-weight:bold;">COPIAR CÓDIGO PIX</button>
-                <button onclick="verificarPix(window.lastPaymentId)" id="btnVerifyPix" style="background:#3fb950; color:#fff; width:100%; border:none; padding:12px; margin-top:10px; border-radius:5px; cursor:pointer; font-weight:bold;">🔄 JÁ PAGUEI (VERIFICAR)</button>
             </div>
             
             <button onclick="liberarApenasDemo()" style="background:transparent; border:none; color:#8b949e; text-decoration:underline; font-size:12px; cursor:pointer; margin-top:10px;">Ignorar e acessar apenas Conta Demo</button>
@@ -64,13 +63,17 @@ function liberarApenasDemo() {
     if (modal) modal.style.display = 'none';
     
     const accSelect = document.getElementById('riskAccount');
-    if (accSelect) { accSelect.value = 'demo'; accSelect.disabled = true; }
+    if (accSelect) {
+        accSelect.value = 'demo';
+        accSelect.disabled = true; 
+    }
     alert("⚠️ Acesso restrito à Conta Demo. Para operar na Conta Real com o Robô, renove sua assinatura.");
 }
 
 function togglePremiumUI(isPremium, expiresAt) {
     const statusBot = document.getElementById('statusBot');
     const accSelect = document.getElementById('riskAccount');
+    
     if (statusBot) {
         if (isPremium) { 
             let exp = new Date(expiresAt);
@@ -80,7 +83,10 @@ function togglePremiumUI(isPremium, expiresAt) {
         } else { 
             statusBot.innerText = "🔒 ACESSO EXPIRADO (Apenas Conta Demo)"; 
             statusBot.style.color = "#d29922"; 
-            if (accSelect) { accSelect.value = 'demo'; accSelect.disabled = true; }
+            if (accSelect) {
+                accSelect.value = 'demo';
+                accSelect.disabled = true; 
+            }
         }
     }
 }
@@ -92,7 +98,8 @@ function setupFifoPanel() {
 
     const fifoPanel = document.createElement('div');
     fifoPanel.id = 'fifoPanel';
-    fifoPanel.style.cssText = 'position:fixed; bottom:20px; right:20px; width:320px; background:#0d1117; border:1px solid #30363d; border-radius:10px; z-index:8900; box-shadow:0 10px 30px rgba(0,0,0,0.8); display:flex; flex-direction:column; overflow:hidden; font-family: monospace;';
+    // 🎯 ADICIONADO DISPLAY NONE AQUI
+    fifoPanel.style.cssText = 'position:fixed; bottom:20px; right:20px; width:320px; background:#0d1117; border:1px solid #30363d; border-radius:10px; z-index:8900; box-shadow:0 10px 30px rgba(0,0,0,0.8); display:none; flex-direction:column; overflow:hidden; font-family: monospace;';
     fifoPanel.innerHTML = `
         <div style="background: linear-gradient(180deg, #161b22 0%, #0d1117 100%); padding:12px; font-weight:bold; color:#58a6ff; text-align:center; border-bottom:1px solid #30363d; font-size:14px; text-transform:uppercase; letter-spacing: 1px; display: flex; justify-content: space-between; align-items: center;">
             <span>🚦 OPERAÇÕES ATIVAS</span><span style="font-size:10px; color:#8b949e; background:#21262d; padding:2px 6px; border-radius:4px;">AO VIVO</span>
@@ -171,6 +178,10 @@ function clearUIForLoading() {
     document.getElementById('historyTableBody').innerHTML = `<tr><td colspan="3" style="text-align:center; color:#8b949e; padding: 20px;">Carregando análise histórica...</td></tr>`;
     document.getElementById('scoreWin1').innerText = '-'; document.getElementById('scoreWinG1').innerText = '-'; document.getElementById('scoreWinG2').innerText = '-'; document.getElementById('scoreLoss').innerText = '-'; document.getElementById('totalAccuracy').innerText = '0.0%';
     const alertBox = document.getElementById('alertBox'); alertBox.innerHTML = "Analisando Mercado..."; alertBox.className = "alert-box";
+
     const fifoList = document.getElementById('fifoList'); 
-    if(fifoList) { Array.from(fifoList.children).forEach(child => { if (child.id && child.id.startsWith('fifo-sig-')) child.remove(); }); checkFifoEmpty(); }
+    if(fifoList) { 
+        Array.from(fifoList.children).forEach(child => { if (child.id && child.id.startsWith('fifo-sig-')) child.remove(); }); 
+        checkFifoEmpty(); 
+    }
 }
