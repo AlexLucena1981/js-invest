@@ -260,9 +260,7 @@ socket.on('auto_trade_status', (res) => {
 socket.on('update_balance', (data) => { const el = document.getElementById(data.isDemo ? 'valDemo' : 'valReal'); el.innerText = `R$ ${data.balance}`; el.style.color = data.isDemo ? '#3fb950' : '#58a6ff'; setTimeout(() => { el.style.color = data.isDemo ? '#d29922' : '#3fb950'; }, 1000); });
 socket.on('win_balance_update', (data) => { const el = document.getElementById(data.isDemo ? 'valDemo' : 'valReal'); let currentVal = parseFloat(el.innerText.replace('R$ ', '').replace(/\\./g, '').replace(',', '.')); if (!isNaN(currentVal)) { el.innerText = `R$ ${(currentVal + data.prize).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`; el.style.color = '#3fb950'; el.style.textShadow = '0 0 15px rgba(63, 185, 80, 0.8)'; setTimeout(() => { el.style.color = data.isDemo ? '#d29922' : '#3fb950'; el.style.textShadow = 'none'; }, 2000); } });
 
-// 🎯 VISUALIZADOR DE ERROS DA CORRETORA: Se a Vellox recusar a ordem, avisa na tela!
-socket.on('sniper_error', (msg) => { alert("❌ ALERTA AUTO-TRADE:\n" + msg); });
-socket.on('sniper_success', (msg) => { console.log("✅ " + msg); });
+socket.on('sniper_success', (msg) => { console.log("✅ " + msg); }); socket.on('sniper_error', (msg) => { alert("❌ ALERTA AUTO-TRADE:\n" + msg); });
 
 socket.on('available_strategies', (strats) => { const sel = document.getElementById('strategySelector'); sel.innerHTML = ''; strats.forEach(s => { const opt = document.createElement('option'); opt.value = s.id; opt.innerText = s.name; sel.appendChild(opt); }); });
 socket.on('available_coins', (groupedCoins) => { const selectBox = document.getElementById('coinSelector'); if(!selectBox) return; selectBox.innerHTML = ''; for (const [categoryName, symbolsArray] of Object.entries(groupedCoins)) { let optgroup = document.createElement('optgroup'); optgroup.label = categoryName; symbolsArray.forEach(sym => { let option = document.createElement('option'); option.value = sym; option.textContent = sym.toUpperCase(); optgroup.appendChild(option); }); selectBox.appendChild(optgroup); } });
@@ -319,7 +317,6 @@ socket.on('signal_result', (sig) => {
     if (resTd) { resTd.innerText = sig.status; if (sig.status.includes('WIN')) resTd.className = 'text-green'; else if (sig.status.includes('LOSS')) resTd.className = 'text-red'; else resTd.className = 'text-warning'; }
 });
 
-// 🎯 LISTAGEM DE ESTRATÉGIAS RESTAURADA
 socket.on('admin_strategies_list', (res) => {
     const listDiv = document.getElementById('adminStratList'); if (!listDiv) return;
     if (res.success) {
@@ -335,7 +332,6 @@ socket.on('admin_strategies_list', (res) => {
 
 window.viewStrat = (id) => { const s = window.adminStrats.find(x => x.id === id); if (s) alert(JSON.stringify(s, null, 2)); }; window.deleteStrat = (id) => { if (confirm('🚨 Tem a certeza que deseja excluir esta estratégia permanentemente?')) { auth.currentUser.getIdToken().then(token => socket.emit('admin_delete_strategy', { token, id })); } };
 
-// 🎯 RELATÓRIO MOMENTÂNEO DO ROBÔ RESTAURADO
 socket.on('admin_report_data', (res) => {
     const container = document.getElementById('rankingListContainer'); if (!container) return;
     if (!res.success || res.historico.length === 0) { container.innerHTML = '<div style="text-align:center; padding:20px; color:#8b949e;">Nenhum sinal registado hoje no banco de dados.</div>'; return; }
@@ -356,7 +352,6 @@ function getInstitutionalRiskConfig() {
     
     const targetBalance = isDemo ? demoBalNum : realBalNum;
     
-    // 🎯 AQUI ESTÁ A CORREÇÃO DE MILHÕES! Evita o NaN da Banca Demo!
     let calculatedAmount = targetBalance * 0.01; 
     if (isNaN(calculatedAmount) || calculatedAmount < 5) calculatedAmount = 5; 
     if (uid === 'admin_master') calculatedAmount = 5; 
@@ -399,16 +394,25 @@ if(document.getElementById('btnAdminPanel')) {
             if(document.getElementById('tgRsiOver')) document.getElementById('tgRsiOver').value = window.tempTgConfig.rsiOver || '65'; 
             if(document.getElementById('tgRsiUnder')) document.getElementById('tgRsiUnder').value = window.tempTgConfig.rsiUnder || '35'; 
             if(document.getElementById('tgBbDev')) document.getElementById('tgBbDev').value = window.tempTgConfig.bbDev || '2'; 
-            if(document.getElementById('tgHoraManha')) document.getElementById('tgHoraManha').value = window.tempTgConfig.horaManha || '09:30'; 
-            if(document.getElementById('tgHoraTarde')) document.getElementById('tgHoraTarde').value = window.tempTgConfig.horaTarde || '15:30'; 
+            
+            // Novos campos FREE / VIP
+            if(document.getElementById('tgChatIdFree')) document.getElementById('tgChatIdFree').value = window.tempTgConfig.chatIdFree || ''; 
+            if(document.getElementById('tgChatIdVip')) document.getElementById('tgChatIdVip').value = window.tempTgConfig.chatIdVip || ''; 
+            
+            if(document.getElementById('tgHoraFreeManha')) document.getElementById('tgHoraFreeManha').value = window.tempTgConfig.horaFreeManha || '09:30'; 
+            if(document.getElementById('tgHoraFreeTarde')) document.getElementById('tgHoraFreeTarde').value = window.tempTgConfig.horaFreeTarde || '15:30'; 
+            if(document.getElementById('tgHoraVipTarde')) document.getElementById('tgHoraVipTarde').value = window.tempTgConfig.horaVipTarde || '13:30'; 
+            if(document.getElementById('tgHoraVipNoite')) document.getElementById('tgHoraVipNoite').value = window.tempTgConfig.horaVipNoite || '19:30'; 
+
             if(document.getElementById('tgDias')) document.getElementById('tgDias').value = window.tempTgConfig.dias || '1-5'; 
             if(document.getElementById('tgMaxSinais')) document.getElementById('tgMaxSinais').value = window.tempTgConfig.maxSinais || '2'; 
             
-            // Stickers Separados
-            if(document.getElementById('tgStkStartManha')) document.getElementById('tgStkStartManha').value = window.tempTgConfig.stkStartManha || window.tempTgConfig.stkStart || ''; 
-            if(document.getElementById('tgStkEndManha')) document.getElementById('tgStkEndManha').value = window.tempTgConfig.stkEndManha || window.tempTgConfig.stkEnd || ''; 
-            if(document.getElementById('tgStkStartTarde')) document.getElementById('tgStkStartTarde').value = window.tempTgConfig.stkStartTarde || window.tempTgConfig.stkStart || ''; 
-            if(document.getElementById('tgStkEndTarde')) document.getElementById('tgStkEndTarde').value = window.tempTgConfig.stkEndTarde || window.tempTgConfig.stkEnd || ''; 
+            if(document.getElementById('tgStkStartManha')) document.getElementById('tgStkStartManha').value = window.tempTgConfig.stkStartManha || ''; 
+            if(document.getElementById('tgStkEndManha')) document.getElementById('tgStkEndManha').value = window.tempTgConfig.stkEndManha || ''; 
+            if(document.getElementById('tgStkStartTarde')) document.getElementById('tgStkStartTarde').value = window.tempTgConfig.stkStartTarde || ''; 
+            if(document.getElementById('tgStkEndTarde')) document.getElementById('tgStkEndTarde').value = window.tempTgConfig.stkEndTarde || ''; 
+            if(document.getElementById('tgStkStartNoite')) document.getElementById('tgStkStartNoite').value = window.tempTgConfig.stkStartNoite || ''; 
+            if(document.getElementById('tgStkEndNoite')) document.getElementById('tgStkEndNoite').value = window.tempTgConfig.stkEndNoite || ''; 
             
             if(document.getElementById('tgStkWin')) document.getElementById('tgStkWin').value = window.tempTgConfig.stkWin || ''; 
             if(document.getElementById('tgStkLoss')) document.getElementById('tgStkLoss').value = window.tempTgConfig.stkLoss || ''; 

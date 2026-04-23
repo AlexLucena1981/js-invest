@@ -6,7 +6,6 @@ const { evaluateStrategy } = require('../utils/indicators');
 const { dispararOrdemVellox } = require('./velloxApi'); 
 
 const TOKEN = '8627851942:AAFn2Ze3Nbjb6LbNu7Gk3eEAcpDuzzKGGkM';
-const CHAT_ID = '-1003925714362';
 const bot = new TelegramBot(TOKEN, { polling: false });
 
 const dicionarioAtivos = {
@@ -22,7 +21,18 @@ const dicionarioAtivos = {
 
 const ativosTestes = Object.keys(dicionarioAtivos); 
 
-let estadoSessao = { ativa: false, permitirSinais: false, wins: 0, losses: 0, sinalRodando: null, ultimoSinalEnviado: null, lastGaleMsgId: null, turnoAtual: 'Manhã' };
+let estadoSessao = { 
+    ativa: false, 
+    permitirSinais: false, 
+    wins: 0, 
+    losses: 0, 
+    sinalRodando: null, 
+    ultimoSinalEnviado: null, 
+    lastGaleMsgId: null, 
+    salaAtual: 'FREE', // 'FREE' ou 'VIP'
+    turnoAtual: 'Manhã' // 'Manhã', 'Tarde', 'Noite'
+};
+
 let activeCronJobs = [];
 let configLocal = {};
 let motorCacaId = null;
@@ -46,9 +56,17 @@ function parseTimeToCron(timeStr, addMinutes, dias) {
     return `${finalM} ${finalH} * * ${dias}`;
 }
 
+function getChatIdAtual() {
+    if (estadoSessao.salaAtual === 'VIP') return configLocal.chatIdVip || '-1003925714362';
+    return configLocal.chatIdFree || '-1003925714362';
+}
+
 async function enviarSticker(stickerId) {
     if (!stickerId) return null;
-    try { const msg = await bot.sendSticker(CHAT_ID, stickerId); return msg.message_id; } catch (e) { return null; }
+    try { 
+        const msg = await bot.sendSticker(getChatIdAtual(), stickerId); 
+        return msg.message_id; 
+    } catch (e) { return null; }
 }
 
 async function salvarResultadoNoFirebase(dados) {
@@ -78,17 +96,17 @@ async function enviarRelatorioDiario() {
         });
 
         const assertividade = total > 0 ? ((wins / total) * 100).toFixed(1) : 0;
-        let msg = `🏁 *RELATÓRIO DE SESSÃO* 🏁\n📅 Data: ${getAgoraSP().toLocaleDateString('pt-BR')}\n\n✅ Total Wins: *${wins}*\n🔴 Total Loss: *${losses}*\n🎯 Assertividade: *${assertividade}%*\n\n🏆 *RESUMO DOS ATIVOS:* \n`;
+        let msg = `🏁 *RELATÓRIO DA SESSÃO ${estadoSessao.salaAtual}* 🏁\n📅 Data: ${getAgoraSP().toLocaleDateString('pt-BR')}\n\n✅ Total Wins: *${wins}*\n🔴 Total Loss: *${losses}*\n🎯 Assertividade: *${assertividade}%*\n\n🏆 *RESUMO DOS ATIVOS:* \n`;
         const sortedRanking = Object.entries(ranking).sort((a, b) => b[1].w - a[1].w);
         sortedRanking.forEach(([ativo, score]) => { msg += `• ${ativo}: ${score.w}W - ${score.l}L\n`; });
         msg += `\n🚀 *Missão cumprida! Sniper recarregando...*`;
-        bot.sendMessage(CHAT_ID, msg, { parse_mode: 'Markdown' });
+        bot.sendMessage(getChatIdAtual(), msg, { parse_mode: 'Markdown' });
     } catch (e) {}
 }
 
 async function initTelegramBot(io, stateGlobais, configFirebase) {
     ioGlobal = io;
-    console.log("🤖 Motor Global Sniper (Telegram & Auto-Trade) ATIVADO");
+    console.log("🤖 Motor Global Sniper (FREE e VIP) ATIVADO");
     configLocal = configFirebase;
     agendarSessoes(stateGlobais);
     iniciarMotorContinuo(stateGlobais);
@@ -99,15 +117,33 @@ function reloadTelegramConfig(novaConfig) { configLocal = novaConfig; agendarSes
 function agendarSessoes() {
     activeCronJobs.forEach(job => job.stop()); activeCronJobs = [];
     const dias = configLocal.dias || '1-5'; 
-    const cronManhaStart = parseTimeToCron(configLocal.horaManha || '09:30', 0, dias);
-    const cronTardeStart = parseTimeToCron(configLocal.horaTarde || '15:30', 0, dias);
-    activeCronJobs.push(cron.schedule(cronManhaStart, () => iniciarSessao("Manhã"), { timezone: "America/Sao_Paulo" }));
-    activeCronJobs.push(cron.schedule(cronTardeStart, () => iniciarSessao("Tarde"), { timezone: "America/Sao_Paulo" }));
+    
+    // 🎯 4 CRONOGRAMAS INDEPENDENTES
+    const cronFreeManha = parseTimeToCron(configLocal.horaFreeManha || '09:30', 0, dias);
+    const cronFreeTarde = parseTimeToCron(configLocal.horaFreeTarde || '15:30', 0, dias);
+    const cronVipTarde = parseTimeToCron(configLocal.horaVipTarde || '13:30', 0, dias);
+    const cronVipNoite = parseTimeToCron(configLocal.horaVipNoite || '19:30', 0, dias);
+
+    activeCronJobs.push(cron.schedule(cronFreeManha, () => iniciarSessao('FREE', 'Manhã'), { timezone: "America/Sao_Paulo" }));
+    activeCronJobs.push(cron.schedule(cronFreeTarde, () => iniciarSessao('FREE', 'Tarde'), { timezone: "America/Sao_Paulo" }));
+    activeCronJobs.push(cron.schedule(cronVipTarde, () => iniciarSessao('VIP', 'Tarde'), { timezone: "America/Sao_Paulo" }));
+    activeCronJobs.push(cron.schedule(cronVipNoite, () => iniciarSessao('VIP', 'Noite'), { timezone: "America/Sao_Paulo" }));
 }
 
-function forcarSessaoTelegram(turno) { iniciarSessao(turno); }
+function forcarSessaoTelegram(sala) {
+    const horaAtual = getAgoraSP().getHours();
+    let turnoSelecionado = 'Manhã';
+    
+    if (sala === 'FREE') {
+        turnoSelecionado = horaAtual >= 12 ? 'Tarde' : 'Manhã';
+    } else {
+        turnoSelecionado = horaAtual >= 17 ? 'Noite' : 'Tarde';
+    }
+    
+    iniciarSessao(sala, turnoSelecionado);
+}
 
-async function iniciarSessao(turno) {
+async function iniciarSessao(sala, turno) {
     const agoraMs = Date.now();
     if (agoraMs - ultimaMensagemSessao < 10000) return; 
     ultimaMensagemSessao = agoraMs;
@@ -118,13 +154,20 @@ async function iniciarSessao(turno) {
     estadoSessao.losses = 0; 
     estadoSessao.sinalRodando = null; 
     estadoSessao.lastGaleMsgId = null;
-    estadoSessao.turnoAtual = turno;
     
-    let stkStart = turno === "Manhã" ? configLocal.stkStartManha : configLocal.stkStartTarde;
-    if (!stkStart) stkStart = configLocal.stkStart; 
+    estadoSessao.salaAtual = sala; // FREE ou VIP
+    estadoSessao.turnoAtual = turno; // Manhã, Tarde ou Noite
+    
+    // 🎯 SELEÇÃO DO STICKER CORRETO
+    let stkStart;
+    if (turno === "Manhã") stkStart = configLocal.stkStartManha;
+    else if (turno === "Tarde") stkStart = configLocal.stkStartTarde;
+    else if (turno === "Noite") stkStart = configLocal.stkStartNoite;
+    
+    if (!stkStart) stkStart = configLocal.stkStart; // Fallback
 
     if (stkStart) await enviarSticker(stkStart);
-    else bot.sendMessage(CHAT_ID, `👨‍💻 *INÍCIO DE SESSÃO GLOBAL (${turno}): MERCADO ABERTO*`, { parse_mode: 'Markdown' });
+    else bot.sendMessage(getChatIdAtual(), `👨‍💻 *INÍCIO DE SESSÃO ${sala} (${turno}): MERCADO ABERTO*`, { parse_mode: 'Markdown' });
 }
 
 function iniciarMotorContinuo(stateGlobais) {
@@ -242,7 +285,7 @@ function atirarSinalTelegram(sym, tipo, nomeAmigavel, horas) {
     const templateOriginal = configLocal.msgSinal || "⚡ *ALERTA DE TOQUE (M1)* ⚡\n\n💵 Moeda = {MOEDA}\n⏰ Expiração = 1 Minuto\n🛎 Entrada = {HORA_ENTRADA}\n{DIRECAO}\n\nGale 1 - {HORA_GALE}\n\n👉🏼 Se necessário, fazer 1 Gale.";
     
     const msg = formatarMensagem(templateOriginal, { moeda: nomeAmigavel, direcao: acao, horaEntrada: horas.horaEntrada, horaGale: horas.horaGale });
-    bot.sendMessage(CHAT_ID, msg, { parse_mode: 'Markdown', disable_web_page_preview: true });
+    bot.sendMessage(getChatIdAtual(), msg, { parse_mode: 'Markdown', disable_web_page_preview: true });
 }
 
 async function verificarFimDeSessao() {
@@ -254,11 +297,15 @@ async function verificarFimDeSessao() {
     if (totalSinais >= metaSinais) {
         estadoSessao.ativa = false; estadoSessao.permitirSinais = false;
         
-        let stkEnd = estadoSessao.turnoAtual === "Manhã" ? configLocal.stkEndManha : configLocal.stkEndTarde;
+        let stkEnd;
+        if (estadoSessao.turnoAtual === "Manhã") stkEnd = configLocal.stkEndManha;
+        else if (estadoSessao.turnoAtual === "Tarde") stkEnd = configLocal.stkEndTarde;
+        else if (estadoSessao.turnoAtual === "Noite") stkEnd = configLocal.stkEndNoite;
+        
         if (!stkEnd) stkEnd = configLocal.stkEnd;
 
         if (stkEnd) await enviarSticker(stkEnd); 
-        else bot.sendMessage(CHAT_ID, `🔒 *META ATINGIDA!* Encerrando sessão...`, { parse_mode: 'Markdown' });
+        else bot.sendMessage(getChatIdAtual(), `🔒 *META ATINGIDA!* Encerrando sessão ${estadoSessao.salaAtual}...`, { parse_mode: 'Markdown' });
         
         setTimeout(() => { enviarRelatorioDiario(); }, 3000);
     }
@@ -271,22 +318,20 @@ async function conferirResultado(stateGlobais) {
     if (!velas || velas.length < 2) { operacao.verificando = false; return; }
 
     const ultimaVelaFechada = velas[velas.length - 2];
-    const openPrice = parseFloat(ultimaVelaFechada[1]); // 🎯 PEGA A ABERTURA DA VELA DA ENTRADA
-    const closePrice = parseFloat(ultimaVelaFechada[4]); // 🎯 PEGA O FECHAMENTO EXATO DA VELA
+    const openPrice = parseFloat(ultimaVelaFechada[1]); 
+    const closePrice = parseFloat(ultimaVelaFechada[4]); 
 
-    // 🎯 AVALIA PELA COR DA VELA (Fim dos Gaps e Falsas Perdas!)
     const isGreen = closePrice > openPrice;
     const isRed = closePrice < openPrice;
-    // Se der empate (Doji), as corretoras devolvem o dinheiro. Vamos considerar como perda para forçar o Gale na busca do Win.
     const won = (operacao.type === 'CALL' && isGreen) || (operacao.type === 'PUT' && isRed);
 
     if (won) {
         if (operacao.step <= 1) {
-            if (estadoSessao.lastGaleMsgId) { try { await bot.deleteMessage(CHAT_ID, estadoSessao.lastGaleMsgId); } catch(e) {} estadoSessao.lastGaleMsgId = null; }
+            if (estadoSessao.lastGaleMsgId) { try { await bot.deleteMessage(getChatIdAtual(), estadoSessao.lastGaleMsgId); } catch(e) {} estadoSessao.lastGaleMsgId = null; }
             
             if (estadoSessao.ativa && estadoSessao.permitirSinais) {
                 if (configLocal.stkWin) await enviarSticker(configLocal.stkWin); 
-                else bot.sendMessage(CHAT_ID, `✅ *WIN!* 🎯`, { parse_mode: 'Markdown' });
+                else bot.sendMessage(getChatIdAtual(), `✅ *WIN!* 🎯`, { parse_mode: 'Markdown' });
                 estadoSessao.wins++; 
                 verificarFimDeSessao();
             }
@@ -323,11 +368,11 @@ async function conferirResultado(stateGlobais) {
         });
 
         if (operacao.step === 2) {
-            if (estadoSessao.lastGaleMsgId) { try { await bot.deleteMessage(CHAT_ID, estadoSessao.lastGaleMsgId); } catch(e) {} estadoSessao.lastGaleMsgId = null; }
+            if (estadoSessao.lastGaleMsgId) { try { await bot.deleteMessage(getChatIdAtual(), estadoSessao.lastGaleMsgId); } catch(e) {} estadoSessao.lastGaleMsgId = null; }
             
             if (estadoSessao.ativa && estadoSessao.permitirSinais) {
                 if (configLocal.stkLoss) await enviarSticker(configLocal.stkLoss); 
-                else bot.sendMessage(CHAT_ID, `🔴 *LOSS!*`, { parse_mode: 'Markdown' });
+                else bot.sendMessage(getChatIdAtual(), `🔴 *LOSS!*`, { parse_mode: 'Markdown' });
                 estadoSessao.losses++; 
                 verificarFimDeSessao();
             }
@@ -342,7 +387,7 @@ async function conferirResultado(stateGlobais) {
             estadoSessao.sinalRodando = null; 
         } else { 
             if (operacao.step === 1 && estadoSessao.ativa && estadoSessao.permitirSinais) {
-                const msgSent = await bot.sendMessage(CHAT_ID, `🔄 *ENTRAR NO GALE ${operacao.step}* em ${operacao.nomeAmigavel}!\nMesma direção.`, { parse_mode: 'Markdown' });
+                const msgSent = await bot.sendMessage(getChatIdAtual(), `🔄 *ENTRAR NO GALE ${operacao.step}* em ${operacao.nomeAmigavel}!\nMesma direção.`, { parse_mode: 'Markdown' });
                 estadoSessao.lastGaleMsgId = msgSent.message_id;
             }
 

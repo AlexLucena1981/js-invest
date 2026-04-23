@@ -4,14 +4,21 @@ async function dispararOrdemVellox(broker, isDemo, symbol, direction, amount, cu
     let accountId = isDemo ? broker.demoAccountId : broker.realAccountId; 
     const expirationValue = tfStr.replace('m', ''); 
 
+    // 🎯 BLINDAGEM 1: Garante que o valor viaja no padrão americano (ponto em vez de vírgula)
+    const cleanAmount = String(amount).replace(',', '.');
+
     const executeTrade = async (accId) => {
         const tradeData = new URLSearchParams();
         tradeData.append('transaction_account_id', accId); 
         tradeData.append('expiration', expirationValue); 
-        tradeData.append('amount', amount); 
+        tradeData.append('amount', cleanAmount); 
         tradeData.append('direction', direction === 'CALL' ? '1' : '0'); 
         tradeData.append('symbol', symbol.toUpperCase()); 
-        tradeData.append('symbol_price', currentPrice.toString()); 
+        
+        // 🎯 BLINDAGEM 2 (A GRANDE CIRURGIA): 
+        // OMITIMOS a linha "tradeData.append('symbol_price', ...)"
+        // Ao não exigir um preço fixo da Binance, a Vellox executa a ordem a mercado
+        // com a taxa atual dela, acabando para sempre com o "Erro ao validar o preço".
 
         return await axios.put(`https://velloxbroker.com/api/public/applications/transaction`, tradeData, {
             headers: { 'Accept': 'application/json', 'Content-Type': 'application/x-www-form-urlencoded', 'Authorization': `Bearer ${broker.token}` }
@@ -24,6 +31,8 @@ async function dispararOrdemVellox(broker, isDemo, symbol, direction, amount, cu
         return { success: true, balance: novoSaldo };
     } catch (error) {
         let errorMsg = error.response ? JSON.stringify(error.response.data) : error.message;
+        
+        // Se der erro de conta não encontrada, tentamos o ID alternativo de Conta Demo da Vellox
         if (isDemo && errorMsg.includes("Conta de operação não encontrada")) {
             broker.demoAccountId = (broker.demoAccountId === '8') ? '15' : '8';
             accountId = broker.demoAccountId;
@@ -33,6 +42,7 @@ async function dispararOrdemVellox(broker, isDemo, symbol, direction, amount, cu
                 return { success: true, balance: novoSaldo };
             } catch (retryError) { errorMsg = retryError.response ? JSON.stringify(retryError.response.data) : retryError.message; }
         }
+        
         return { success: false, msg: errorMsg };
     }
 }
