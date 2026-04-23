@@ -395,7 +395,6 @@ if(document.getElementById('btnAdminPanel')) {
             if(document.getElementById('tgRsiUnder')) document.getElementById('tgRsiUnder').value = window.tempTgConfig.rsiUnder || '35'; 
             if(document.getElementById('tgBbDev')) document.getElementById('tgBbDev').value = window.tempTgConfig.bbDev || '2'; 
             
-            // Novos campos FREE / VIP
             if(document.getElementById('tgChatIdFree')) document.getElementById('tgChatIdFree').value = window.tempTgConfig.chatIdFree || ''; 
             if(document.getElementById('tgChatIdVip')) document.getElementById('tgChatIdVip').value = window.tempTgConfig.chatIdVip || ''; 
             
@@ -407,10 +406,10 @@ if(document.getElementById('btnAdminPanel')) {
             if(document.getElementById('tgDias')) document.getElementById('tgDias').value = window.tempTgConfig.dias || '1-5'; 
             if(document.getElementById('tgMaxSinais')) document.getElementById('tgMaxSinais').value = window.tempTgConfig.maxSinais || '2'; 
             
-            if(document.getElementById('tgStkStartManha')) document.getElementById('tgStkStartManha').value = window.tempTgConfig.stkStartManha || ''; 
-            if(document.getElementById('tgStkEndManha')) document.getElementById('tgStkEndManha').value = window.tempTgConfig.stkEndManha || ''; 
-            if(document.getElementById('tgStkStartTarde')) document.getElementById('tgStkStartTarde').value = window.tempTgConfig.stkStartTarde || ''; 
-            if(document.getElementById('tgStkEndTarde')) document.getElementById('tgStkEndTarde').value = window.tempTgConfig.stkEndTarde || ''; 
+            if(document.getElementById('tgStkStartManha')) document.getElementById('tgStkStartManha').value = window.tempTgConfig.stkStartManha || window.tempTgConfig.stkStart || ''; 
+            if(document.getElementById('tgStkEndManha')) document.getElementById('tgStkEndManha').value = window.tempTgConfig.stkEndManha || window.tempTgConfig.stkEnd || ''; 
+            if(document.getElementById('tgStkStartTarde')) document.getElementById('tgStkStartTarde').value = window.tempTgConfig.stkStartTarde || window.tempTgConfig.stkStart || ''; 
+            if(document.getElementById('tgStkEndTarde')) document.getElementById('tgStkEndTarde').value = window.tempTgConfig.stkEndTarde || window.tempTgConfig.stkEnd || ''; 
             if(document.getElementById('tgStkStartNoite')) document.getElementById('tgStkStartNoite').value = window.tempTgConfig.stkStartNoite || ''; 
             if(document.getElementById('tgStkEndNoite')) document.getElementById('tgStkEndNoite').value = window.tempTgConfig.stkEndNoite || ''; 
             
